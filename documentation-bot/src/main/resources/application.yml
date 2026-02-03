@@ -1,0 +1,48 @@
+spring:
+  application:
+    name: documentation-bot
+
+  datasource:
+    url: ${SPRING_DATABASE_URL:jdbc:postgresql://localhost:5432/docai}
+    username: ${SPRING_DATABASE_USERNAME:postgres}
+    password: ${SPRING_DATABASE_PASSWORD:postgres}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+    show-sql: false
+
+  ai:
+    openai:
+      base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
+      api-key: ${OPENAI_API_KEY}
+      chat:
+        options:
+          model: ${OPENAI_CHAT_MODEL:gpt-4o-mini}
+          temperature: 0.7
+          max-tokens: 5000
+      embedding:
+        options:
+          model: ${OPENAI_EMBEDDING_MODEL:gpt-4o-embedding-4k}
+          encodingFormat: float
+
+server:
+  port: 8082
+
+app:
+  jwt:
+    secret: ${JWT_SECRET:bXktc2VjcmV0LWtleS1mb3ItZG9jYWktc3lzdGVtLWp3dC10b2tlbnMtMjAyNA==}
+    expiration-ms: ${JWT_EXPIRATION_MS:86400000}
+
+# Documentation Bot Configuration
+bot:
+  max-context-messages: 10
+  summary-threshold: 15
+  top-k-results: 7
+  chat-expiry-hours: 24
+  max-context-tokens: 20000

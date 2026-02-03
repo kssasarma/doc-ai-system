@@ -1,0 +1,51 @@
+spring:
+  application:
+    name: document-ingestor
+
+  datasource:
+    url: ${SPRING_DATABASE_URL:jdbc:postgresql://localhost:5432/docai}
+    username: ${SPRING_DATABASE_USERNAME:postgres}
+    password: ${SPRING_DATABASE_PASSWORD:postgres}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+        hypersistence.utils.enable_types_contributor: false
+    show-sql: false
+
+  ai:
+    openai:
+      base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
+      api-key: ${OPENAI_API_KEY}
+      embedding:
+        options:
+          model: ${OPENAI_EMBEDDING_MODEL:gpt-4o-embedding-4k}
+          encodingFormat: float
+
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: ${MAX_UPLOAD_SIZE:100MB}
+      max-request-size: ${MAX_REQUEST_SIZE:100MB}
+
+server:
+  port: 8081
+
+app:
+  jwt:
+    secret: ${JWT_SECRET:bXktc2VjcmV0LWtleS1mb3ItZG9jYWktc3lzdGVtLWp3dC10b2tlbnMtMjAyNA==}
+
+# Document Ingestor Configuration
+ingestor:
+  watch-directory: ${INGEST_DIR:./watched-docs}
+  upload-directory: ${UPLOAD_DIR:./uploads}
+  polling-interval-ms: 5000
+  chunk-size: 800
+  chunk-overlap: 100
+  parallel-processing: true
+  max-threads: 4
