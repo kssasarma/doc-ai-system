@@ -38,8 +38,14 @@ public class VectorSearchService {
         String embeddingStr = pgVectorToString(queryEmbedding);
         
         // Execute vector search
-        List<Object[]> results = chunkRepository.findTopKSimilar(
-            product, version, embeddingStr, topK);
+        List<Object[]> results;
+        if (product != null && version != null) {
+            results = chunkRepository.findTopKSimilar(product, version, embeddingStr, topK);
+        } else if (product != null) {
+            results = chunkRepository.findTopKSimilarByProduct(product, embeddingStr, topK);
+        } else {
+            results = chunkRepository.findTopKSimilarAll(embeddingStr, topK);
+        }
         
         // Convert results to RetrievedChunk objects
         // Query returns: dc.* (based on table DDL: id, chunk_index, content, created_at, document_id, embedding, token_count)

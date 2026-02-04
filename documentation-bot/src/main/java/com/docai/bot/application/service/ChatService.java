@@ -27,15 +27,29 @@ public class ChatService {
     private final ContextManager contextManager;
     private final ChatSummaryService summaryService;
     private final AnswerGenerationService answerService;
+    private final QueryAnalyzerService queryAnalyzer;
 
     @Transactional
     public ChatResponse processQuery(ChatRequest request) {
-        log.info("Processing query for product: {} version: {}", 
-                 request.getProduct(), request.getVersion());
+        log.info("Processing query: {}", request.getQuestion());
         
-        // Get or create chat session
+        // Get or create chat session first
         ChatSession session = getOrCreateSession(
             request.getChatId(), request.getProduct(), request.getVersion());
+        
+        // Analyze query to extract product and version
+        QueryAnalyzerService.QueryContext queryContext = queryAnalyzer.analyzeQuery(
+            request.getQuestion(), request.getChatId());
+        
+        // Priority order: AI detected > Request params > Session stored values
+        String product = queryContext.getProduct() != null ? 
+            queryContext.getProduct() : 
+            (request.getProduct() != null ? request.getProduct() : session.getProduct());
+        String version = queryContext.getVersion() != null ? 
+            queryContext.getVersion() : 
+            (request.getVersion() != null ? request.getVersion() : session.getVersion());
+        
+        log.info("Using - Product: {}, Version: {}", product, version);
         
         // Build context from chat history
         String chatContext = contextManager.buildContextPrompt(session.getId());
@@ -46,7 +60,7 @@ public class ChatService {
         
         // Retrieve relevant chunks using vector search
         List<RetrievedChunk> relevantChunks = vectorSearchService.search(
-            enhancedQuery, request.getProduct(), request.getVersion());
+            enhancedQuery, product, version);
         
         // Generate answer
         String answer = answerService.generateAnswer(
@@ -56,7 +70,13 @@ public class ChatService {
         saveMessage(session.getId(), ChatMessage.Role.USER, request.getQuestion());
         saveMessage(session.getId(), ChatMessage.Role.ASSISTANT, answer);
         
-        // Update session
+        // Update session with detected product/version if not set
+        if (session.getProduct() == null && product != null) {
+            session.setProduct(product);
+        }
+        if (session.getVersion() == null && version != null) {
+            session.setVersion(version);
+        }
         session.setMessageCount(session.getMessageCount() + 2);
         sessionRepository.save(session);
         
@@ -142,5 +162,104 @@ public class ChatService {
     public static class SourceReference {
         private String document;
         private String chunkId;
+    }
+
+    @Transactional(readOnly = true)
+    public ChatHistoryResponse getChatHistory(String chatIdStr) {
+        log.info("Retrieving chat history for chatId: {}", chatIdStr);
+        
+        try {
+            UUID chatId = UUID.fromString(chatIdStr);
+            
+            // Get all messages ordered by creation time (oldest first for chronological order)
+            List<ChatMessage> messages = messageRepository.findByChatIdOrderByCreatedAtDesc(chatId);
+            
+            // Reverse to get chronological order (oldest to newest)
+            java.util.Collections.reverse(messages);
+            
+            // Convert to DTOs
+            List<ChatMessageDTO> messageDTOs = messages.stream()
+                .map(msg -> ChatMessageDTO.builder()
+                    .id(msg.getId().toString())
+                    .role(msg.getRole().toString())
+                    .content(msg.getContent())
+                    .createdAt(msg.getCreatedAt())
+                    .build())
+                .collect(Collectors.toList());
+            
+            return ChatHistoryResponse.builder()
+                .chatId(chatId.toString())
+                .messageCount(messageDTOs.size())
+                .messages(messageDTOs)
+                .build();
+                
+        } catch (IllegalArgumentException e) {
+            log.error("Invalid chatId format: {}", chatIdStr, e);
+            throw new IllegalArgumentException("Invalid chat ID format", e);
+        }
+    }
+
+    @lombok.Data
+    @lombok.Builder
+    public static class ChatHistoryResponse {
+        private String chatId;
+        private int messageCount;
+        private List<ChatMessageDTO> messages;
+    }
+
+    @lombok.Data
+    @lombok.Builder
+    public static class ChatMessageDTO {
+        private String id;
+        private String role;
+        private String content;
+        private java.time.LocalDateTime createdAt;
+    }
+
+    @Transactional(readOnly = true)
+    public AllChatsResponse getAllChatSessions() {
+        log.info("Retrieving all chat sessions");
+        
+        // Get all chat sessions ordered by last activity (most recent first)
+        List<ChatSession> sessions = sessionRepository.findAll(
+            org.springframework.data.domain.Sort.by(
+                org.springframework.data.domain.Sort.Direction.DESC, "lastActiveAt"
+            )
+        );
+        
+        // Convert to DTOs
+        List<ChatSessionDTO> sessionDTOs = sessions.stream()
+            .map(session -> ChatSessionDTO.builder()
+                .chatId(session.getId().toString())
+                .product(session.getProduct())
+                .version(session.getVersion())
+                .messageCount(session.getMessageCount())
+                .createdAt(session.getCreatedAt())
+                .lastActiveAt(session.getLastActiveAt())
+                .build())
+            .collect(Collectors.toList());
+        
+        return AllChatsResponse.builder()
+            .totalChats(sessionDTOs.size())
+            .sessions(sessionDTOs)
+            .build();
+    }
+
+    @lombok.Data
+    @lombok.Builder
+    public static class AllChatsResponse {
+        private int totalChats;
+        private List<ChatSessionDTO> sessions;
+    }
+
+    @lombok.Data
+    @lombok.Builder
+    public static class ChatSessionDTO {
+        private String chatId;
+        private String product;
+        private String version;
+        private Integer messageCount;
+        private java.time.LocalDateTime createdAt;
+        private java.time.LocalDateTime lastActiveAt;
     }
 }

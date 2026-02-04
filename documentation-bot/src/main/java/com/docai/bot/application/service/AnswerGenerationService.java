@@ -20,6 +20,13 @@ public class AnswerGenerationService {
     public String generateAnswer(String question, String chatContext, 
                                  List<RetrievedChunk> relevantChunks) {
         
+        // Check if no chunks were retrieved
+        if (relevantChunks == null || relevantChunks.isEmpty()) {
+            log.warn("No relevant chunks found for question: {}", question);
+            return "We couldn't find the relative information in the documentation. " +
+                   "Please try rephrasing your question or ensure you've specified the correct product and version.";
+        }
+        
         // Build the prompt with retrieved context
         StringBuilder prompt = new StringBuilder();
         
@@ -44,6 +51,7 @@ public class AnswerGenerationService {
         prompt.append("If the documentation doesn't contain relevant information, say so.");
         
         try {
+            // Build chat client - will use the configured model from application.yml
             ChatClient chatClient = chatClientBuilder.build();
             String answer = chatClient.prompt()
                 .user(prompt.toString())

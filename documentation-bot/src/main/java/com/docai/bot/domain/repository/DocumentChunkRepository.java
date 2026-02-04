@@ -19,4 +19,19 @@ public interface DocumentChunkRepository extends JpaRepository<DocumentChunk, UU
                    "ORDER BY dc.embedding <=> CAST(:embedding AS vector) " +
                    "LIMIT :limit", nativeQuery = true)
     List<Object[]> findTopKSimilar(String product, String version, String embedding, int limit);
+    
+    @Query(value = "SELECT dc.*, d.product, d.version, d.document_name " +
+                   "FROM document_chunks dc " +
+                   "JOIN documents d ON dc.document_id = d.id " +
+                   "WHERE d.product = :product " +
+                   "ORDER BY dc.embedding <=> CAST(:embedding AS vector) " +
+                   "LIMIT :limit", nativeQuery = true)
+    List<Object[]> findTopKSimilarByProduct(String product, String embedding, int limit);
+    
+    @Query(value = "SELECT dc.*, d.product, d.version, d.document_name " +
+                   "FROM document_chunks dc " +
+                   "JOIN documents d ON dc.document_id = d.id " +
+                   "ORDER BY dc.embedding <=> CAST(:embedding AS vector) " +
+                   "LIMIT :limit", nativeQuery = true)
+    List<Object[]> findTopKSimilarAll(String embedding, int limit);
 }
