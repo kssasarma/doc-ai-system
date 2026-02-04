@@ -1,6 +1,7 @@
 package com.docai.bot.adapter.rest;
 
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -50,6 +51,12 @@ public class ChatController {
     public ResponseEntity<ChatService.AllChatsResponse> getAllChats() {
         ChatService.AllChatsResponse response = chatService.getAllChatSessions();
         return ResponseEntity.ok(response);
+    }
+
+    @DeleteMapping("/sessions/{chatId}")
+    public ResponseEntity<Void> deleteChatSession(@PathVariable String chatId) {
+        chatService.deleteChatSession(chatId);
+        return ResponseEntity.noContent().build();
     }
 
     @Data

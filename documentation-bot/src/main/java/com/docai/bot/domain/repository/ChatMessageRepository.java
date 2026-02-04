@@ -19,4 +19,6 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, UUID> 
     List<ChatMessage> findRecentMessages(UUID chatId, int limit);
     
     long countByChatId(UUID chatId);
+    
+    void deleteByChatId(UUID chatId);
 }

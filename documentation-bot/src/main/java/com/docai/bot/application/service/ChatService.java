@@ -12,6 +12,7 @@ import com.docai.bot.domain.entity.ChatSession;
 import com.docai.bot.domain.model.RetrievedChunk;
 import com.docai.bot.domain.repository.ChatMessageRepository;
 import com.docai.bot.domain.repository.ChatSessionRepository;
+import com.docai.bot.domain.repository.ChatSummaryRepository;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -23,6 +24,7 @@ public class ChatService {
 
     private final ChatSessionRepository sessionRepository;
     private final ChatMessageRepository messageRepository;
+    private final ChatSummaryRepository summaryRepository;
     private final VectorSearchService vectorSearchService;
     private final ContextManager contextManager;
     private final ChatSummaryService summaryService;
@@ -261,5 +263,28 @@ public class ChatService {
         private Integer messageCount;
         private java.time.LocalDateTime createdAt;
         private java.time.LocalDateTime lastActiveAt;
+    }
+
+    @Transactional
+    public void deleteChatSession(String chatIdStr) {
+        log.info("Deleting chat session: {}", chatIdStr);
+        
+        try {
+            UUID chatId = UUID.fromString(chatIdStr);
+            
+            // Delete related entities in order: messages, summary, then session
+            messageRepository.deleteByChatId(chatId);
+            log.debug("Deleted messages for chatId: {}", chatId);
+            
+            summaryRepository.deleteById(chatId);
+            log.debug("Deleted summary for chatId: {}", chatId);
+            
+            sessionRepository.deleteById(chatId);
+            log.info("Successfully deleted chat session: {}", chatId);
+            
+        } catch (IllegalArgumentException e) {
+            log.error("Invalid chatId format: {}", chatIdStr, e);
+            throw new IllegalArgumentException("Invalid chat ID format", e);
+        }
     }
 }
