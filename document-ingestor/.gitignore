@@ -71,3 +71,4 @@ application-local.properties
 # Temporary files
 *.tmp
 *.temp
+./document-ingestor/watched-docs
