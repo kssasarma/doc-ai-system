@@ -1,15 +1,17 @@
 package com.docai.ingestor.application.service.impl;
 
-import com.docai.ingestor.application.service.DocumentParser;
-import lombok.extern.slf4j.Slf4j;
+import java.io.File;
+import java.io.FileInputStream;
+
 import org.apache.tika.metadata.Metadata;
 import org.apache.tika.parser.AutoDetectParser;
 import org.apache.tika.parser.ParseContext;
 import org.apache.tika.sax.BodyContentHandler;
 import org.springframework.stereotype.Component;
 
-import java.io.File;
-import java.io.FileInputStream;
+import com.docai.ingestor.application.service.DocumentParser;
+
+import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 @Component

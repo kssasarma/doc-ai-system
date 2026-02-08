@@ -1,12 +1,14 @@
 package com.docai.ingestor.application.service;
 
-import com.docai.ingestor.domain.model.TextChunk;
-import lombok.extern.slf4j.Slf4j;
+import java.util.ArrayList;
+import java.util.List;
+
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
-import java.util.List;
+import com.docai.ingestor.domain.model.TextChunk;
+
+import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 @Service
