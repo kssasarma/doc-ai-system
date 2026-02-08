@@ -72,3 +72,5 @@ application-local.properties
 *.tmp
 *.temp
 ./document-ingestor/watched-docs
+
+.factorypath
