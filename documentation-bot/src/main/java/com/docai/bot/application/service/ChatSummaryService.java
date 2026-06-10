@@ -45,7 +45,7 @@ public class ChatSummaryService {
         try {
             // Get all messages
             List<ChatMessage> messages = messageRepository
-                .findByChatIdOrderByCreatedAtDesc(chatId);
+                .findByChatIdOrderByCreatedAtAsc(chatId);
             
             if (messages.isEmpty()) {
                 return;
@@ -53,7 +53,7 @@ public class ChatSummaryService {
             
             // Build conversation text
             StringBuilder conversation = new StringBuilder();
-            for (int i = messages.size() - 1; i >= 0; i--) {
+            for (int i = 0; i < messages.size(); i++) {
                 ChatMessage msg = messages.get(i);
                 conversation.append(msg.getRole()).append(": ");
                 conversation.append(msg.getContent()).append("\n");
