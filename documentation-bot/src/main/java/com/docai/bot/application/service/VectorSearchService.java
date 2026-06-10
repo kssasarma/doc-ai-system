@@ -49,7 +49,9 @@ public class VectorSearchService {
                 .chunkId(row.getChunkId())
                 .content(row.getContent())
                 .documentName(row.getDocumentName())
-                .similarity(0.0)
+                .similarity(row.getSimilarity())
+                .product(row.getProduct())
+                .version(row.getVersion())
                 .build());
         }
 

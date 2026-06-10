@@ -16,9 +16,14 @@ public interface DocumentChunkRepository extends JpaRepository<DocumentChunk, UU
         String getChunkId();
         String getContent();
         String getDocumentName();
+        String getProduct();
+        String getVersion();
+        double getSimilarity();
     }
 
-    @Query(value = "SELECT CAST(dc.id AS text) AS chunkId, dc.content AS content, d.document_name AS documentName " +
+    @Query(value = "SELECT CAST(dc.id AS text) AS chunkId, dc.content AS content, " +
+                   "d.document_name AS documentName, d.product AS product, d.version AS version, " +
+                   "(1 - (dc.embedding <=> CAST(:embedding AS vector))) AS similarity " +
                    "FROM document_chunks dc " +
                    "JOIN documents d ON dc.document_id = d.id " +
                    "WHERE d.product = :product AND d.version = :version " +
@@ -26,7 +31,9 @@ public interface DocumentChunkRepository extends JpaRepository<DocumentChunk, UU
                    "LIMIT :limit", nativeQuery = true)
     List<ChunkSearchResult> findTopKSimilar(String product, String version, String embedding, int limit);
 
-    @Query(value = "SELECT CAST(dc.id AS text) AS chunkId, dc.content AS content, d.document_name AS documentName " +
+    @Query(value = "SELECT CAST(dc.id AS text) AS chunkId, dc.content AS content, " +
+                   "d.document_name AS documentName, d.product AS product, d.version AS version, " +
+                   "(1 - (dc.embedding <=> CAST(:embedding AS vector))) AS similarity " +
                    "FROM document_chunks dc " +
                    "JOIN documents d ON dc.document_id = d.id " +
                    "WHERE d.product = :product " +
@@ -34,7 +41,9 @@ public interface DocumentChunkRepository extends JpaRepository<DocumentChunk, UU
                    "LIMIT :limit", nativeQuery = true)
     List<ChunkSearchResult> findTopKSimilarByProduct(String product, String embedding, int limit);
 
-    @Query(value = "SELECT CAST(dc.id AS text) AS chunkId, dc.content AS content, d.document_name AS documentName " +
+    @Query(value = "SELECT CAST(dc.id AS text) AS chunkId, dc.content AS content, " +
+                   "d.document_name AS documentName, d.product AS product, d.version AS version, " +
+                   "(1 - (dc.embedding <=> CAST(:embedding AS vector))) AS similarity " +
                    "FROM document_chunks dc " +
                    "JOIN documents d ON dc.document_id = d.id " +
                    "ORDER BY dc.embedding <=> CAST(:embedding AS vector) " +

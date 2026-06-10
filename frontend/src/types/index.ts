@@ -4,6 +4,10 @@ export interface ChatMessage {
   role: 'user' | 'assistant';
   timestamp: number;
   isTyping?: boolean;
+  messageId?: string;
+  sources?: Source[];
+  confidence?: number;
+  userFeedback?: 1 | -1 | null;
 }
 
 export interface ChatSession {
@@ -57,12 +61,18 @@ export interface AppConfig {
 export interface Source {
   chunkId: string;
   document: string;
+  relevanceScore?: number;
+  product?: string;
+  version?: string;
+  excerpt?: string;
 }
 
 export interface BackendChatResponse {
   answer: string;
   chatId: string;
+  messageId: string;
   sources: Source[];
+  confidence: number;
 }
 
 export interface APIResponse {

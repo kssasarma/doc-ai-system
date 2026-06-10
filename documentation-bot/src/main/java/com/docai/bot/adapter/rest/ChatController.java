@@ -1,5 +1,7 @@
 package com.docai.bot.adapter.rest;
 
+import java.util.UUID;
+
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -15,10 +17,14 @@ import com.docai.bot.application.service.ChatService.AllChatsResponse;
 import com.docai.bot.application.service.ChatService.ChatHistoryResponse;
 import com.docai.bot.application.service.ChatService.ChatRequest;
 import com.docai.bot.application.service.ChatService.ChatResponse;
+import com.docai.bot.application.service.FeedbackService;
 import com.docai.bot.config.UserPrincipal;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 
@@ -28,6 +34,7 @@ import lombok.RequiredArgsConstructor;
 public class ChatController {
 
     private final ChatService chatService;
+    private final FeedbackService feedbackService;
 
     @PostMapping("/query")
     public ResponseEntity<ChatResponse> query(
@@ -61,6 +68,21 @@ public class ChatController {
         return ResponseEntity.noContent().build();
     }
 
+    @PostMapping("/messages/{messageId}/feedback")
+    public ResponseEntity<Void> submitFeedback(
+            @PathVariable String messageId,
+            @Valid @RequestBody FeedbackRequest request,
+            @AuthenticationPrincipal UserPrincipal principal) {
+
+        feedbackService.submitFeedback(
+            UUID.fromString(messageId),
+            principal.userId(),
+            request.getRating(),
+            request.getFeedbackText()
+        );
+        return ResponseEntity.noContent().build();
+    }
+
     @Data
     static class QueryRequest {
         private String chatId;
@@ -68,5 +90,14 @@ public class ChatController {
         private String version;
         @NotBlank(message = "Question is required")
         private String question;
+    }
+
+    @Data
+    static class FeedbackRequest {
+        @NotNull(message = "Rating is required")
+        @Min(value = -1, message = "Rating must be -1 or 1")
+        @Max(value = 1,  message = "Rating must be -1 or 1")
+        private Integer rating;
+        private String feedbackText;
     }
 }

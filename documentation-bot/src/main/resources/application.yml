@@ -77,3 +77,4 @@ bot:
   top-k-results: 7
   chat-expiry-hours: 24
   max-context-tokens: 20000
+  min-similarity-threshold: ${BOT_MIN_SIMILARITY_THRESHOLD:0.55}

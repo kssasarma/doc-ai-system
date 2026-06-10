@@ -3,6 +3,7 @@ package com.docai.bot.application.service;
 import java.util.List;
 
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import com.docai.bot.domain.model.RetrievedChunk;
@@ -20,13 +21,29 @@ public class AnswerGenerationService {
 
     private final ChatClient.Builder chatClientBuilder;
 
+    @Value("${bot.min-similarity-threshold:0.55}")
+    private double minSimilarityThreshold;
+
     public String generateAnswer(String question, String chatContext,
                                  List<RetrievedChunk> relevantChunks) {
 
         if (relevantChunks == null || relevantChunks.isEmpty()) {
             log.warn("No relevant chunks found for question: {}", question);
-            return "We couldn't find relevant information in the documentation. " +
-                   "Please try rephrasing your question or ensure you've selected the correct product and version.";
+            return buildEmptyStateMessage(question, null, null);
+        }
+
+        double maxSimilarity = relevantChunks.stream()
+            .mapToDouble(RetrievedChunk::getSimilarity)
+            .max()
+            .orElse(0.0);
+
+        if (maxSimilarity < minSimilarityThreshold) {
+            String closestTopic = relevantChunks.get(0).getDocumentName();
+            String product = relevantChunks.get(0).getProduct();
+            String version = relevantChunks.get(0).getVersion();
+            log.warn("Max similarity {} below threshold {} for question: {}",
+                String.format("%.3f", maxSimilarity), String.format("%.3f", minSimilarityThreshold), question);
+            return buildEmptyStateMessage(question, closestTopic, product + " " + version);
         }
 
         StringBuilder prompt = new StringBuilder();
@@ -72,6 +89,23 @@ public class AnswerGenerationService {
         }
         log.error("All {} LLM attempts failed for question: {}", MAX_ATTEMPTS, question, lastException);
         return "The AI service is temporarily unavailable. Please try again in a moment.";
+    }
+
+    private static String buildEmptyStateMessage(String question, String closestTopic, String productVersion) {
+        StringBuilder msg = new StringBuilder(
+            "I couldn't find reliable documentation for your question");
+        if (productVersion != null && !productVersion.isBlank()) {
+            msg.append(" in ").append(productVersion);
+        }
+        msg.append(".\n\n");
+        if (closestTopic != null) {
+            msg.append("The closest content I found was in **").append(closestTopic).append("**.\n\n");
+        }
+        msg.append("You might try:\n");
+        msg.append("- Rephrasing your question with different keywords\n");
+        msg.append("- Checking that the correct product and version are selected\n");
+        msg.append("- Browsing the available documents for this product");
+        return msg.toString();
     }
 
     private static void sleepBackoff(int attempt) {

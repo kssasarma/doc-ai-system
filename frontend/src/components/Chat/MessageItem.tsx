@@ -1,35 +1,86 @@
 import React, { useState } from 'react';
-import { User, Bot, Copy, Check } from 'lucide-react';
+import { User, Bot, Copy, Check, ThumbsUp, ThumbsDown, ChevronDown, ChevronUp } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { ChatMessage } from '../../types';
 import { formatTimestamp } from '../../utils/chatUtils';
+import { submitFeedback } from '../../services/chatService';
+import { useAuth } from '../../context/AuthContext';
 
 interface MessageItemProps {
   message: ChatMessage;
+  onFeedbackChange?: (messageId: string, rating: 1 | -1) => void;
 }
 
-const MessageItem: React.FC<MessageItemProps> = ({ message }) => {
+function ConfidenceBadge({ confidence }: { confidence: number }) {
+  if (confidence >= 0.8) {
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700 border border-green-200">
+        <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
+        High confidence
+      </span>
+    );
+  }
+  if (confidence >= 0.6) {
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700 border border-yellow-200">
+        <span className="w-1.5 h-1.5 rounded-full bg-yellow-500" />
+        Medium confidence
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700 border border-red-200">
+      <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+      Low confidence
+    </span>
+  );
+}
+
+const MessageItem: React.FC<MessageItemProps> = ({ message, onFeedbackChange }) => {
   const isUser = message.role === 'user';
+  const { token } = useAuth();
   const [copied, setCopied] = useState(false);
+  const [sourcesExpanded, setSourcesExpanded] = useState(false);
+  const [feedback, setFeedback] = useState<1 | -1 | null>(message.userFeedback ?? null);
+  const [feedbackPending, setFeedbackPending] = useState(false);
+
+  const hasSources = !isUser && message.sources && message.sources.length > 0;
+  const showConfidence = !isUser && message.confidence !== undefined && !message.isTyping;
 
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(message.content);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    } catch (err) {
-      console.error('Failed to copy text:', err);
+    } catch {
+      // clipboard not available
+    }
+  };
+
+  const handleFeedback = async (rating: 1 | -1) => {
+    if (!message.messageId || !token || feedbackPending) return;
+    const newRating = feedback === rating ? null : rating;
+    setFeedback(newRating);
+    if (newRating === null) return;
+    setFeedbackPending(true);
+    try {
+      await submitFeedback(message.messageId, newRating, token);
+      onFeedbackChange?.(message.messageId, newRating);
+    } catch {
+      setFeedback(feedback);
+    } finally {
+      setFeedbackPending(false);
     }
   };
 
   return (
     <div className={`flex gap-3 ${isUser ? 'justify-end' : 'justify-start'}`}>
       {!isUser && (
-        <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
+        <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0 mt-1">
           <Bot size={16} className="text-blue-600" />
         </div>
       )}
-      
+
       <div className={`max-w-2xl ${isUser ? 'order-first' : ''}`}>
         <div
           className={`p-4 rounded-lg relative group ${
@@ -58,21 +109,95 @@ const MessageItem: React.FC<MessageItemProps> = ({ message }) => {
               <ReactMarkdown>{message.content}</ReactMarkdown>
             )}
           </div>
+
           {message.isTyping && (
             <div className="flex gap-1 mt-2">
-              <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
-              <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-              <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+              <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" />
+              <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }} />
+              <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
             </div>
           )}
         </div>
+
+        {/* Confidence badge + feedback row */}
+        {(showConfidence || (hasSources && message.messageId)) && (
+          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+            {showConfidence && <ConfidenceBadge confidence={message.confidence!} />}
+
+            {hasSources && (
+              <button
+                onClick={() => setSourcesExpanded(v => !v)}
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors border border-gray-200"
+              >
+                {message.sources!.length} source{message.sources!.length !== 1 ? 's' : ''}
+                {sourcesExpanded ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
+              </button>
+            )}
+
+            {message.messageId && (
+              <div className="flex items-center gap-1 ml-auto">
+                <button
+                  onClick={() => handleFeedback(1)}
+                  disabled={feedbackPending}
+                  className={`p-1 rounded transition-colors ${
+                    feedback === 1
+                      ? 'text-green-600 bg-green-50'
+                      : 'text-gray-400 hover:text-green-600 hover:bg-green-50'
+                  }`}
+                  title="Helpful"
+                >
+                  <ThumbsUp size={13} />
+                </button>
+                <button
+                  onClick={() => handleFeedback(-1)}
+                  disabled={feedbackPending}
+                  className={`p-1 rounded transition-colors ${
+                    feedback === -1
+                      ? 'text-red-500 bg-red-50'
+                      : 'text-gray-400 hover:text-red-500 hover:bg-red-50'
+                  }`}
+                  title="Not helpful"
+                >
+                  <ThumbsDown size={13} />
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Sources panel */}
+        {hasSources && sourcesExpanded && (
+          <div className="mt-1.5 border border-gray-200 rounded-lg bg-gray-50 divide-y divide-gray-100 text-xs">
+            {message.sources!.map((src, i) => (
+              <div key={src.chunkId ?? i} className="p-3">
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <span className="font-medium text-gray-700 truncate">{src.document}</span>
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    {src.product && (
+                      <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded text-xs">
+                        {src.product}{src.version ? ` ${src.version}` : ''}
+                      </span>
+                    )}
+                    {src.relevanceScore !== undefined && (
+                      <span className="text-gray-400">{Math.round(src.relevanceScore * 100)}%</span>
+                    )}
+                  </div>
+                </div>
+                {src.excerpt && (
+                  <p className="text-gray-500 leading-relaxed line-clamp-3">{src.excerpt}</p>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
         <div className={`text-xs text-gray-400 mt-1 ${isUser ? 'text-right' : 'text-left'}`}>
           {formatTimestamp(message.timestamp)}
         </div>
       </div>
-      
+
       {isUser && (
-        <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center flex-shrink-0">
+        <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center flex-shrink-0 mt-1">
           <User size={16} className="text-gray-600" />
         </div>
       )}

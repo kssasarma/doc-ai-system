@@ -56,7 +56,11 @@ function ChatPage() {
           effectiveChatId = response.data.chatId;
         }
         removeTypingIndicators(effectiveChatId);
-        addMessage(effectiveChatId, createMessage(response.data.answer, 'assistant'));
+        addMessage(effectiveChatId, createMessage(response.data.answer, 'assistant', {
+          messageId: response.data.messageId,
+          sources: response.data.sources,
+          confidence: response.data.confidence,
+        }));
       } else {
         removeTypingIndicators(activeSessionId);
         addMessage(activeSessionId, createMessage(

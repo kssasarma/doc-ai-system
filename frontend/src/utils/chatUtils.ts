@@ -14,12 +14,17 @@ export function createNewSession(chatId?: string): ChatSession {
   };
 }
 
-export function createMessage(content: string, role: 'user' | 'assistant'): ChatMessage {
+export function createMessage(
+  content: string,
+  role: 'user' | 'assistant',
+  extras?: Pick<ChatMessage, 'messageId' | 'sources' | 'confidence'>
+): ChatMessage {
   return {
     id: generateId(),
     content,
     role,
-    timestamp: Date.now()
+    timestamp: Date.now(),
+    ...extras,
   };
 }
 

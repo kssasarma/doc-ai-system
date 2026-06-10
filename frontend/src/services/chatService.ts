@@ -48,6 +48,28 @@ export async function deleteChatSession(chatId: string, token: string): Promise<
   }
 }
 
+export async function submitFeedback(
+  messageId: string,
+  rating: 1 | -1,
+  token: string,
+  feedbackText?: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const response = await fetch(
+      `${CHAT_BACKEND_ROOT_URL}/messages/${messageId}/feedback`,
+      {
+        method: 'POST',
+        headers: authHeader(token),
+        body: JSON.stringify({ rating, feedbackText: feedbackText ?? null }),
+      }
+    );
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+  }
+}
+
 export async function sendChatMessage(query: string, token: string, chatId?: string): Promise<APIResponse> {
   try {
     const requestBody: { question: string; chatId?: string } = { question: query };

@@ -56,7 +56,7 @@ public class ChatService {
         String answer = answerService.generateAnswer(request.getQuestion(), chatContext, relevantChunks);
 
         saveMessage(session.getId(), ChatMessage.Role.USER, request.getQuestion());
-        saveMessage(session.getId(), ChatMessage.Role.ASSISTANT, answer);
+        ChatMessage assistantMessage = saveMessage(session.getId(), ChatMessage.Role.ASSISTANT, answer);
 
         if (session.getProduct() == null && product != null) {
             session.setProduct(product);
@@ -69,18 +69,42 @@ public class ChatService {
 
         summaryService.summarizeIfNeeded(session.getId());
 
+        double confidence = calculateConfidence(relevantChunks, version);
+
         List<SourceReference> sources = relevantChunks.stream()
             .map(chunk -> SourceReference.builder()
                 .document(chunk.getDocumentName())
                 .chunkId(chunk.getChunkId())
+                .relevanceScore(chunk.getSimilarity())
+                .product(chunk.getProduct())
+                .version(chunk.getVersion())
+                .excerpt(chunk.getContent().length() > 200
+                    ? chunk.getContent().substring(0, 200) + "…"
+                    : chunk.getContent())
                 .build())
             .collect(Collectors.toList());
 
         return ChatResponse.builder()
             .chatId(session.getId().toString())
+            .messageId(assistantMessage.getId().toString())
             .answer(answer)
             .sources(sources)
+            .confidence(confidence)
             .build();
+    }
+
+    private double calculateConfidence(List<RetrievedChunk> chunks, String version) {
+        if (chunks.isEmpty()) return 0.0;
+
+        double maxSim = chunks.get(0).getSimilarity();
+        double avgTop3 = chunks.stream().limit(3)
+            .mapToDouble(RetrievedChunk::getSimilarity)
+            .average().orElse(0.0);
+        double versionScore = (version != null
+            && chunks.stream().allMatch(c -> version.equals(c.getVersion()))) ? 1.0 : 0.0;
+        double corroboration = chunks.size() >= 3 ? 1.0 : 0.0;
+
+        return (maxSim * 0.4) + (avgTop3 * 0.3) + (versionScore * 0.2) + (corroboration * 0.1);
     }
 
     private ChatSession getOrCreateSession(String chatIdStr, String product, String version, UUID userId) {
@@ -106,13 +130,13 @@ public class ChatService {
         return sessionRepository.save(session);
     }
 
-    private void saveMessage(UUID chatId, ChatMessage.Role role, String content) {
+    private ChatMessage saveMessage(UUID chatId, ChatMessage.Role role, String content) {
         ChatMessage message = ChatMessage.builder()
             .chatId(chatId)
             .role(role)
             .content(content)
             .build();
-        messageRepository.save(message);
+        return messageRepository.save(message);
     }
 
     private String enhanceQueryWithContext(String question, String context) {
@@ -205,8 +229,10 @@ public class ChatService {
     @lombok.Builder
     public static class ChatResponse {
         private String chatId;
+        private String messageId;
         private String answer;
         private List<SourceReference> sources;
+        private double confidence;
     }
 
     @lombok.Data
@@ -214,6 +240,10 @@ public class ChatService {
     public static class SourceReference {
         private String document;
         private String chunkId;
+        private double relevanceScore;
+        private String product;
+        private String version;
+        private String excerpt;
     }
 
     @lombok.Data

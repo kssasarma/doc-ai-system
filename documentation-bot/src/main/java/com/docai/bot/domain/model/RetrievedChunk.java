@@ -14,4 +14,6 @@ public class RetrievedChunk {
     private String content;
     private double similarity;
     private String chunkId;
+    private String product;
+    private String version;
 }
