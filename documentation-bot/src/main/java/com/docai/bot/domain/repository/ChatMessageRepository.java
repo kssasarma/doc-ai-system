@@ -11,14 +11,14 @@ import com.docai.bot.domain.entity.ChatMessage;
 
 @Repository
 public interface ChatMessageRepository extends JpaRepository<ChatMessage, UUID> {
-    
-    List<ChatMessage> findByChatIdOrderByCreatedAtDesc(UUID chatId);
-    
+
+    List<ChatMessage> findByChatIdOrderByCreatedAtAsc(UUID chatId);
+
     @Query(value = "SELECT * FROM chat_messages WHERE chat_id = :chatId " +
                    "ORDER BY created_at DESC LIMIT :limit", nativeQuery = true)
     List<ChatMessage> findRecentMessages(UUID chatId, int limit);
-    
+
     long countByChatId(UUID chatId);
-    
+
     void deleteByChatId(UUID chatId);
 }

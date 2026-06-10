@@ -1,5 +1,6 @@
 package com.docai.bot.application.service;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -34,45 +35,29 @@ public class ChatService {
     @Transactional
     public ChatResponse processQuery(ChatRequest request) {
         log.info("Processing query: {}", request.getQuestion());
-        
-        // Get or create chat session first
-        ChatSession session = getOrCreateSession(
-            request.getChatId(), request.getProduct(), request.getVersion());
-        
-        // Analyze query to extract product and version
-        QueryAnalyzerService.QueryContext queryContext = queryAnalyzer.analyzeQuery(
-            request.getQuestion(), request.getChatId());
-        
-        // Priority order: AI detected > Request params > Session stored values
-        String product = queryContext.getProduct() != null ? 
-            queryContext.getProduct() : 
-            (request.getProduct() != null ? request.getProduct() : session.getProduct());
-        String version = queryContext.getVersion() != null ? 
-            queryContext.getVersion() : 
-            (request.getVersion() != null ? request.getVersion() : session.getVersion());
-        
-        log.info("Using - Product: {}, Version: {}", product, version);
-        
-        // Build context from chat history
+
+        ChatSession session = getOrCreateSession(request.getChatId(), request.getProduct(),
+                request.getVersion(), request.getUserId());
+
+        QueryAnalyzerService.QueryContext queryContext =
+                queryAnalyzer.analyzeQuery(request.getQuestion(), request.getChatId());
+
+        String product = queryContext.getProduct() != null ? queryContext.getProduct()
+                : (request.getProduct() != null ? request.getProduct() : session.getProduct());
+        String version = queryContext.getVersion() != null ? queryContext.getVersion()
+                : (request.getVersion() != null ? request.getVersion() : session.getVersion());
+
+        log.info("Using product: {}, version: {}", product, version);
+
         String chatContext = contextManager.buildContextPrompt(session.getId());
-        
-        // Enhance query with context if available
-        String enhancedQuery = enhanceQueryWithContext(
-            request.getQuestion(), chatContext);
-        
-        // Retrieve relevant chunks using vector search
-        List<RetrievedChunk> relevantChunks = vectorSearchService.search(
-            enhancedQuery, product, version);
-        
-        // Generate answer
-        String answer = answerService.generateAnswer(
-            request.getQuestion(), chatContext, relevantChunks);
-        
-        // Save messages
+        String enhancedQuery = enhanceQueryWithContext(request.getQuestion(), chatContext);
+
+        List<RetrievedChunk> relevantChunks = vectorSearchService.search(enhancedQuery, product, version);
+        String answer = answerService.generateAnswer(request.getQuestion(), chatContext, relevantChunks);
+
         saveMessage(session.getId(), ChatMessage.Role.USER, request.getQuestion());
         saveMessage(session.getId(), ChatMessage.Role.ASSISTANT, answer);
-        
-        // Update session with detected product/version if not set
+
         if (session.getProduct() == null && product != null) {
             session.setProduct(product);
         }
@@ -81,18 +66,16 @@ public class ChatService {
         }
         session.setMessageCount(session.getMessageCount() + 2);
         sessionRepository.save(session);
-        
-        // Trigger summarization if needed (async)
+
         summaryService.summarizeIfNeeded(session.getId());
-        
-        // Build response
+
         List<SourceReference> sources = relevantChunks.stream()
             .map(chunk -> SourceReference.builder()
                 .document(chunk.getDocumentName())
                 .chunkId(chunk.getChunkId())
                 .build())
             .collect(Collectors.toList());
-        
+
         return ChatResponse.builder()
             .chatId(session.getId().toString())
             .answer(answer)
@@ -100,21 +83,22 @@ public class ChatService {
             .build();
     }
 
-    private ChatSession getOrCreateSession(String chatIdStr, String product, String version) {
+    private ChatSession getOrCreateSession(String chatIdStr, String product, String version, UUID userId) {
         if (chatIdStr != null && !chatIdStr.isEmpty()) {
             try {
                 UUID chatId = UUID.fromString(chatIdStr);
                 return sessionRepository.findById(chatId)
-                    .orElseGet(() -> createNewSession(product, version));
+                    .orElseGet(() -> createNewSession(product, version, userId));
             } catch (IllegalArgumentException e) {
                 log.warn("Invalid chatId format: {}", chatIdStr);
             }
         }
-        return createNewSession(product, version);
+        return createNewSession(product, version, userId);
     }
 
-    private ChatSession createNewSession(String product, String version) {
+    private ChatSession createNewSession(String product, String version, UUID userId) {
         ChatSession session = ChatSession.builder()
+            .userId(userId)
             .product(product)
             .version(version)
             .messageCount(0)
@@ -135,10 +119,75 @@ public class ChatService {
         if (context == null || context.isEmpty()) {
             return question;
         }
-        
-        // For follow-up questions, add context hint
-        return question + "\n\n(Context from previous conversation:\n" + 
+        return question + "\n\n(Context from previous conversation:\n" +
                context.substring(0, Math.min(500, context.length())) + ")";
+    }
+
+    @Transactional(readOnly = true)
+    public ChatHistoryResponse getChatHistory(String chatIdStr) {
+        log.info("Retrieving chat history for chatId: {}", chatIdStr);
+
+        try {
+            UUID chatId = UUID.fromString(chatIdStr);
+            List<ChatMessage> messages = messageRepository.findByChatIdOrderByCreatedAtAsc(chatId);
+
+            List<ChatMessageDTO> messageDTOs = messages.stream()
+                .map(msg -> ChatMessageDTO.builder()
+                    .id(msg.getId().toString())
+                    .role(msg.getRole().toString())
+                    .content(msg.getContent())
+                    .createdAt(msg.getCreatedAt())
+                    .build())
+                .collect(Collectors.toList());
+
+            return ChatHistoryResponse.builder()
+                .chatId(chatId.toString())
+                .messageCount(messageDTOs.size())
+                .messages(messageDTOs)
+                .build();
+
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("Invalid chat ID format", e);
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public AllChatsResponse getAllChatSessions(UUID userId, boolean isAdmin) {
+        log.info("Retrieving chat sessions for userId: {}, isAdmin: {}", userId, isAdmin);
+
+        List<ChatSession> sessions = isAdmin
+            ? sessionRepository.findAllByOrderByLastActiveAtDesc()
+            : sessionRepository.findByUserIdOrderByLastActiveAtDesc(userId);
+
+        List<ChatSessionDTO> sessionDTOs = sessions.stream()
+            .map(session -> ChatSessionDTO.builder()
+                .chatId(session.getId().toString())
+                .product(session.getProduct())
+                .version(session.getVersion())
+                .messageCount(session.getMessageCount())
+                .createdAt(session.getCreatedAt())
+                .lastActiveAt(session.getLastActiveAt())
+                .build())
+            .collect(Collectors.toList());
+
+        return AllChatsResponse.builder()
+            .totalChats(sessionDTOs.size())
+            .sessions(sessionDTOs)
+            .build();
+    }
+
+    @Transactional
+    public void deleteChatSession(String chatIdStr) {
+        log.info("Deleting chat session: {}", chatIdStr);
+        try {
+            UUID chatId = UUID.fromString(chatIdStr);
+            messageRepository.deleteByChatId(chatId);
+            summaryRepository.deleteById(chatId);
+            sessionRepository.deleteById(chatId);
+            log.info("Deleted chat session: {}", chatId);
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("Invalid chat ID format", e);
+        }
     }
 
     // DTOs
@@ -149,6 +198,7 @@ public class ChatService {
         private String product;
         private String version;
         private String question;
+        private UUID userId;
     }
 
     @lombok.Data
@@ -166,41 +216,6 @@ public class ChatService {
         private String chunkId;
     }
 
-    @Transactional(readOnly = true)
-    public ChatHistoryResponse getChatHistory(String chatIdStr) {
-        log.info("Retrieving chat history for chatId: {}", chatIdStr);
-        
-        try {
-            UUID chatId = UUID.fromString(chatIdStr);
-            
-            // Get all messages ordered by creation time (oldest first for chronological order)
-            List<ChatMessage> messages = messageRepository.findByChatIdOrderByCreatedAtDesc(chatId);
-            
-            // Reverse to get chronological order (oldest to newest)
-            java.util.Collections.reverse(messages);
-            
-            // Convert to DTOs
-            List<ChatMessageDTO> messageDTOs = messages.stream()
-                .map(msg -> ChatMessageDTO.builder()
-                    .id(msg.getId().toString())
-                    .role(msg.getRole().toString())
-                    .content(msg.getContent())
-                    .createdAt(msg.getCreatedAt())
-                    .build())
-                .collect(Collectors.toList());
-            
-            return ChatHistoryResponse.builder()
-                .chatId(chatId.toString())
-                .messageCount(messageDTOs.size())
-                .messages(messageDTOs)
-                .build();
-                
-        } catch (IllegalArgumentException e) {
-            log.error("Invalid chatId format: {}", chatIdStr, e);
-            throw new IllegalArgumentException("Invalid chat ID format", e);
-        }
-    }
-
     @lombok.Data
     @lombok.Builder
     public static class ChatHistoryResponse {
@@ -215,36 +230,7 @@ public class ChatService {
         private String id;
         private String role;
         private String content;
-        private java.time.LocalDateTime createdAt;
-    }
-
-    @Transactional(readOnly = true)
-    public AllChatsResponse getAllChatSessions() {
-        log.info("Retrieving all chat sessions");
-        
-        // Get all chat sessions ordered by last activity (most recent first)
-        List<ChatSession> sessions = sessionRepository.findAll(
-            org.springframework.data.domain.Sort.by(
-                org.springframework.data.domain.Sort.Direction.DESC, "lastActiveAt"
-            )
-        );
-        
-        // Convert to DTOs
-        List<ChatSessionDTO> sessionDTOs = sessions.stream()
-            .map(session -> ChatSessionDTO.builder()
-                .chatId(session.getId().toString())
-                .product(session.getProduct())
-                .version(session.getVersion())
-                .messageCount(session.getMessageCount())
-                .createdAt(session.getCreatedAt())
-                .lastActiveAt(session.getLastActiveAt())
-                .build())
-            .collect(Collectors.toList());
-        
-        return AllChatsResponse.builder()
-            .totalChats(sessionDTOs.size())
-            .sessions(sessionDTOs)
-            .build();
+        private LocalDateTime createdAt;
     }
 
     @lombok.Data
@@ -261,30 +247,7 @@ public class ChatService {
         private String product;
         private String version;
         private Integer messageCount;
-        private java.time.LocalDateTime createdAt;
-        private java.time.LocalDateTime lastActiveAt;
-    }
-
-    @Transactional
-    public void deleteChatSession(String chatIdStr) {
-        log.info("Deleting chat session: {}", chatIdStr);
-        
-        try {
-            UUID chatId = UUID.fromString(chatIdStr);
-            
-            // Delete related entities in order: messages, summary, then session
-            messageRepository.deleteByChatId(chatId);
-            log.debug("Deleted messages for chatId: {}", chatId);
-            
-            summaryRepository.deleteById(chatId);
-            log.debug("Deleted summary for chatId: {}", chatId);
-            
-            sessionRepository.deleteById(chatId);
-            log.info("Successfully deleted chat session: {}", chatId);
-            
-        } catch (IllegalArgumentException e) {
-            log.error("Invalid chatId format: {}", chatIdStr, e);
-            throw new IllegalArgumentException("Invalid chat ID format", e);
-        }
+        private LocalDateTime createdAt;
+        private LocalDateTime lastActiveAt;
     }
 }

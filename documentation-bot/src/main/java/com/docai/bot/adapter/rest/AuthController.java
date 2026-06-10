@@ -1,0 +1,109 @@
+package com.docai.bot.adapter.rest;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.docai.bot.application.service.JwtService;
+import com.docai.bot.application.service.UserService;
+import com.docai.bot.config.UserPrincipal;
+import com.docai.bot.domain.entity.User;
+import com.docai.bot.domain.repository.UserRepository;
+
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
+import lombok.Builder;
+import lombok.Data;
+import lombok.RequiredArgsConstructor;
+
+@RestController
+@RequestMapping("/api/auth")
+@RequiredArgsConstructor
+public class AuthController {
+
+    private final UserService userService;
+    private final JwtService jwtService;
+    private final UserRepository userRepository;
+
+    @PostMapping("/register")
+    public ResponseEntity<AuthResponse> register(@Valid @RequestBody RegisterRequest request) {
+        try {
+            User user = userService.register(request.getUsername(), request.getEmail(), request.getPassword());
+            String token = jwtService.generateToken(user);
+            return ResponseEntity.status(HttpStatus.CREATED).body(AuthResponse.of(user, token));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(AuthResponse.error(e.getMessage()));
+        }
+    }
+
+    @PostMapping("/login")
+    public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
+        try {
+            User user = userService.authenticate(request.getUsername(), request.getPassword());
+            String token = jwtService.generateToken(user);
+            return ResponseEntity.ok(AuthResponse.of(user, token));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(AuthResponse.error(e.getMessage()));
+        }
+    }
+
+    @GetMapping("/me")
+    public ResponseEntity<AuthResponse> me(@AuthenticationPrincipal UserPrincipal principal) {
+        return userRepository.findById(principal.userId())
+            .map(user -> ResponseEntity.ok(AuthResponse.of(user, null)))
+            .orElse(ResponseEntity.notFound().build());
+    }
+
+    @Data
+    static class RegisterRequest {
+        @NotBlank
+        @Size(min = 3, max = 50)
+        private String username;
+        @NotBlank
+        @Email
+        private String email;
+        @NotBlank
+        @Size(min = 6)
+        private String password;
+    }
+
+    @Data
+    static class LoginRequest {
+        @NotBlank
+        private String username;
+        @NotBlank
+        private String password;
+    }
+
+    @Data
+    @Builder
+    public static class AuthResponse {
+        private String token;
+        private String userId;
+        private String username;
+        private String email;
+        private String role;
+        private String error;
+
+        public static AuthResponse of(User user, String token) {
+            return AuthResponse.builder()
+                .token(token)
+                .userId(user.getId().toString())
+                .username(user.getUsername())
+                .email(user.getEmail())
+                .role(user.getRole().name())
+                .build();
+        }
+
+        public static AuthResponse error(String message) {
+            return AuthResponse.builder().error(message).build();
+        }
+    }
+}

@@ -5,12 +5,13 @@ import java.io.FileInputStream;
 import java.security.MessageDigest;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
 import com.docai.ingestor.domain.entity.Document;
+import com.docai.ingestor.domain.entity.Document.IngestionStatus;
 import com.docai.ingestor.domain.entity.DocumentChunk;
 import com.docai.ingestor.domain.model.FileMetadata;
 import com.docai.ingestor.domain.model.TextChunk;
@@ -25,129 +26,188 @@ import lombok.extern.slf4j.Slf4j;
 @RequiredArgsConstructor
 public class IngestionService {
 
-	private final DocumentRepository documentRepository;
-	private final DocumentChunkRepository chunkRepository;
-	private final List<DocumentParser> parsers;
-	private final TextChunker textChunker;
-	private final EmbeddingService embeddingService;
+    private final DocumentRepository documentRepository;
+    private final DocumentChunkRepository chunkRepository;
+    private final List<DocumentParser> parsers;
+    private final TextChunker textChunker;
+    private final EmbeddingService embeddingService;
 
-	@Async
-	@Transactional
-	public void ingestDocument(File file) {
-		log.info("Starting ingestion for file: {}", file.getName());
+    /**
+     * Ingest a file from the watched directory. Skips if already ingested with same hash.
+     * Deletes the source file after successful ingestion.
+     */
+    @Async
+    @Transactional
+    public void ingestDocument(File file) {
+        log.info("Starting ingestion for file: {}", file.getName());
 
-		try {
-			// Calculate file hash
-			String fileHash = calculateFileHash(file);
+        try {
+            String fileHash = calculateFileHash(file);
 
-			// Check if already ingested with same hash
-			if (documentRepository.existsByFileHash(fileHash)) {
-				log.info("Document already ingested with same hash. Skipping: {}", file.getName());
-				return;
-			}
+            if (documentRepository.existsByFileHashAndStatus(fileHash, IngestionStatus.COMPLETED)) {
+                log.info("Document already ingested with same hash. Skipping: {}", file.getName());
+                return;
+            }
 
-			// Extract metadata from filename
-			FileMetadata metadata = FileMetadata.fromFileName(file.getName(), file.getAbsolutePath(), fileHash);
+            FileMetadata metadata = FileMetadata.fromFileName(file.getName(), file.getAbsolutePath(), fileHash);
 
-			// Create document entity
-			Document document = Document.builder().product(metadata.getProduct()).version(metadata.getVersion())
-					.documentName(metadata.getDocumentName()).filePath(metadata.getFilePath()).fileHash(fileHash)
-					.fileType(metadata.getFileType()).status(Document.IngestionStatus.PROCESSING).build();
+            // Remove any failed/pending record for same hash so we start fresh
+            documentRepository.findByFileHash(fileHash).ifPresent(existing -> {
+                chunkRepository.deleteByDocumentId(existing.getId());
+                documentRepository.delete(existing);
+            });
 
-			document = documentRepository.save(document);
+            Document document = Document.builder()
+                .product(metadata.getProduct())
+                .version(metadata.getVersion())
+                .documentName(metadata.getDocumentName())
+                .filePath(metadata.getFilePath())
+                .fileHash(fileHash)
+                .fileType(metadata.getFileType())
+                .status(IngestionStatus.PROCESSING)
+                .build();
 
-			// Parse document
-			String content = parseDocument(file, metadata.getFileType());
+            document = documentRepository.save(document);
+            processDocument(document, file);
 
-			// Chunk text
-			List<TextChunk> textChunks = textChunker.chunkText(content);
+        } catch (Exception e) {
+            log.error("Failed to ingest document: {}", file.getName(), e);
+            updateErrorStatus(file, e);
+        }
+    }
 
-			// Generate embeddings and save chunks
-			for (TextChunk textChunk : textChunks) {
-				log.debug("Generating embedding for chunk {} of document {}", textChunk.getIndex(), file.getName());
-				float[] embedding = embeddingService.generateEmbedding(textChunk.getContent());
+    /**
+     * Ingest an uploaded file with explicit metadata. Deletes the temp file after success.
+     */
+    @Async
+    @Transactional
+    public void ingestUploadedFile(UUID documentId) {
+        Document document = documentRepository.findById(documentId)
+            .orElseThrow(() -> new IllegalArgumentException("Document not found: " + documentId));
 
-				log.debug("Generated embedding for chunk {} of document {}", textChunk.getIndex(), file.getName());
+        File file = new File(document.getFilePath());
+        if (!file.exists()) {
+            log.error("Upload file not found at path: {}", document.getFilePath());
+            document.setStatus(IngestionStatus.FAILED);
+            document.setErrorMessage("Upload file not found");
+            documentRepository.save(document);
+            return;
+        }
 
-				log.debug("Saving chunk {} of document {}", textChunk.getIndex(), file.getName());
-				DocumentChunk chunk = DocumentChunk.builder().documentId(document.getId())
-						.chunkIndex(textChunk.getIndex()).content(textChunk.getContent()).embedding(embedding)
-						.tokenCount(textChunk.getTokenCount()).build();
+        try {
+            processDocument(document, file);
+        } catch (Exception e) {
+            log.error("Failed to process uploaded document: {}", document.getDocumentName(), e);
+            document.setStatus(IngestionStatus.FAILED);
+            document.setErrorMessage(e.getMessage());
+            documentRepository.save(document);
+        }
+    }
 
-				chunkRepository.save(chunk);
-				log.debug("Saved chunk {} for document {}", textChunk.getIndex(), file.getName());
-			}
+    /**
+     * Validate and reset a document to PROCESSING state for retrigger.
+     * The caller is responsible for invoking ingestUploadedFile after this method returns
+     * so that the transaction commits before the async task reads the document.
+     */
+    @Transactional
+    public void prepareRetrigger(UUID documentId) {
+        Document doc = documentRepository.findById(documentId)
+            .orElseThrow(() -> new IllegalArgumentException("Document not found: " + documentId));
 
-			// Update document status
-			document.setChunkCount(textChunks.size());
-			document.setStatus(Document.IngestionStatus.COMPLETED);
-			documentRepository.save(document);
+        if (doc.getStatus() == IngestionStatus.COMPLETED) {
+            throw new IllegalStateException(
+                "Document already processed. Original file has been deleted. Please re-upload.");
+        }
 
-			log.info("Successfully ingested document: {} with {} chunks", file.getName(), textChunks.size());
+        String filePath = doc.getFilePath();
+        if (filePath == null || !new File(filePath).exists()) {
+            throw new IllegalStateException(
+                "Original file not found. Please re-upload the document.");
+        }
 
-		} catch (Exception e) {
-			log.error("Failed to ingest document: {}", file.getName(), e);
-			handleIngestionError(file, e);
-		}
-	}
+        chunkRepository.deleteByDocumentId(documentId);
+        doc.setStatus(IngestionStatus.PROCESSING);
+        doc.setErrorMessage(null);
+        documentRepository.save(doc);
+    }
 
-	private String parseDocument(File file, String fileType) throws Exception {
-		DocumentParser parser = parsers.stream().filter(p -> p.supports(fileType)).findFirst()
-				.orElseThrow(() -> new IllegalArgumentException("No parser found for file type: " + fileType));
+    private void processDocument(Document document, File file) throws Exception {
+        String fileType = document.getFileType();
+        String content = parseDocument(file, fileType);
 
-		return parser.parseDocument(file);
-	}
+        if (content == null || content.isBlank()) {
+            throw new IllegalStateException("Parsed content is empty for: " + file.getName());
+        }
 
-	private String calculateFileHash(File file) throws Exception {
-		MessageDigest digest = MessageDigest.getInstance("SHA-256");
-		try (FileInputStream fis = new FileInputStream(file)) {
-			byte[] buffer = new byte[8192];
-			int bytesRead;
-			while ((bytesRead = fis.read(buffer)) != -1) {
-				digest.update(buffer, 0, bytesRead);
-			}
-		}
+        List<TextChunk> textChunks = textChunker.chunkText(content);
 
-		byte[] hashBytes = digest.digest();
-		StringBuilder hexString = new StringBuilder();
-		for (byte b : hashBytes) {
-			String hex = Integer.toHexString(0xff & b);
-			if (hex.length() == 1)
-				hexString.append('0');
-			hexString.append(hex);
-		}
-		return hexString.toString();
-	}
+        for (TextChunk textChunk : textChunks) {
+            log.debug("Generating embedding for chunk {} of {}", textChunk.getIndex(), file.getName());
+            float[] embedding = embeddingService.generateEmbedding(textChunk.getContent());
 
-	private void handleIngestionError(File file, Exception e) {
-		try {
-			String fileHash = calculateFileHash(file);
-			Optional<Document> existingDoc = documentRepository.findByFileHash(fileHash);
+            DocumentChunk chunk = DocumentChunk.builder()
+                .documentId(document.getId())
+                .chunkIndex(textChunk.getIndex())
+                .content(textChunk.getContent())
+                .embedding(embedding)
+                .tokenCount(textChunk.getTokenCount())
+                .build();
 
-			if (existingDoc.isPresent()) {
-				Document doc = existingDoc.get();
-				doc.setStatus(Document.IngestionStatus.FAILED);
-				doc.setErrorMessage(e.getMessage());
-				documentRepository.save(doc);
-			}
-		} catch (Exception ex) {
-			log.error("Failed to update error status for document: {}", file.getName(), ex);
-		}
-	}
+            chunkRepository.save(chunk);
+        }
 
-	@Transactional
-	public void reIngestDocument(File file) throws Exception {
-		log.info("Re-ingesting document: {}", file.getName());
+        document.setChunkCount(textChunks.size());
+        document.setStatus(IngestionStatus.COMPLETED);
+        document.setFilePath(null); // file path no longer valid after deletion
+        documentRepository.save(document);
 
-		String fileHash = calculateFileHash(file);
-		Optional<Document> existing = documentRepository.findByFileHash(fileHash);
+        // Delete original file after successful processing
+        if (file.exists() && !file.delete()) {
+            log.warn("Could not delete source file after ingestion: {}", file.getAbsolutePath());
+        } else {
+            log.info("Deleted source file after ingestion: {}", file.getAbsolutePath());
+        }
 
-		if (existing.isPresent()) {
-			Document doc = existing.get();
-			chunkRepository.deleteByDocumentId(doc.getId());
-			documentRepository.delete(doc);
-		}
+        log.info("Successfully ingested: {} with {} chunks", file.getName(), textChunks.size());
+    }
 
-		ingestDocument(file);
-	}
+    private String parseDocument(File file, String fileType) throws Exception {
+        DocumentParser parser = parsers.stream()
+            .filter(p -> p.supports(fileType))
+            .findFirst()
+            .orElseThrow(() -> new IllegalArgumentException("No parser for file type: " + fileType));
+        return parser.parseDocument(file);
+    }
+
+    public String calculateFileHash(File file) throws Exception {
+        MessageDigest digest = MessageDigest.getInstance("SHA-256");
+        try (FileInputStream fis = new FileInputStream(file)) {
+            byte[] buffer = new byte[8192];
+            int bytesRead;
+            while ((bytesRead = fis.read(buffer)) != -1) {
+                digest.update(buffer, 0, bytesRead);
+            }
+        }
+        byte[] hashBytes = digest.digest();
+        StringBuilder sb = new StringBuilder();
+        for (byte b : hashBytes) {
+            String hex = Integer.toHexString(0xff & b);
+            if (hex.length() == 1) sb.append('0');
+            sb.append(hex);
+        }
+        return sb.toString();
+    }
+
+    private void updateErrorStatus(File file, Exception e) {
+        try {
+            String fileHash = calculateFileHash(file);
+            documentRepository.findByFileHash(fileHash).ifPresent(doc -> {
+                doc.setStatus(IngestionStatus.FAILED);
+                doc.setErrorMessage(e.getMessage());
+                documentRepository.save(doc);
+            });
+        } catch (Exception ex) {
+            log.error("Failed to update error status for: {}", file.getName(), ex);
+        }
+    }
 }

@@ -11,6 +11,10 @@ import com.docai.bot.domain.entity.ChatSession;
 
 @Repository
 public interface ChatSessionRepository extends JpaRepository<ChatSession, UUID> {
-    
+
     List<ChatSession> findByLastActiveAtBefore(LocalDateTime dateTime);
+
+    List<ChatSession> findByUserIdOrderByLastActiveAtDesc(UUID userId);
+
+    List<ChatSession> findAllByOrderByLastActiveAtDesc();
 }

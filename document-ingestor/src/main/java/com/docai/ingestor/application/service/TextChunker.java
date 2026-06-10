@@ -22,50 +22,43 @@ public class TextChunker {
 
     public List<TextChunk> chunkText(String text) {
         List<TextChunk> chunks = new ArrayList<>();
-        
-        if (text == null || text.isEmpty()) {
+
+        if (text == null || text.isBlank()) {
             return chunks;
         }
 
-        // Simple token approximation: split by whitespace
         String[] tokens = text.split("\\s+");
         int totalTokens = tokens.length;
-        
-        log.info("Chunking text with {} tokens into chunks of size {} with overlap {}", 
-                 totalTokens, chunkSize, chunkOverlap);
+
+        log.info("Chunking {} tokens into chunks of {} with overlap {}",
+                totalTokens, chunkSize, chunkOverlap);
 
         int index = 0;
         int position = 0;
+        int step = Math.max(1, chunkSize - chunkOverlap);
 
         while (position < totalTokens) {
             int end = Math.min(position + chunkSize, totalTokens);
-            
-            StringBuilder chunkContent = new StringBuilder();
+
+            StringBuilder content = new StringBuilder();
             for (int i = position; i < end; i++) {
-                if (i > position) {
-                    chunkContent.append(" ");
-                }
-                chunkContent.append(tokens[i]);
+                if (i > position) content.append(' ');
+                content.append(tokens[i]);
             }
 
-            TextChunk chunk = TextChunk.builder()
-                .index(index++)
-                .content(chunkContent.toString())
-                .tokenCount(end - position)
-                .build();
-            
-            chunks.add(chunk);
-            
-            // Move position forward, accounting for overlap
-            position = position + chunkSize - chunkOverlap;
-            
-            // Ensure we make progress
-            if (position <= end - chunkSize && position > 0) {
-                position = end;
+            String chunkContent = content.toString().trim();
+            if (!chunkContent.isEmpty()) {
+                chunks.add(TextChunk.builder()
+                    .index(index++)
+                    .content(chunkContent)
+                    .tokenCount(end - position)
+                    .build());
             }
+
+            position += step;
         }
 
-        log.info("Created {} chunks from text", chunks.size());
+        log.info("Created {} chunks", chunks.size());
         return chunks;
     }
 }

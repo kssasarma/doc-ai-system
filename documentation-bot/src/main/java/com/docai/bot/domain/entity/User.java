@@ -4,10 +4,11 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.UpdateTimestamp;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -19,36 +20,38 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 @Entity
-@Table(name = "chat_sessions", indexes = {
-    @Index(name = "idx_chat_session_user", columnList = "user_id")
+@Table(name = "users", indexes = {
+    @Index(name = "idx_user_username", columnList = "username", unique = true),
+    @Index(name = "idx_user_email", columnList = "email", unique = true)
 })
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class ChatSession {
+public class User {
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
-    @Column(name = "user_id")
-    private UUID userId;
+    @Column(nullable = false, unique = true, length = 50)
+    private String username;
 
-    @Column(name = "product", length = 100)
-    private String product;
+    @Column(nullable = false, unique = true, length = 100)
+    private String email;
 
-    @Column(name = "version", length = 50)
-    private String version;
+    @Column(name = "password_hash", nullable = false)
+    private String passwordHash;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 10)
+    private Role role;
 
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
-    @UpdateTimestamp
-    @Column(name = "last_active_at", nullable = false)
-    private LocalDateTime lastActiveAt;
-
-    @Column(name = "message_count")
-    private Integer messageCount = 0;
+    public enum Role {
+        ADMIN, USER
+    }
 }

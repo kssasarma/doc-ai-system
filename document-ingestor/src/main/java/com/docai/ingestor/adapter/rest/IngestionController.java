@@ -3,6 +3,7 @@ package com.docai.ingestor.adapter.rest;
 import java.util.List;
 
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -18,60 +19,47 @@ import lombok.RequiredArgsConstructor;
 @RestController
 @RequestMapping("/api/ingest")
 @RequiredArgsConstructor
+@PreAuthorize("hasRole('ADMIN')")
 public class IngestionController {
 
     private final DocumentRepository documentRepository;
 
     @PostMapping("/reload")
     public ResponseEntity<ApiResponse> reload() {
-        // Trigger re-scan of directory
-        // This is handled by DirectoryWatcher on startup
-        return ResponseEntity.ok(
-            ApiResponse.builder()
-                .success(true)
-                .message("Reload triggered")
-                .build()
-        );
+        return ResponseEntity.ok(ApiResponse.builder()
+            .success(true)
+            .message("Use the watched-docs directory or /api/documents/upload to ingest documents")
+            .build());
     }
 
     @GetMapping("/status")
     public ResponseEntity<IngestionStatus> getStatus() {
         List<Document> allDocs = documentRepository.findAll();
-        
+
         long completed = allDocs.stream()
-            .filter(d -> d.getStatus() == Document.IngestionStatus.COMPLETED)
-            .count();
+            .filter(d -> d.getStatus() == Document.IngestionStatus.COMPLETED).count();
         long processing = allDocs.stream()
-            .filter(d -> d.getStatus() == Document.IngestionStatus.PROCESSING)
-            .count();
+            .filter(d -> d.getStatus() == Document.IngestionStatus.PROCESSING).count();
         long failed = allDocs.stream()
-            .filter(d -> d.getStatus() == Document.IngestionStatus.FAILED)
-            .count();
+            .filter(d -> d.getStatus() == Document.IngestionStatus.FAILED).count();
         long pending = allDocs.stream()
-            .filter(d -> d.getStatus() == Document.IngestionStatus.PENDING)
-            .count();
-
+            .filter(d -> d.getStatus() == Document.IngestionStatus.PENDING).count();
         long totalChunks = allDocs.stream()
-            .mapToLong(d -> d.getChunkCount() != null ? d.getChunkCount() : 0)
-            .sum();
+            .mapToLong(d -> d.getChunkCount() != null ? d.getChunkCount() : 0).sum();
 
-        return ResponseEntity.ok(
-            IngestionStatus.builder()
-                .totalDocuments(allDocs.size())
-                .completed(completed)
-                .processing(processing)
-                .failed(failed)
-                .pending(pending)
-                .totalChunks(totalChunks)
-                .build()
-        );
+        return ResponseEntity.ok(IngestionStatus.builder()
+            .totalDocuments(allDocs.size())
+            .completed(completed)
+            .processing(processing)
+            .failed(failed)
+            .pending(pending)
+            .totalChunks(totalChunks)
+            .build());
     }
 
     @GetMapping("/documents")
     public ResponseEntity<List<DocumentInfo>> getAllDocuments() {
-        List<Document> documents = documentRepository.findAll();
-        
-        List<DocumentInfo> docInfos = documents.stream()
+        List<DocumentInfo> docInfos = documentRepository.findAll().stream()
             .map(doc -> DocumentInfo.builder()
                 .id(doc.getId().toString())
                 .product(doc.getProduct())
@@ -79,11 +67,10 @@ public class IngestionController {
                 .documentName(doc.getDocumentName())
                 .status(doc.getStatus().name())
                 .chunkCount(doc.getChunkCount())
-                .createdAt(doc.getCreatedAt().toString())
-                .build()
-            )
+                .errorMessage(doc.getErrorMessage())
+                .createdAt(doc.getCreatedAt() != null ? doc.getCreatedAt().toString() : null)
+                .build())
             .toList();
-
         return ResponseEntity.ok(docInfos);
     }
 
@@ -114,6 +101,7 @@ public class IngestionController {
         private String documentName;
         private String status;
         private Integer chunkCount;
+        private String errorMessage;
         private String createdAt;
     }
 }

@@ -2,7 +2,6 @@ package com.docai.bot.application.service;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
 
 import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.ai.embedding.EmbeddingRequest;
@@ -12,6 +11,7 @@ import org.springframework.stereotype.Service;
 
 import com.docai.bot.domain.model.RetrievedChunk;
 import com.docai.bot.domain.repository.DocumentChunkRepository;
+import com.docai.bot.domain.repository.DocumentChunkRepository.ChunkSearchResult;
 import com.pgvector.PGvector;
 
 import lombok.RequiredArgsConstructor;
@@ -30,15 +30,11 @@ public class VectorSearchService {
 
     public List<RetrievedChunk> search(String query, String product, String version) {
         log.info("Searching for: {} in product: {} version: {}", query, product, version);
-        
-        // Generate query embedding
+
         PGvector queryEmbedding = generateEmbedding(query);
-        
-        // Convert to string format for PostgreSQL
         String embeddingStr = pgVectorToString(queryEmbedding);
-        
-        // Execute vector search
-        List<Object[]> results;
+
+        List<ChunkSearchResult> results;
         if (product != null && version != null) {
             results = chunkRepository.findTopKSimilar(product, version, embeddingStr, topK);
         } else if (product != null) {
@@ -46,25 +42,17 @@ public class VectorSearchService {
         } else {
             results = chunkRepository.findTopKSimilarAll(embeddingStr, topK);
         }
-        
-        // Convert results to RetrievedChunk objects
-        // Query returns: dc.* (based on table DDL: id, chunk_index, content, created_at, document_id, embedding, token_count)
-        // plus d.product, d.version, d.document_name
+
         List<RetrievedChunk> chunks = new ArrayList<>();
-        for (Object[] row : results) {
-            UUID chunkId = (UUID) row[0];
-            String content = (String) row[2];  // content is at index 2
-            String documentName = (String) row[9];  // document_name is at index 9
-            
-            RetrievedChunk chunk = RetrievedChunk.builder()
-                .chunkId(chunkId.toString())
-                .content(content)
-                .documentName(documentName)
-                .similarity(0.0) // Cosine distance from pgvector
-                .build();
-            chunks.add(chunk);
+        for (ChunkSearchResult row : results) {
+            chunks.add(RetrievedChunk.builder()
+                .chunkId(row.getChunkId())
+                .content(row.getContent())
+                .documentName(row.getDocumentName())
+                .similarity(0.0)
+                .build());
         }
-        
+
         log.info("Found {} relevant chunks", chunks.size());
         return chunks;
     }
@@ -73,14 +61,12 @@ public class VectorSearchService {
         try {
             EmbeddingRequest request = new EmbeddingRequest(List.of(text), null);
             EmbeddingResponse response = embeddingModel.call(request);
-            
+
             if (response.getResults().isEmpty()) {
                 throw new RuntimeException("No embedding generated");
             }
-            
-            float[] embedding = response.getResult().getOutput();
-            
-            return new PGvector(embedding);
+
+            return new PGvector(response.getResult().getOutput());
         } catch (Exception e) {
             log.error("Failed to generate embedding", e);
             throw new RuntimeException("Failed to generate embedding", e);
