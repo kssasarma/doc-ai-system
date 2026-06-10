@@ -51,35 +51,49 @@ public class QueryAnalyzerService {
 		return context;
 	}
 
+	private static final int MAX_ATTEMPTS = 3;
+	private static final long INITIAL_BACKOFF_MS = 500L;
+
 	private void extractProductAndVersionWithLLM(String query, QueryContext context) {
-		try {
-			// Use configured AI model to extract product name and version
-			String prompt = """
-					Extract the product name and version from this user question.
-					The product name might be: Case360, Case 360, VRD, Vignette Record and Documents,
-					IWSTU, IWST, WebService ToolKit  or similar variations.
-					The version might be in formats like: 14.1, 14.1.0, 15.0, etc.
+		String prompt = """
+				Extract the product name and version from this user question.
+				The product name might be: Case360, Case 360, VRD, Vignette Record and Documents,
+				IWSTU, IWST, WebService ToolKit  or similar variations.
+				The version might be in formats like: 14.1, 14.1.0, 15.0, etc.
 
-					Return your response in this exact format:
-					Product: <product_name>
-					Version: <version_number>
+				Return your response in this exact format:
+				Product: <product_name>
+				Version: <version_number>
 
-					If no product is mentioned, use "NONE" for Product.
-					If no version is mentioned, use "NONE" for Version.
+				If no product is mentioned, use "NONE" for Product.
+				If no version is mentioned, use "NONE" for Version.
 
-					Question: %s
+				Question: %s
 
-					Your response:""".formatted(query);
+				Your response:""".formatted(query);
 
-			ChatClient chatClient = chatClientBuilder.build();
-			String response = chatClient.prompt().user(prompt).call().content();
-
-			if (response != null) {
-				parseProductAndVersion(response, context);
+		Exception lastException = null;
+		for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+			try {
+				String response = chatClientBuilder.build().prompt().user(prompt).call().content();
+				if (response != null) {
+					parseProductAndVersion(response, context);
+				}
+				return;
+			} catch (Exception e) {
+				lastException = e;
+				log.warn("Query analysis attempt {}/{} failed: {}", attempt, MAX_ATTEMPTS, e.getMessage());
+				if (attempt < MAX_ATTEMPTS) {
+					try {
+						Thread.sleep(INITIAL_BACKOFF_MS * (1L << (attempt - 1)));
+					} catch (InterruptedException ie) {
+						Thread.currentThread().interrupt();
+						return;
+					}
+				}
 			}
-		} catch (Exception e) {
-			log.warn("Failed to extract product and version with LLM: {}", e.getMessage());
 		}
+		log.warn("All {} query analysis attempts failed, proceeding without extraction", MAX_ATTEMPTS, lastException);
 	}
 
 	private void parseProductAndVersion(String response, QueryContext context) {
