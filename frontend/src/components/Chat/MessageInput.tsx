@@ -4,11 +4,19 @@ import { Send, Loader2 } from 'lucide-react';
 interface MessageInputProps {
   onSendMessage: (message: string) => void;
   disabled?: boolean;
+  prefillValue?: string;
 }
 
-const MessageInput: React.FC<MessageInputProps> = ({ onSendMessage, disabled }) => {
+const MessageInput: React.FC<MessageInputProps> = ({ onSendMessage, disabled, prefillValue }) => {
   const [message, setMessage] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (prefillValue) {
+      setMessage(prefillValue);
+      textareaRef.current?.focus();
+    }
+  }, [prefillValue]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();

@@ -5,7 +5,6 @@ import java.util.UUID;
 
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.annotations.UpdateTimestamp;
 import org.hibernate.type.SqlTypes;
 
 import jakarta.persistence.Column;
@@ -21,34 +20,37 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 @Entity
-@Table(name = "chat_sessions", indexes = {
-    @Index(name = "idx_chat_session_user", columnList = "user_id")
+@Table(name = "bookmarks", indexes = {
+    @Index(name = "idx_bookmark_user", columnList = "user_id"),
+    @Index(name = "idx_bookmark_message", columnList = "chat_message_id")
 })
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class ChatSession {
+public class Bookmark {
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
-    @Column(name = "user_id")
+    @Column(name = "user_id", nullable = false)
     private UUID userId;
 
-    @Column(name = "product", length = 100)
-    private String product;
+    @Column(name = "chat_message_id", nullable = false)
+    private UUID chatMessageId;
 
-    @Column(name = "version", length = 50)
-    private String version;
+    @Column(name = "chat_id", nullable = false)
+    private UUID chatId;
+
+    @Column(name = "message_excerpt", columnDefinition = "TEXT")
+    private String messageExcerpt;
 
     @Column(name = "title", length = 200)
     private String title;
 
-    @Column(name = "pinned", nullable = false)
-    @Builder.Default
-    private boolean pinned = false;
+    @Column(name = "note", columnDefinition = "TEXT")
+    private String note;
 
     @JdbcTypeCode(SqlTypes.ARRAY)
     @Column(name = "tags", columnDefinition = "text[]")
@@ -57,12 +59,4 @@ public class ChatSession {
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
-
-    @UpdateTimestamp
-    @Column(name = "last_active_at", nullable = false)
-    private LocalDateTime lastActiveAt;
-
-    @Column(name = "message_count")
-    @Builder.Default
-    private Integer messageCount = 0;
 }

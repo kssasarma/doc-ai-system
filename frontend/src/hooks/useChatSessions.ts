@@ -2,17 +2,22 @@ import { useState, useCallback, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ChatSession, ChatMessage, BackendSession, BackendHistoryMessage } from '../types';
 import { generateId, createNewSession } from '../utils/chatUtils';
-import { fetchChatSessions, fetchChatHistory, deleteChatSession } from '../services/chatService';
+import { fetchChatSessions, fetchChatHistory, deleteChatSession, updateChatSession } from '../services/chatService';
 
 function convertBackendSession(backendSession: BackendSession): ChatSession {
+  const title = backendSession.title
+    ?? (backendSession.product && backendSession.version
+      ? `${backendSession.product} ${backendSession.version}`
+      : `Chat ${backendSession.chatId.slice(0, 8)}`);
+
   return {
     chatId: backendSession.chatId,
-    title: backendSession.product && backendSession.version
-      ? `${backendSession.product} ${backendSession.version}`
-      : `Chat ${backendSession.chatId.slice(0, 8)}`,
+    title,
     messages: [],
     createdAt: new Date(backendSession.createdAt).getTime(),
     updatedAt: new Date(backendSession.lastActiveAt).getTime(),
+    pinned: backendSession.pinned ?? false,
+    tags: backendSession.tags ?? [],
   };
 }
 
@@ -91,9 +96,7 @@ export function useChatSessions(token: string) {
 
   const deleteSession = useCallback(async (chatId: string) => {
     const response = await deleteChatSession(chatId, token);
-    if (!response.success) {
-      console.error('Failed to delete session:', response.error);
-    }
+    if (!response.success) console.error('Failed to delete session:', response.error);
     setSessions(prev => {
       const filtered = prev.filter(session => session.chatId !== chatId);
       if (chatId === activeSessionId) {
@@ -104,14 +107,47 @@ export function useChatSessions(token: string) {
     });
   }, [activeSessionId, navigate, token]);
 
+  const updateSession = useCallback(async (
+    chatId: string,
+    updates: { title?: string; pinned?: boolean; tags?: string[] }
+  ) => {
+    // Optimistic update
+    setSessions(prev => prev.map(s =>
+      s.chatId === chatId ? { ...s, ...updates } : s
+    ));
+    const response = await updateChatSession(chatId, updates, token);
+    if (!response.success) {
+      // Rollback on failure - reload from server
+      loadSessions();
+    }
+  }, [token, loadSessions]);
+
   const addMessage = useCallback((chatId: string, message: ChatMessage) => {
     setSessions(prev => prev.map(session => {
       if (session.chatId !== chatId) return session;
       return {
         ...session,
         messages: [...session.messages, message],
-        title: session.messages.length === 0 ? message.content.slice(0, 50) : session.title,
+        title: session.messages.length === 0 && message.role === 'user'
+          ? message.content.slice(0, 50)
+          : session.title,
         updatedAt: Date.now(),
+      };
+    }));
+  }, []);
+
+  const updateSessionTitle = useCallback((chatId: string, title: string) => {
+    setSessions(prev => prev.map(s => s.chatId === chatId ? { ...s, title } : s));
+  }, []);
+
+  const updateMessage = useCallback((chatId: string, messageId: string, patch: Partial<ChatMessage>) => {
+    setSessions(prev => prev.map(session => {
+      if (session.chatId !== chatId) return session;
+      return {
+        ...session,
+        messages: session.messages.map(m =>
+          m.messageId === messageId ? { ...m, ...patch } : m
+        ),
       };
     }));
   }, []);
@@ -168,6 +204,9 @@ export function useChatSessions(token: string) {
     error,
     createSession,
     deleteSession,
+    updateSession,
+    updateSessionTitle,
+    updateMessage,
     addMessage,
     removeTypingIndicators,
     updateSessionChatId,

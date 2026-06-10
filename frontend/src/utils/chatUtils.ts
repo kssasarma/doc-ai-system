@@ -17,7 +17,7 @@ export function createNewSession(chatId?: string): ChatSession {
 export function createMessage(
   content: string,
   role: 'user' | 'assistant',
-  extras?: Pick<ChatMessage, 'messageId' | 'sources' | 'confidence'>
+  extras?: Pick<ChatMessage, 'messageId' | 'sources' | 'confidence' | 'relatedQuestions'>
 ): ChatMessage {
   return {
     id: generateId(),

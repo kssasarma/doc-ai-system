@@ -4,17 +4,21 @@ import MessageItem from './MessageItem';
 
 interface MessageListProps {
   messages: ChatMessage[];
+  sessionChatId?: string;
+  onRelatedQuestion?: (question: string) => void;
+  onRegeneratedAnswer?: (messageId: string, newAnswer: string, relatedQuestions: string[]) => void;
 }
 
-const MessageList: React.FC<MessageListProps> = ({ messages }) => {
+const MessageList: React.FC<MessageListProps> = ({
+  messages,
+  sessionChatId,
+  onRelatedQuestion,
+  onRegeneratedAnswer,
+}) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
-
   useEffect(() => {
-    scrollToBottom();
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
   if (messages.length === 0) {
@@ -32,7 +36,13 @@ const MessageList: React.FC<MessageListProps> = ({ messages }) => {
   return (
     <div className="h-full overflow-y-auto p-4 space-y-4">
       {messages.map((message) => (
-        <MessageItem key={message.id} message={message} />
+        <MessageItem
+          key={message.id}
+          message={message}
+          sessionChatId={sessionChatId}
+          onRelatedQuestion={onRelatedQuestion}
+          onRegeneratedAnswer={onRegeneratedAnswer}
+        />
       ))}
       <div ref={messagesEndRef} />
     </div>

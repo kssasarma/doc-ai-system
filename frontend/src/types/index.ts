@@ -8,6 +8,8 @@ export interface ChatMessage {
   sources?: Source[];
   confidence?: number;
   userFeedback?: 1 | -1 | null;
+  relatedQuestions?: string[];
+  isBookmarked?: boolean;
 }
 
 export interface ChatSession {
@@ -16,6 +18,8 @@ export interface ChatSession {
   messages: ChatMessage[];
   createdAt: number;
   updatedAt: number;
+  pinned?: boolean;
+  tags?: string[];
 }
 
 export interface AppConfig {
@@ -73,6 +77,8 @@ export interface BackendChatResponse {
   messageId: string;
   sources: Source[];
   confidence: number;
+  sessionTitle?: string;
+  relatedQuestions?: string[];
 }
 
 export interface APIResponse {
@@ -83,11 +89,14 @@ export interface APIResponse {
 
 export interface BackendSession {
   chatId: string;
+  title?: string;
   createdAt: string;
   lastActiveAt: string;
   messageCount: number;
   product: string | null;
   version: string | null;
+  pinned?: boolean;
+  tags?: string[];
 }
 
 export interface BackendSessionsResponse {
@@ -158,4 +167,24 @@ export interface IngestionStatus {
   failed: number;
   pending: number;
   totalChunks: number;
+}
+
+// Bookmark types
+export interface Bookmark {
+  id: string;
+  chatMessageId: string;
+  chatId: string;
+  messageExcerpt?: string;
+  title?: string;
+  note?: string;
+  tags?: string[];
+  createdAt?: string;
+}
+
+// User preference types
+export interface UserPreference {
+  verbosity: 'CONCISE' | 'BALANCED' | 'DETAILED';
+  answerFormat: 'PROSE' | 'BULLET_POINTS' | 'CODE_FIRST';
+  defaultProduct?: string;
+  defaultVersion?: string;
 }

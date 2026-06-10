@@ -1,6 +1,8 @@
 package com.docai.bot.application.service;
 
 import java.time.LocalDateTime;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -10,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.docai.bot.domain.entity.ChatMessage;
 import com.docai.bot.domain.entity.ChatSession;
+import com.docai.bot.domain.entity.UserPreference;
 import com.docai.bot.domain.model.RetrievedChunk;
 import com.docai.bot.domain.repository.ChatMessageRepository;
 import com.docai.bot.domain.repository.ChatSessionRepository;
@@ -31,6 +34,7 @@ public class ChatService {
     private final ChatSummaryService summaryService;
     private final AnswerGenerationService answerService;
     private final QueryAnalyzerService queryAnalyzer;
+    private final UserPreferenceService preferenceService;
 
     @Transactional
     public ChatResponse processQuery(ChatRequest request) {
@@ -38,6 +42,8 @@ public class ChatService {
 
         ChatSession session = getOrCreateSession(request.getChatId(), request.getProduct(),
                 request.getVersion(), request.getUserId());
+
+        boolean isFirstExchange = session.getMessageCount() == 0;
 
         QueryAnalyzerService.QueryContext queryContext =
                 queryAnalyzer.analyzeQuery(request.getQuestion(), request.getChatId());
@@ -49,29 +55,183 @@ public class ChatService {
 
         log.info("Using product: {}, version: {}", product, version);
 
+        UserPreference prefs = preferenceService.getPreferences(request.getUserId());
         String chatContext = contextManager.buildContextPrompt(session.getId());
         String enhancedQuery = enhanceQueryWithContext(request.getQuestion(), chatContext);
 
         List<RetrievedChunk> relevantChunks = vectorSearchService.search(enhancedQuery, product, version);
-        String answer = answerService.generateAnswer(request.getQuestion(), chatContext, relevantChunks);
+        AnswerGenerationService.AnswerResult result = answerService.generateAnswer(
+            request.getQuestion(), chatContext, relevantChunks,
+            prefs.getVerbosity(), prefs.getAnswerFormat()
+        );
 
         saveMessage(session.getId(), ChatMessage.Role.USER, request.getQuestion());
-        ChatMessage assistantMessage = saveMessage(session.getId(), ChatMessage.Role.ASSISTANT, answer);
+        ChatMessage assistantMessage = saveMessage(session.getId(), ChatMessage.Role.ASSISTANT, result.answer());
 
-        if (session.getProduct() == null && product != null) {
-            session.setProduct(product);
-        }
-        if (session.getVersion() == null && version != null) {
-            session.setVersion(version);
-        }
+        if (session.getProduct() == null && product != null) session.setProduct(product);
+        if (session.getVersion() == null && version != null) session.setVersion(version);
         session.setMessageCount(session.getMessageCount() + 2);
-        sessionRepository.save(session);
 
+        String sessionTitle = null;
+        if (isFirstExchange) {
+            sessionTitle = answerService.generateSessionTitle(request.getQuestion(), result.answer());
+            session.setTitle(sessionTitle);
+            log.info("Generated session title: {}", sessionTitle);
+        }
+
+        sessionRepository.save(session);
         summaryService.summarizeIfNeeded(session.getId());
 
         double confidence = calculateConfidence(relevantChunks, version);
+        List<SourceReference> sources = buildSources(relevantChunks);
 
-        List<SourceReference> sources = relevantChunks.stream()
+        return ChatResponse.builder()
+            .chatId(session.getId().toString())
+            .messageId(assistantMessage.getId().toString())
+            .answer(result.answer())
+            .sources(sources)
+            .confidence(confidence)
+            .sessionTitle(sessionTitle)
+            .relatedQuestions(result.relatedQuestions())
+            .build();
+    }
+
+    @Transactional
+    public ChatResponse regenerateAnswer(String messageIdStr, UUID userId, String style) {
+        UUID messageId = UUID.fromString(messageIdStr);
+        ChatMessage assistantMsg = messageRepository.findById(messageId)
+            .orElseThrow(() -> new IllegalArgumentException("Message not found"));
+
+        // Find the preceding user message
+        List<ChatMessage> messages = messageRepository.findByChatIdOrderByCreatedAtAsc(assistantMsg.getChatId());
+        String question = null;
+        for (int i = 0; i < messages.size(); i++) {
+            if (messages.get(i).getId().equals(messageId) && i > 0) {
+                question = messages.get(i - 1).getContent();
+                break;
+            }
+        }
+        if (question == null) throw new IllegalArgumentException("Original question not found");
+
+        ChatSession session = sessionRepository.findById(assistantMsg.getChatId())
+            .orElseThrow(() -> new IllegalArgumentException("Session not found"));
+
+        String verbosity = switch (style) {
+            case "CONCISE" -> "CONCISE";
+            case "DETAILED" -> "DETAILED";
+            default -> "BALANCED";
+        };
+        String format = "CODE_FIRST".equals(style) ? "CODE_FIRST" : "PROSE";
+
+        List<RetrievedChunk> chunks = vectorSearchService.search(question, session.getProduct(), session.getVersion());
+        AnswerGenerationService.AnswerResult result = answerService.generateAnswer(
+            question, null, chunks, verbosity, format
+        );
+
+        double confidence = calculateConfidence(chunks, session.getVersion());
+        return ChatResponse.builder()
+            .chatId(session.getId().toString())
+            .messageId(messageIdStr)
+            .answer(result.answer())
+            .sources(buildSources(chunks))
+            .confidence(confidence)
+            .relatedQuestions(result.relatedQuestions())
+            .build();
+    }
+
+    @Transactional
+    public SessionUpdateResponse updateSession(String chatIdStr, UUID userId,
+                                               String title, Boolean pinned, String[] tags) {
+        UUID chatId = UUID.fromString(chatIdStr);
+        ChatSession session = sessionRepository.findById(chatId)
+            .orElseThrow(() -> new IllegalArgumentException("Session not found"));
+
+        if (title != null) session.setTitle(title.isBlank() ? null : title);
+        if (pinned != null) session.setPinned(pinned);
+        if (tags != null) session.setTags(tags);
+
+        ChatSession saved = sessionRepository.save(session);
+        log.info("Updated session {} for user {}", chatId, userId);
+
+        return SessionUpdateResponse.builder()
+            .chatId(saved.getId().toString())
+            .title(saved.getTitle())
+            .pinned(saved.isPinned())
+            .tags(saved.getTags())
+            .build();
+    }
+
+    @Transactional(readOnly = true)
+    public String exportSession(String chatIdStr, String format) {
+        UUID chatId = UUID.fromString(chatIdStr);
+        ChatSession session = sessionRepository.findById(chatId)
+            .orElseThrow(() -> new IllegalArgumentException("Session not found"));
+        List<ChatMessage> messages = messageRepository.findByChatIdOrderByCreatedAtAsc(chatId);
+
+        if ("json".equalsIgnoreCase(format)) {
+            return buildJsonExport(session, messages);
+        }
+        return buildMarkdownExport(session, messages);
+    }
+
+    private String buildMarkdownExport(ChatSession session, List<ChatMessage> messages) {
+        StringBuilder md = new StringBuilder();
+        String title = session.getTitle() != null ? session.getTitle()
+            : (session.getProduct() != null ? session.getProduct() + " " + session.getVersion() : "Chat Session");
+        md.append("# ").append(title).append("\n\n");
+        if (session.getProduct() != null) {
+            md.append("**Product:** ").append(session.getProduct());
+            if (session.getVersion() != null) md.append(" ").append(session.getVersion());
+            md.append("  \n");
+        }
+        md.append("**Messages:** ").append(messages.size()).append("  \n");
+        md.append("**Created:** ").append(session.getCreatedAt()).append("\n\n---\n\n");
+
+        for (ChatMessage msg : messages) {
+            String role = msg.getRole() == ChatMessage.Role.USER ? "**You**" : "**Assistant**";
+            md.append(role).append("\n\n").append(msg.getContent()).append("\n\n---\n\n");
+        }
+        return md.toString();
+    }
+
+    private String buildJsonExport(ChatSession session, List<ChatMessage> messages) {
+        StringBuilder json = new StringBuilder();
+        json.append("{\"chatId\":\"").append(session.getId()).append("\"");
+        json.append(",\"title\":").append(jsonStr(session.getTitle()));
+        json.append(",\"product\":").append(jsonStr(session.getProduct()));
+        json.append(",\"version\":").append(jsonStr(session.getVersion()));
+        json.append(",\"createdAt\":\"").append(session.getCreatedAt()).append("\"");
+        json.append(",\"messages\":[");
+        for (int i = 0; i < messages.size(); i++) {
+            ChatMessage m = messages.get(i);
+            if (i > 0) json.append(",");
+            json.append("{\"role\":\"").append(m.getRole().toString().toLowerCase()).append("\"");
+            json.append(",\"content\":").append(jsonStr(m.getContent()));
+            json.append(",\"timestamp\":\"").append(m.getCreatedAt()).append("\"}");
+        }
+        json.append("]}");
+        return json.toString();
+    }
+
+    private static String jsonStr(String s) {
+        if (s == null) return "null";
+        return "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"")
+            .replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t") + "\"";
+    }
+
+    private double calculateConfidence(List<RetrievedChunk> chunks, String version) {
+        if (chunks.isEmpty()) return 0.0;
+        double maxSim = chunks.get(0).getSimilarity();
+        double avgTop3 = chunks.stream().limit(3)
+            .mapToDouble(RetrievedChunk::getSimilarity).average().orElse(0.0);
+        double versionScore = (version != null
+            && chunks.stream().allMatch(c -> version.equals(c.getVersion()))) ? 1.0 : 0.0;
+        double corroboration = chunks.size() >= 3 ? 1.0 : 0.0;
+        return (maxSim * 0.4) + (avgTop3 * 0.3) + (versionScore * 0.2) + (corroboration * 0.1);
+    }
+
+    private List<SourceReference> buildSources(List<RetrievedChunk> chunks) {
+        return chunks.stream()
             .map(chunk -> SourceReference.builder()
                 .document(chunk.getDocumentName())
                 .chunkId(chunk.getChunkId())
@@ -83,28 +243,6 @@ public class ChatService {
                     : chunk.getContent())
                 .build())
             .collect(Collectors.toList());
-
-        return ChatResponse.builder()
-            .chatId(session.getId().toString())
-            .messageId(assistantMessage.getId().toString())
-            .answer(answer)
-            .sources(sources)
-            .confidence(confidence)
-            .build();
-    }
-
-    private double calculateConfidence(List<RetrievedChunk> chunks, String version) {
-        if (chunks.isEmpty()) return 0.0;
-
-        double maxSim = chunks.get(0).getSimilarity();
-        double avgTop3 = chunks.stream().limit(3)
-            .mapToDouble(RetrievedChunk::getSimilarity)
-            .average().orElse(0.0);
-        double versionScore = (version != null
-            && chunks.stream().allMatch(c -> version.equals(c.getVersion()))) ? 1.0 : 0.0;
-        double corroboration = chunks.size() >= 3 ? 1.0 : 0.0;
-
-        return (maxSim * 0.4) + (avgTop3 * 0.3) + (versionScore * 0.2) + (corroboration * 0.1);
     }
 
     private ChatSession getOrCreateSession(String chatIdStr, String product, String version, UUID userId) {
@@ -140,54 +278,44 @@ public class ChatService {
     }
 
     private String enhanceQueryWithContext(String question, String context) {
-        if (context == null || context.isEmpty()) {
-            return question;
-        }
+        if (context == null || context.isEmpty()) return question;
         return question + "\n\n(Context from previous conversation:\n" +
                context.substring(0, Math.min(500, context.length())) + ")";
     }
 
     @Transactional(readOnly = true)
     public ChatHistoryResponse getChatHistory(String chatIdStr) {
-        log.info("Retrieving chat history for chatId: {}", chatIdStr);
-
-        try {
-            UUID chatId = UUID.fromString(chatIdStr);
-            List<ChatMessage> messages = messageRepository.findByChatIdOrderByCreatedAtAsc(chatId);
-
-            List<ChatMessageDTO> messageDTOs = messages.stream()
-                .map(msg -> ChatMessageDTO.builder()
-                    .id(msg.getId().toString())
-                    .role(msg.getRole().toString())
-                    .content(msg.getContent())
-                    .createdAt(msg.getCreatedAt())
-                    .build())
-                .collect(Collectors.toList());
-
-            return ChatHistoryResponse.builder()
-                .chatId(chatId.toString())
-                .messageCount(messageDTOs.size())
-                .messages(messageDTOs)
-                .build();
-
-        } catch (IllegalArgumentException e) {
-            throw new IllegalArgumentException("Invalid chat ID format", e);
-        }
+        UUID chatId = UUID.fromString(chatIdStr);
+        List<ChatMessage> messages = messageRepository.findByChatIdOrderByCreatedAtAsc(chatId);
+        List<ChatMessageDTO> messageDTOs = messages.stream()
+            .map(msg -> ChatMessageDTO.builder()
+                .id(msg.getId().toString())
+                .role(msg.getRole().toString())
+                .content(msg.getContent())
+                .createdAt(msg.getCreatedAt())
+                .build())
+            .collect(Collectors.toList());
+        return ChatHistoryResponse.builder()
+            .chatId(chatId.toString())
+            .messageCount(messageDTOs.size())
+            .messages(messageDTOs)
+            .build();
     }
 
     @Transactional(readOnly = true)
     public AllChatsResponse getAllChatSessions(UUID userId, boolean isAdmin) {
-        log.info("Retrieving chat sessions for userId: {}, isAdmin: {}", userId, isAdmin);
-
         List<ChatSession> sessions = isAdmin
             ? sessionRepository.findAllByOrderByLastActiveAtDesc()
-            : sessionRepository.findByUserIdOrderByLastActiveAtDesc(userId);
+            : sessionRepository.findByUserIdOrderByPinnedDescLastActiveAtDesc(userId);
 
         List<ChatSessionDTO> sessionDTOs = sessions.stream()
             .map(session -> ChatSessionDTO.builder()
                 .chatId(session.getId().toString())
+                .title(session.getTitle())
                 .product(session.getProduct())
                 .version(session.getVersion())
+                .pinned(session.isPinned())
+                .tags(session.getTags() != null ? Arrays.asList(session.getTags()) : Collections.emptyList())
                 .messageCount(session.getMessageCount())
                 .createdAt(session.getCreatedAt())
                 .lastActiveAt(session.getLastActiveAt())
@@ -202,21 +330,16 @@ public class ChatService {
 
     @Transactional
     public void deleteChatSession(String chatIdStr) {
-        log.info("Deleting chat session: {}", chatIdStr);
-        try {
-            UUID chatId = UUID.fromString(chatIdStr);
-            messageRepository.deleteByChatId(chatId);
-            summaryRepository.deleteById(chatId);
-            sessionRepository.deleteById(chatId);
-            log.info("Deleted chat session: {}", chatId);
-        } catch (IllegalArgumentException e) {
-            throw new IllegalArgumentException("Invalid chat ID format", e);
-        }
+        UUID chatId = UUID.fromString(chatIdStr);
+        messageRepository.deleteByChatId(chatId);
+        summaryRepository.deleteById(chatId);
+        sessionRepository.deleteById(chatId);
+        log.info("Deleted chat session: {}", chatId);
     }
 
-    // DTOs
-    @lombok.Data
-    @lombok.Builder
+    // ── DTOs ──────────────────────────────────────────────────────────────────
+
+    @lombok.Data @lombok.Builder
     public static class ChatRequest {
         private String chatId;
         private String product;
@@ -225,18 +348,18 @@ public class ChatService {
         private UUID userId;
     }
 
-    @lombok.Data
-    @lombok.Builder
+    @lombok.Data @lombok.Builder
     public static class ChatResponse {
         private String chatId;
         private String messageId;
         private String answer;
         private List<SourceReference> sources;
         private double confidence;
+        private String sessionTitle;
+        private List<String> relatedQuestions;
     }
 
-    @lombok.Data
-    @lombok.Builder
+    @lombok.Data @lombok.Builder
     public static class SourceReference {
         private String document;
         private String chunkId;
@@ -246,16 +369,22 @@ public class ChatService {
         private String excerpt;
     }
 
-    @lombok.Data
-    @lombok.Builder
+    @lombok.Data @lombok.Builder
+    public static class SessionUpdateResponse {
+        private String chatId;
+        private String title;
+        private boolean pinned;
+        private String[] tags;
+    }
+
+    @lombok.Data @lombok.Builder
     public static class ChatHistoryResponse {
         private String chatId;
         private int messageCount;
         private List<ChatMessageDTO> messages;
     }
 
-    @lombok.Data
-    @lombok.Builder
+    @lombok.Data @lombok.Builder
     public static class ChatMessageDTO {
         private String id;
         private String role;
@@ -263,19 +392,20 @@ public class ChatService {
         private LocalDateTime createdAt;
     }
 
-    @lombok.Data
-    @lombok.Builder
+    @lombok.Data @lombok.Builder
     public static class AllChatsResponse {
         private int totalChats;
         private List<ChatSessionDTO> sessions;
     }
 
-    @lombok.Data
-    @lombok.Builder
+    @lombok.Data @lombok.Builder
     public static class ChatSessionDTO {
         private String chatId;
+        private String title;
         private String product;
         private String version;
+        private boolean pinned;
+        private List<String> tags;
         private Integer messageCount;
         private LocalDateTime createdAt;
         private LocalDateTime lastActiveAt;

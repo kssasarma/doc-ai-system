@@ -1,5 +1,5 @@
-import React, { Suspense, lazy } from 'react';
-import { Plus, Menu, X, Settings, LogOut } from 'lucide-react';
+import React, { Suspense, lazy, useState, useMemo } from 'react';
+import { Plus, Menu, X, Settings, LogOut, Bookmark, SlidersHorizontal } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { ChatSession } from '../../types';
 import { useAuth } from '../../context/AuthContext';
@@ -12,6 +12,9 @@ interface SidebarProps {
   onCreateSession: () => void;
   onSelectSession: (sessionId: string) => void;
   onDeleteSession: (sessionId: string) => void;
+  onPinSession: (sessionId: string) => void;
+  onRenameSession: (sessionId: string, title: string) => void;
+  onOpenPreferences: () => void;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
 }
@@ -22,11 +25,33 @@ const Sidebar: React.FC<SidebarProps> = ({
   onCreateSession,
   onSelectSession,
   onDeleteSession,
+  onPinSession,
+  onRenameSession,
+  onOpenPreferences,
   isCollapsed,
   onToggleCollapse,
 }) => {
   const { user, logout, isAdmin } = useAuth();
   const navigate = useNavigate();
+  const [tagFilter, setTagFilter] = useState<string | null>(null);
+
+  // Collect all unique tags across sessions
+  const allTags = useMemo(() => {
+    const tagSet = new Set<string>();
+    sessions.forEach(s => s.tags?.forEach(t => tagSet.add(t)));
+    return Array.from(tagSet).sort();
+  }, [sessions]);
+
+  // Pinned first, then by date; optionally filter by tag
+  const sortedSessions = useMemo(() => {
+    const filtered = tagFilter
+      ? sessions.filter(s => s.tags?.includes(tagFilter))
+      : sessions;
+    return [...filtered].sort((a, b) => {
+      if ((b.pinned ? 1 : 0) !== (a.pinned ? 1 : 0)) return (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0);
+      return b.updatedAt - a.updatedAt;
+    });
+  }, [sessions, tagFilter]);
 
   return (
     <div className={`bg-gray-900 text-white h-screen transition-all duration-300 ${
@@ -52,6 +77,31 @@ const Sidebar: React.FC<SidebarProps> = ({
         )}
       </div>
 
+      {/* Tag filter bar */}
+      {!isCollapsed && allTags.length > 0 && (
+        <div className="px-3 py-2 border-b border-gray-800 flex flex-wrap gap-1">
+          <button
+            onClick={() => setTagFilter(null)}
+            className={`px-2 py-0.5 rounded text-xs transition-colors ${
+              tagFilter === null ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+            }`}
+          >
+            All
+          </button>
+          {allTags.map(tag => (
+            <button
+              key={tag}
+              onClick={() => setTagFilter(tag === tagFilter ? null : tag)}
+              className={`px-2 py-0.5 rounded text-xs transition-colors ${
+                tagFilter === tag ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+              }`}
+            >
+              {tag}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Sessions List */}
       <div className="flex-1 overflow-y-auto p-2">
         {isCollapsed ? (
@@ -72,28 +122,30 @@ const Sidebar: React.FC<SidebarProps> = ({
             ))}
           </div>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-1">
             <Suspense fallback={<div className="p-2 text-gray-400 text-sm">Loading...</div>}>
-              {sessions.map(session => (
+              {sortedSessions.map(session => (
                 <SessionItem
                   key={session.chatId}
                   session={session}
                   isActive={session.chatId === activeSessionId}
                   onSelect={() => onSelectSession(session.chatId)}
                   onDelete={() => onDeleteSession(session.chatId)}
+                  onPin={() => onPinSession(session.chatId)}
+                  onRename={(title) => onRenameSession(session.chatId, title)}
                 />
               ))}
             </Suspense>
-            {sessions.length === 0 && (
+            {sortedSessions.length === 0 && (
               <div className="text-gray-400 text-sm p-4 text-center">
-                No chat sessions yet. Create your first one!
+                {tagFilter ? `No chats tagged "${tagFilter}"` : 'No chat sessions yet. Create your first one!'}
               </div>
             )}
           </div>
         )}
       </div>
 
-      {/* Footer: user info + actions */}
+      {/* Footer */}
       <div className={`border-t border-gray-700 p-3 ${isCollapsed ? 'flex flex-col items-center gap-2' : ''}`}>
         {!isCollapsed && user && (
           <div className="flex items-center gap-2 mb-2 px-1">
@@ -106,7 +158,26 @@ const Sidebar: React.FC<SidebarProps> = ({
             </div>
           </div>
         )}
-        <div className={`flex ${isCollapsed ? 'flex-col' : 'flex-row'} gap-1`}>
+
+        <div className={`flex ${isCollapsed ? 'flex-col' : 'flex-row flex-wrap'} gap-1`}>
+          <button
+            onClick={() => navigate('/bookmarks')}
+            title="Bookmarks"
+            className="flex items-center gap-1.5 px-2 py-1.5 text-xs text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
+          >
+            <Bookmark size={14} />
+            {!isCollapsed && 'Bookmarks'}
+          </button>
+
+          <button
+            onClick={onOpenPreferences}
+            title="Preferences"
+            className="flex items-center gap-1.5 px-2 py-1.5 text-xs text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
+          >
+            <SlidersHorizontal size={14} />
+            {!isCollapsed && 'Preferences'}
+          </button>
+
           {isAdmin && (
             <button
               onClick={() => navigate('/admin')}
@@ -117,6 +188,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               {!isCollapsed && 'Admin'}
             </button>
           )}
+
           <button
             onClick={logout}
             title="Sign out"
