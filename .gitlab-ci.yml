@@ -1,0 +1,26 @@
+### FRONTEND STARTS ###
+# This works with any React JS project that is scaffolded using Vite JS
+image: node:latest
+
+# This folder is cached between builds
+# http://docs.gitlab.com/ee/ci/yaml/README.html#cache
+cache:
+    paths:
+        - frontend/node_modules/
+
+npm_install:
+    stage: .pre
+    script:
+        - cd frontend && npm install
+
+pages:
+    stage: build
+    script:
+        - cd frontend
+        - npm run build
+        - mkdir -p ../public
+        - cp -r dist/* ../public/
+    artifacts:
+        paths:
+            - public
+### FRONTEND ENDS ###
