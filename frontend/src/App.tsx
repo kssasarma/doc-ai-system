@@ -14,6 +14,7 @@ const BookmarksPage = lazy(() => import('./components/Bookmarks/BookmarksPage'))
 const CollectionsPage = lazy(() => import('./components/Collections/CollectionsPage'));
 const SharedChatView = lazy(() => import('./components/Chat/SharedChatView'));
 const PreferencesModal = lazy(() => import('./components/Settings/PreferencesModal'));
+const ApiKeysPage = lazy(() => import('./components/Settings/ApiKeysPage'));
 
 const LoadingSpinner = () => (
   <div className="flex h-screen w-full items-center justify-center">
@@ -201,6 +202,13 @@ function App() {
         <Suspense fallback={<LoadingSpinner />}>
           <SharedChatView />
         </Suspense>
+      } />
+      <Route path="/api-keys" element={
+        <ProtectedRoute>
+          <Suspense fallback={<LoadingSpinner />}>
+            <ApiKeysPage />
+          </Suspense>
+        </ProtectedRoute>
       } />
       <Route path="/" element={<ProtectedRoute><ChatPage /></ProtectedRoute>} />
       <Route path="/chat/:chatId" element={<ProtectedRoute><ChatPage /></ProtectedRoute>} />

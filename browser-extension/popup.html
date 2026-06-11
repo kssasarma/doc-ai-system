@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Docs-inator</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- Setup view (shown when not configured) -->
+    <div id="setup-view" class="view hidden">
+      <div class="header">
+        <span class="logo">📚</span>
+        <h1>Docs-inator Setup</h1>
+      </div>
+      <p class="hint">Connect to your Docs-inator instance to get started.</p>
+      <form id="setup-form">
+        <label>API URL
+          <input type="url" id="api-url" placeholder="https://your-docs-inator.com" required />
+        </label>
+        <label>API Key
+          <input type="text" id="api-key" placeholder="sk-docai-..." required />
+        </label>
+        <label>Default Product (optional)
+          <input type="text" id="default-product" placeholder="e.g. my-product" />
+        </label>
+        <label>Default Version (optional)
+          <input type="text" id="default-version" placeholder="e.g. v2" />
+        </label>
+        <button type="submit" class="btn-primary">Save &amp; Connect</button>
+      </form>
+    </div>
+
+    <!-- Main chat view -->
+    <div id="main-view" class="view hidden">
+      <div class="header">
+        <span class="logo">📚</span>
+        <h1>Docs-inator</h1>
+        <button id="settings-btn" class="icon-btn" title="Settings">⚙️</button>
+      </div>
+
+      <div id="messages" class="messages"></div>
+
+      <div class="input-row">
+        <input type="text" id="question-input" placeholder="Ask a question…" autocomplete="off" />
+        <button id="send-btn" class="btn-primary" title="Send">➤</button>
+      </div>
+      <div class="footer-row">
+        <a id="open-app-link" href="#" target="_blank" class="open-link hidden">Open in app ↗</a>
+        <span id="status-text" class="status-text"></span>
+      </div>
+    </div>
+  </div>
+  <script src="popup.js" type="module"></script>
+</body>
+</html>

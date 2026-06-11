@@ -1,0 +1,87 @@
+{
+  "name": "docs-inator",
+  "displayName": "Docs-inator",
+  "description": "Query your product documentation directly from VS Code",
+  "version": "1.0.0",
+  "publisher": "docs-inator",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Other"],
+  "keywords": ["documentation", "search", "AI", "Q&A"],
+  "icon": "icons/icon128.png",
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "docsinator.openPanel",
+        "title": "Docs-inator: Open",
+        "icon": "$(book)"
+      },
+      {
+        "command": "docsinator.askSelection",
+        "title": "Docs-inator: Ask about selection"
+      },
+      {
+        "command": "docsinator.configure",
+        "title": "Docs-inator: Configure API connection"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "docsinator.askSelection",
+          "when": "editorHasSelection",
+          "group": "navigation"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "docsinator.openPanel",
+        "key": "ctrl+shift+d",
+        "mac": "cmd+shift+d"
+      }
+    ],
+    "configuration": {
+      "title": "Docs-inator",
+      "properties": {
+        "docsinator.apiUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Base URL of your Docs-inator backend (e.g. https://docs.example.com)"
+        },
+        "docsinator.apiKey": {
+          "type": "string",
+          "default": "",
+          "description": "API key (created under Settings → API Keys in the Docs-inator web app)"
+        },
+        "docsinator.defaultProduct": {
+          "type": "string",
+          "default": "",
+          "description": "Default product to filter search results"
+        },
+        "docsinator.defaultVersion": {
+          "type": "string",
+          "default": "",
+          "description": "Default product version to filter search results"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts"
+  },
+  "dependencies": {
+    "node-fetch": "^3.3.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.3.0"
+  }
+}

@@ -24,6 +24,19 @@ spring:
     baseline-on-migrate: true
     baseline-version: 0
 
+  mail:
+    host: ${MAIL_HOST:smtp.gmail.com}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
+
   ai:
     openai:
       base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
@@ -70,6 +83,11 @@ springdoc:
   swagger-ui:
     path: /swagger-ui.html
     operationsSorter: method
+
+digest:
+  from-address: ${MAIL_FROM:noreply@docs-inator.example.com}
+  from-name: ${MAIL_FROM_NAME:Docs-inator}
+  app-url: ${APP_URL:http://localhost:5173}
 
 bot:
   max-context-messages: 10

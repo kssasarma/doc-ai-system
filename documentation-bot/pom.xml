@@ -152,6 +152,12 @@
 			<version>8.10.1</version>
 		</dependency>
 
+		<!-- Spring Mail (email digest) -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-mail</artifactId>
+		</dependency>
+
 		<!-- Structured JSON logging -->
 		<dependency>
 			<groupId>net.logstash.logback</groupId>

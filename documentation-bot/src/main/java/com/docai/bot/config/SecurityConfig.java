@@ -27,6 +27,7 @@ import lombok.RequiredArgsConstructor;
 public class SecurityConfig {
 
     private final JwtAuthFilter jwtAuthFilter;
+    private final ApiKeyAuthFilter apiKeyAuthFilter;
 
     @Value("${app.cors.allowed-origins:http://localhost:5173,http://localhost:3000}")
     private String allowedOrigins;
@@ -34,6 +35,7 @@ public class SecurityConfig {
     private static final String[] PUBLIC_PATHS = {
         "/api/auth/**",
         "/api/share/**",
+        "/api/v1/**",
         "/actuator/health",
         "/actuator/info",
         "/actuator/prometheus",
@@ -52,7 +54,8 @@ public class SecurityConfig {
                 .requestMatchers(PUBLIC_PATHS).permitAll()
                 .anyRequest().authenticated()
             )
-            .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
+            .addFilterBefore(apiKeyAuthFilter, UsernamePasswordAuthenticationFilter.class)
+            .addFilterBefore(jwtAuthFilter, ApiKeyAuthFilter.class)
             .build();
     }
 
