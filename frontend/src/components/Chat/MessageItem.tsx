@@ -1,15 +1,21 @@
-import React, { useState } from 'react';
+import React, { lazy, Suspense, useState } from 'react';
 import {
   User, Bot, Copy, Check, ThumbsUp, ThumbsDown,
   ChevronDown, ChevronUp, Bookmark, BookmarkCheck,
-  RefreshCw, ChevronRight,
+  RefreshCw, ChevronRight, ArrowUp, FolderPlus, HelpCircle,
+  MessageSquarePlus, Users,
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { ChatMessage } from '../../types';
 import { formatTimestamp } from '../../utils/chatUtils';
 import { submitFeedback, regenerateAnswer } from '../../services/chatService';
 import { createBookmark } from '../../services/bookmarkService';
+import { toggleUpvote } from '../../services/upvoteService';
 import { useAuth } from '../../context/AuthContext';
+
+const AddToCollectionModal = lazy(() => import('./AddToCollectionModal'));
+const EscalationModal = lazy(() => import('./EscalationModal'));
+const AnnotationsPanel = lazy(() => import('./AnnotationsPanel'));
 
 interface MessageItemProps {
   message: ChatMessage;
@@ -53,26 +59,35 @@ const MessageItem: React.FC<MessageItemProps> = ({
 }) => {
   const isUser = message.role === 'user';
   const { token } = useAuth();
+
   const [copied, setCopied] = useState(false);
   const [sourcesExpanded, setSourcesExpanded] = useState(false);
+  const [expandedAnnotationChunk, setExpandedAnnotationChunk] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<1 | -1 | null>(message.userFeedback ?? null);
   const [feedbackPending, setFeedbackPending] = useState(false);
   const [bookmarked, setBookmarked] = useState(message.isBookmarked ?? false);
   const [bookmarkPending, setBookmarkPending] = useState(false);
+  const [upvoteCount, setUpvoteCount] = useState(message.upvoteCount ?? 0);
+  const [userUpvoted, setUserUpvoted] = useState(message.userUpvoted ?? false);
+  const [upvotePending, setUpvotePending] = useState(false);
   const [regenMenuOpen, setRegenMenuOpen] = useState(false);
   const [regenPending, setRegenPending] = useState(false);
   const [regenStyle, setRegenStyle] = useState<string | null>(null);
+  const [showCollectionModal, setShowCollectionModal] = useState(false);
+  const [showEscalationModal, setShowEscalationModal] = useState(false);
 
   const hasSources = !isUser && message.sources && message.sources.length > 0;
   const showConfidence = !isUser && message.confidence !== undefined && !message.isTyping;
   const hasRelated = !isUser && message.relatedQuestions && message.relatedQuestions.length > 0 && !message.isTyping;
+  const isLowConfidence = (message.confidence ?? 1) < 0.6;
+  const isTeamVerified = upvoteCount >= 3;
 
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(message.content);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    } catch { /* clipboard not available */ }
+    } catch { /* clipboard unavailable */ }
   };
 
   const handleFeedback = async (rating: 1 | -1) => {
@@ -95,11 +110,33 @@ const MessageItem: React.FC<MessageItemProps> = ({
     if (!message.messageId || !sessionChatId || !token || bookmarkPending) return;
     setBookmarkPending(true);
     try {
-      const excerpt = message.content.slice(0, 300);
-      const result = await createBookmark(token, message.messageId, sessionChatId, excerpt);
+      const result = await createBookmark(token, message.messageId, sessionChatId, message.content.slice(0, 300));
       if (result.success) setBookmarked(true);
     } catch { /* ignore */ } finally {
       setBookmarkPending(false);
+    }
+  };
+
+  const handleUpvote = async () => {
+    if (!message.messageId || !token || upvotePending) return;
+    setUpvotePending(true);
+    const prev = { upvoteCount, userUpvoted };
+    setUpvoteCount(c => userUpvoted ? c - 1 : c + 1);
+    setUserUpvoted(v => !v);
+    try {
+      const res = await toggleUpvote(message.messageId, token);
+      if (res.success && res.data) {
+        setUpvoteCount(res.data.upvoteCount);
+        setUserUpvoted(res.data.userUpvoted);
+      } else {
+        setUpvoteCount(prev.upvoteCount);
+        setUserUpvoted(prev.userUpvoted);
+      }
+    } catch {
+      setUpvoteCount(prev.upvoteCount);
+      setUserUpvoted(prev.userUpvoted);
+    } finally {
+      setUpvotePending(false);
     }
   };
 
@@ -135,6 +172,15 @@ const MessageItem: React.FC<MessageItemProps> = ({
               : 'bg-white border border-gray-200 text-gray-900'
           }`}
         >
+          {/* Team Verified badge */}
+          {!isUser && isTeamVerified && !message.isTyping && (
+            <div className="absolute -top-3 left-3">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700 border border-indigo-200">
+                <Users size={10} /> Team Verified
+              </span>
+            </div>
+          )}
+
           {/* Copy button */}
           <button
             onClick={handleCopy}
@@ -172,7 +218,7 @@ const MessageItem: React.FC<MessageItemProps> = ({
           )}
         </div>
 
-        {/* Meta row: confidence, sources toggle, bookmark, feedback, regenerate */}
+        {/* Meta row */}
         {!isUser && !message.isTyping && (
           <div className="flex items-center gap-2 mt-1.5 flex-wrap">
             {showConfidence && <ConfidenceBadge confidence={message.confidence!} />}
@@ -188,6 +234,34 @@ const MessageItem: React.FC<MessageItemProps> = ({
             )}
 
             <div className="flex items-center gap-1 ml-auto">
+              {/* Upvote (community verification) */}
+              {message.messageId && (
+                <button
+                  onClick={handleUpvote}
+                  disabled={upvotePending}
+                  title={userUpvoted ? 'Remove upvote' : 'Upvote — helps verify this answer for the team'}
+                  className={`flex items-center gap-1 px-1.5 py-1 rounded transition-colors text-xs ${
+                    userUpvoted
+                      ? 'text-indigo-600 bg-indigo-50'
+                      : 'text-gray-400 hover:text-indigo-600 hover:bg-indigo-50'
+                  }`}
+                >
+                  <ArrowUp size={12} />
+                  {upvoteCount > 0 && <span>{upvoteCount}</span>}
+                </button>
+              )}
+
+              {/* Add to collection */}
+              {message.messageId && sessionChatId && (
+                <button
+                  onClick={() => setShowCollectionModal(true)}
+                  title="Add to collection"
+                  className="p-1 rounded text-gray-400 hover:text-green-600 hover:bg-green-50 transition-colors"
+                >
+                  <FolderPlus size={13} />
+                </button>
+              )}
+
               {/* Bookmark */}
               {message.messageId && sessionChatId && (
                 <button
@@ -201,6 +275,17 @@ const MessageItem: React.FC<MessageItemProps> = ({
                   }`}
                 >
                   {bookmarked ? <BookmarkCheck size={13} /> : <Bookmark size={13} />}
+                </button>
+              )}
+
+              {/* Escalate (shown when low confidence) */}
+              {message.messageId && isLowConfidence && (
+                <button
+                  onClick={() => setShowEscalationModal(true)}
+                  title="Ask an expert"
+                  className="p-1 rounded text-gray-400 hover:text-orange-500 hover:bg-orange-50 transition-colors"
+                >
+                  <HelpCircle size={13} />
                 </button>
               )}
 
@@ -234,7 +319,7 @@ const MessageItem: React.FC<MessageItemProps> = ({
                 </div>
               )}
 
-              {/* Thumbs */}
+              {/* Feedback thumbs */}
               {message.messageId && (
                 <>
                   <button
@@ -279,10 +364,31 @@ const MessageItem: React.FC<MessageItemProps> = ({
                     {src.relevanceScore !== undefined && (
                       <span className="text-gray-400">{Math.round(src.relevanceScore * 100)}%</span>
                     )}
+                    {src.chunkId && (
+                      <button
+                        onClick={() => setExpandedAnnotationChunk(
+                          expandedAnnotationChunk === src.chunkId ? null : src.chunkId!
+                        )}
+                        title="View annotations"
+                        className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded transition-colors ${
+                          expandedAnnotationChunk === src.chunkId
+                            ? 'bg-purple-100 text-purple-700'
+                            : 'bg-gray-100 text-gray-500 hover:bg-purple-50 hover:text-purple-600'
+                        }`}
+                      >
+                        <MessageSquarePlus size={11} />
+                        Notes
+                      </button>
+                    )}
                   </div>
                 </div>
                 {src.excerpt && (
                   <p className="text-gray-500 leading-relaxed line-clamp-3">{src.excerpt}</p>
+                )}
+                {src.chunkId && expandedAnnotationChunk === src.chunkId && (
+                  <Suspense fallback={<div className="mt-2 text-gray-400 text-xs">Loading annotations…</div>}>
+                    <AnnotationsPanel chunkId={src.chunkId} />
+                  </Suspense>
                 )}
               </div>
             ))}
@@ -317,6 +423,27 @@ const MessageItem: React.FC<MessageItemProps> = ({
         <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center flex-shrink-0 mt-1">
           <User size={16} className="text-gray-600" />
         </div>
+      )}
+
+      {/* Modals */}
+      {showCollectionModal && message.messageId && sessionChatId && (
+        <Suspense fallback={null}>
+          <AddToCollectionModal
+            messageId={message.messageId}
+            chatId={sessionChatId}
+            onClose={() => setShowCollectionModal(false)}
+          />
+        </Suspense>
+      )}
+      {showEscalationModal && message.messageId && (
+        <Suspense fallback={null}>
+          <EscalationModal
+            messageId={message.messageId}
+            questionText={message.content}
+            aiAnswerText={message.content}
+            onClose={() => setShowEscalationModal(false)}
+          />
+        </Suspense>
       )}
     </div>
   );

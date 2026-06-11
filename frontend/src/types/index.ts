@@ -10,6 +10,8 @@ export interface ChatMessage {
   userFeedback?: 1 | -1 | null;
   relatedQuestions?: string[];
   isBookmarked?: boolean;
+  upvoteCount?: number;
+  userUpvoted?: boolean;
 }
 
 export interface ChatSession {
@@ -115,6 +117,8 @@ export interface BackendHistoryMessage {
   content: string;
   role: 'USER' | 'ASSISTANT';
   createdAt: string;
+  upvoteCount?: number;
+  userUpvoted?: boolean;
 }
 
 export interface BackendChatHistoryResponse {
@@ -187,4 +191,97 @@ export interface UserPreference {
   answerFormat: 'PROSE' | 'BULLET_POINTS' | 'CODE_FIRST';
   defaultProduct?: string;
   defaultVersion?: string;
+}
+
+// Phase 3 — Team Collaboration types
+
+export interface ShareLink {
+  token: string;
+  chatId: string;
+  publicAccess: boolean;
+  expiresAt?: string;
+  createdAt: string;
+}
+
+export interface SharedChatMessage {
+  role: 'USER' | 'ASSISTANT';
+  content: string;
+  createdAt: string;
+}
+
+export interface SharedChatSession {
+  token: string;
+  chatId: string;
+  title?: string;
+  product?: string;
+  version?: string;
+  createdByUsername: string;
+  expiresAt?: string;
+  messages: SharedChatMessage[];
+}
+
+export interface Collection {
+  id: string;
+  name: string;
+  description?: string;
+  publicAccess: boolean;
+  createdBy: string;
+  createdByUsername?: string;
+  isOwner: boolean;
+  itemCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CollectionItem {
+  id: string;
+  collectionId: string;
+  chatMessageId: string;
+  chatId: string;
+  messageContent?: string;
+  note?: string;
+  addedByUsername?: string;
+  createdAt: string;
+}
+
+export interface UpvoteStatus {
+  chatMessageId: string;
+  upvoteCount: number;
+  userUpvoted: boolean;
+}
+
+export interface Escalation {
+  id: string;
+  chatMessageId: string;
+  questionText: string;
+  aiAnswerText?: string;
+  status: 'PENDING' | 'IN_REVIEW' | 'ANSWERED' | 'CLOSED';
+  createdBy: string;
+  createdByUsername?: string;
+  assignedTo?: string;
+  expertAnswer?: string;
+  product?: string;
+  version?: string;
+  createdAt: string;
+  answeredAt?: string;
+}
+
+export interface ChunkAnnotation {
+  id: string;
+  documentChunkId: string;
+  userId: string;
+  username?: string;
+  body: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AppNotification {
+  id: string;
+  type: 'ESCALATION_ANSWERED' | 'SHARE_FORKED' | 'COLLECTION_UPDATED' | 'ANNOTATION_ADDED';
+  title: string;
+  body?: string;
+  referenceId?: string;
+  read: boolean;
+  createdAt: string;
 }

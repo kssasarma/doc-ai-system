@@ -1,8 +1,10 @@
 import React, { Suspense, lazy, useState, useCallback } from 'react';
-import { ChatSession, ChatMessage } from '../../types';
-import { MessageSquarePlus, SearchX, Download, Pencil, Check, X } from 'lucide-react';
+import { ChatSession } from '../../types';
+import { MessageSquarePlus, SearchX, Download, Pencil, Check, X, Share2 } from 'lucide-react';
 import { exportConversation } from '../../services/chatService';
 import { useAuth } from '../../context/AuthContext';
+
+const ShareModal = lazy(() => import('./ShareModal'));
 
 const MessageList = lazy(() => import('./MessageList'));
 const MessageInput = lazy(() => import('./MessageInput'));
@@ -31,6 +33,7 @@ const ChatArea: React.FC<ChatAreaProps> = ({
   const [titleValue, setTitleValue] = useState('');
   const [exportPending, setExportPending] = useState(false);
   const [prefillQuestion, setPrefillQuestion] = useState<string | undefined>();
+  const [shareOpen, setShareOpen] = useState(false);
 
   const handleStartEditTitle = () => {
     setTitleValue(session?.title ?? '');
@@ -150,6 +153,16 @@ const ChatArea: React.FC<ChatAreaProps> = ({
             <p className="text-sm text-gray-500">{session.messages.length} messages</p>
           </div>
 
+          {/* Share button */}
+          <button
+            onClick={() => setShareOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors border border-gray-200 flex-shrink-0"
+            title="Share conversation"
+          >
+            <Share2 size={14} />
+            Share
+          </button>
+
           {/* Export menu */}
           <div className="relative group/export flex-shrink-0">
             <button
@@ -204,6 +217,13 @@ const ChatArea: React.FC<ChatAreaProps> = ({
           />
         </Suspense>
       </div>
+
+      {/* Share modal */}
+      {shareOpen && (
+        <Suspense fallback={null}>
+          <ShareModal chatId={session.chatId} onClose={() => setShareOpen(false)} />
+        </Suspense>
+      )}
     </div>
   );
 };

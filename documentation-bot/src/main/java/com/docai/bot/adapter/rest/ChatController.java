@@ -59,8 +59,10 @@ public class ChatController {
     }
 
     @GetMapping("/history/{chatId}")
-    public ResponseEntity<ChatHistoryResponse> getChatHistory(@PathVariable String chatId) {
-        return ResponseEntity.ok(chatService.getChatHistory(chatId));
+    public ResponseEntity<ChatHistoryResponse> getChatHistory(
+            @PathVariable String chatId,
+            @AuthenticationPrincipal UserPrincipal principal) {
+        return ResponseEntity.ok(chatService.getChatHistory(chatId, principal != null ? principal.userId() : null));
     }
 
     @GetMapping("/sessions")

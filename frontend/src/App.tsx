@@ -11,6 +11,8 @@ const Sidebar = lazy(() => import('./components/Sidebar/Sidebar'));
 const ChatArea = lazy(() => import('./components/Chat/ChatArea'));
 const AdminPanel = lazy(() => import('./components/Admin/AdminPanel'));
 const BookmarksPage = lazy(() => import('./components/Bookmarks/BookmarksPage'));
+const CollectionsPage = lazy(() => import('./components/Collections/CollectionsPage'));
+const SharedChatView = lazy(() => import('./components/Chat/SharedChatView'));
 const PreferencesModal = lazy(() => import('./components/Settings/PreferencesModal'));
 
 const LoadingSpinner = () => (
@@ -186,6 +188,19 @@ function App() {
             <BookmarksPage />
           </Suspense>
         </ProtectedRoute>
+      } />
+      <Route path="/collections" element={
+        <ProtectedRoute>
+          <Suspense fallback={<LoadingSpinner />}>
+            <CollectionsPage />
+          </Suspense>
+        </ProtectedRoute>
+      } />
+      {/* Public share view — no ProtectedRoute */}
+      <Route path="/share/:token" element={
+        <Suspense fallback={<LoadingSpinner />}>
+          <SharedChatView />
+        </Suspense>
       } />
       <Route path="/" element={<ProtectedRoute><ChatPage /></ProtectedRoute>} />
       <Route path="/chat/:chatId" element={<ProtectedRoute><ChatPage /></ProtectedRoute>} />

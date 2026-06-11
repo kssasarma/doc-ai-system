@@ -5,6 +5,7 @@ import java.util.Collections;
 import java.util.List;
 
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -27,7 +28,10 @@ public class AnswerGenerationService {
     @Value("${bot.min-similarity-threshold:0.55}")
     private double minSimilarityThreshold;
 
-    public record AnswerResult(String answer, List<String> relatedQuestions) {}
+    public record AnswerResult(String answer, List<String> relatedQuestions,
+                               int promptTokens, int completionTokens) {}
+
+    private record LlmResult(String content, int promptTokens, int completionTokens) {}
 
     public AnswerResult generateAnswer(String question, String chatContext,
                                        List<RetrievedChunk> relevantChunks,
@@ -35,7 +39,7 @@ public class AnswerGenerationService {
 
         if (relevantChunks == null || relevantChunks.isEmpty()) {
             log.warn("No relevant chunks found for question: {}", question);
-            return new AnswerResult(buildEmptyStateMessage(question, null, null), Collections.emptyList());
+            return new AnswerResult(buildEmptyStateMessage(question, null, null), Collections.emptyList(), 0, 0);
         }
 
         double maxSimilarity = relevantChunks.stream()
@@ -51,13 +55,15 @@ public class AnswerGenerationService {
                 String.format("%.3f", maxSimilarity), String.format("%.3f", minSimilarityThreshold), question);
             return new AnswerResult(
                 buildEmptyStateMessage(question, closestTopic, product + " " + version),
-                Collections.emptyList()
+                Collections.emptyList(), 0, 0
             );
         }
 
         String prompt = buildPrompt(question, chatContext, relevantChunks, verbosity, answerFormat);
-        String rawOutput = callWithRetry(prompt, question);
-        return parseOutput(rawOutput);
+        LlmResult llm = callWithRetry(prompt, question);
+        AnswerResult parsed = parseOutput(llm.content());
+        return new AnswerResult(parsed.answer(), parsed.relatedQuestions(),
+            llm.promptTokens(), llm.completionTokens());
     }
 
     public String generateSessionTitle(String question, String answer) {
@@ -84,7 +90,6 @@ public class AnswerGenerationService {
         } catch (Exception e) {
             log.warn("Title generation failed: {}", e.getMessage());
         }
-        // Fallback: truncate question
         return question.length() > 60 ? question.substring(0, 60) + "…" : question;
     }
 
@@ -94,14 +99,12 @@ public class AnswerGenerationService {
         prompt.append("You are a helpful documentation assistant. ");
         prompt.append("Answer the user's question based only on the provided documentation excerpts.\n");
 
-        // Verbosity instruction
         if ("CONCISE".equals(verbosity)) {
             prompt.append("Be concise: 2-3 sentences maximum.\n");
         } else if ("DETAILED".equals(verbosity)) {
             prompt.append("Be thorough: include full explanation, context, and examples.\n");
         }
 
-        // Format instruction
         if ("BULLET_POINTS".equals(answerFormat)) {
             prompt.append("Format your answer as a bullet-point list.\n");
         } else if ("CODE_FIRST".equals(answerFormat)) {
@@ -130,12 +133,12 @@ public class AnswerGenerationService {
 
     private AnswerResult parseOutput(String rawOutput) {
         if (rawOutput == null || rawOutput.isBlank()) {
-            return new AnswerResult("The AI service is temporarily unavailable. Please try again.", Collections.emptyList());
+            return new AnswerResult("The AI service is temporarily unavailable. Please try again.", Collections.emptyList(), 0, 0);
         }
 
         int markerIdx = rawOutput.indexOf(FOLLOW_UP_MARKER);
         if (markerIdx == -1) {
-            return new AnswerResult(rawOutput.trim(), Collections.emptyList());
+            return new AnswerResult(rawOutput.trim(), Collections.emptyList(), 0, 0);
         }
 
         String answer = rawOutput.substring(0, markerIdx).trim();
@@ -147,21 +150,44 @@ public class AnswerGenerationService {
             .limit(3)
             .toList();
 
-        return new AnswerResult(answer, relatedQuestions);
+        return new AnswerResult(answer, relatedQuestions, 0, 0);
     }
 
-    private String callWithRetry(String prompt, String question) {
+    private LlmResult callWithRetry(String prompt, String question) {
         Exception lastException = null;
         for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
             try {
-                String answer = chatClientBuilder.build()
+                ChatResponse chatResponse = chatClientBuilder.build()
                     .prompt()
                     .user(prompt)
                     .call()
-                    .content();
+                    .chatResponse();
+
+                String content = chatResponse != null && chatResponse.getResult() != null
+                    ? chatResponse.getResult().getOutput().getText() : null;
+
+                int promptTokens = 0;
+                int completionTokens = 0;
+                try {
+                    if (chatResponse != null && chatResponse.getMetadata() != null
+                            && chatResponse.getMetadata().getUsage() != null) {
+                        var usage = chatResponse.getMetadata().getUsage();
+                        promptTokens = usage.getPromptTokens() != null
+                            ? usage.getPromptTokens().intValue() : estimateTokens(prompt);
+                        completionTokens = usage.getCompletionTokens() != null
+                            ? usage.getCompletionTokens().intValue() : estimateTokens(content);
+                    } else {
+                        promptTokens = estimateTokens(prompt);
+                        completionTokens = estimateTokens(content);
+                    }
+                } catch (Exception ex) {
+                    promptTokens = estimateTokens(prompt);
+                    completionTokens = estimateTokens(content);
+                }
+
                 if (attempt > 1) log.info("LLM call succeeded on attempt {}", attempt);
                 log.info("Generated answer for: {}", question.substring(0, Math.min(60, question.length())));
-                return answer;
+                return new LlmResult(content, promptTokens, completionTokens);
             } catch (Exception e) {
                 lastException = e;
                 log.warn("LLM call attempt {}/{} failed: {}", attempt, MAX_ATTEMPTS, e.getMessage());
@@ -169,7 +195,12 @@ public class AnswerGenerationService {
             }
         }
         log.error("All {} LLM attempts failed for question: {}", MAX_ATTEMPTS, question, lastException);
-        return "The AI service is temporarily unavailable. Please try again in a moment.";
+        return new LlmResult("The AI service is temporarily unavailable. Please try again in a moment.",
+            estimateTokens(prompt), 0);
+    }
+
+    private static int estimateTokens(String text) {
+        return text != null ? text.length() / 4 : 0;
     }
 
     private static String buildEmptyStateMessage(String question, String closestTopic, String productVersion) {

@@ -1,10 +1,12 @@
-import React, { Suspense, lazy, useState, useMemo } from 'react';
-import { Plus, Menu, X, Settings, LogOut, Bookmark, SlidersHorizontal } from 'lucide-react';
+import React, { Suspense, lazy, useState, useMemo, useEffect } from 'react';
+import { Plus, Menu, X, Settings, LogOut, Bookmark, SlidersHorizontal, Bell, Folder } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { ChatSession } from '../../types';
 import { useAuth } from '../../context/AuthContext';
+import { fetchUnreadCount } from '../../services/notificationService';
 
 const SessionItem = lazy(() => import('./SessionItem'));
+const NotificationPanel = lazy(() => import('./NotificationPanel'));
 
 interface SidebarProps {
   sessions: ChatSession[];
@@ -31,18 +33,32 @@ const Sidebar: React.FC<SidebarProps> = ({
   isCollapsed,
   onToggleCollapse,
 }) => {
-  const { user, logout, isAdmin } = useAuth();
+  const { user, logout, isAdmin, token } = useAuth();
   const navigate = useNavigate();
   const [tagFilter, setTagFilter] = useState<string | null>(null);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
 
-  // Collect all unique tags across sessions
+  useEffect(() => {
+    if (!token) return;
+    fetchUnreadCount(token).then(res => {
+      if (res.success && res.data != null) setUnreadCount(res.data);
+    });
+    // Poll every 60s for new notifications
+    const interval = setInterval(() => {
+      fetchUnreadCount(token).then(res => {
+        if (res.success && res.data != null) setUnreadCount(res.data);
+      });
+    }, 60_000);
+    return () => clearInterval(interval);
+  }, [token]);
+
   const allTags = useMemo(() => {
     const tagSet = new Set<string>();
     sessions.forEach(s => s.tags?.forEach(t => tagSet.add(t)));
     return Array.from(tagSet).sort();
   }, [sessions]);
 
-  // Pinned first, then by date; optionally filter by tag
   const sortedSessions = useMemo(() => {
     const filtered = tagFilter
       ? sessions.filter(s => s.tags?.includes(tagFilter))
@@ -56,7 +72,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   return (
     <div className={`bg-gray-900 text-white h-screen transition-all duration-300 ${
       isCollapsed ? 'w-16' : 'w-80'
-    } flex flex-col`}>
+    } flex flex-col relative`}>
       {/* Header */}
       <div className="p-4 border-b border-gray-700 flex items-center justify-between">
         <button
@@ -160,6 +176,21 @@ const Sidebar: React.FC<SidebarProps> = ({
         )}
 
         <div className={`flex ${isCollapsed ? 'flex-col' : 'flex-row flex-wrap'} gap-1`}>
+          {/* Notification bell */}
+          <button
+            onClick={() => setNotifOpen(v => !v)}
+            title="Notifications"
+            className="relative flex items-center gap-1.5 px-2 py-1.5 text-xs text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
+          >
+            <Bell size={14} />
+            {!isCollapsed && 'Notifications'}
+            {unreadCount > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-red-500 text-white rounded-full text-[10px] flex items-center justify-center leading-none">
+                {unreadCount > 9 ? '9+' : unreadCount}
+              </span>
+            )}
+          </button>
+
           <button
             onClick={() => navigate('/bookmarks')}
             title="Bookmarks"
@@ -167,6 +198,15 @@ const Sidebar: React.FC<SidebarProps> = ({
           >
             <Bookmark size={14} />
             {!isCollapsed && 'Bookmarks'}
+          </button>
+
+          <button
+            onClick={() => navigate('/collections')}
+            title="Collections"
+            className="flex items-center gap-1.5 px-2 py-1.5 text-xs text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
+          >
+            <Folder size={14} />
+            {!isCollapsed && 'Collections'}
           </button>
 
           <button
@@ -199,6 +239,16 @@ const Sidebar: React.FC<SidebarProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Notification panel */}
+      {notifOpen && (
+        <Suspense fallback={null}>
+          <NotificationPanel
+            onClose={() => setNotifOpen(false)}
+            onCountChange={setUnreadCount}
+          />
+        </Suspense>
+      )}
     </div>
   );
 };

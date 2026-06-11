@@ -78,3 +78,6 @@ bot:
   chat-expiry-hours: 24
   max-context-tokens: 20000
   min-similarity-threshold: ${BOT_MIN_SIMILARITY_THRESHOLD:0.55}
+  cost:
+    input-per-1k-tokens: ${BOT_COST_INPUT_PER_1K:0.00015}
+    output-per-1k-tokens: ${BOT_COST_OUTPUT_PER_1K:0.00060}

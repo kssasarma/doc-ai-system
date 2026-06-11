@@ -12,4 +12,6 @@ import com.docai.bot.domain.entity.AnswerFeedback;
 public interface AnswerFeedbackRepository extends JpaRepository<AnswerFeedback, UUID> {
 
     Optional<AnswerFeedback> findByChatMessageIdAndUserId(UUID chatMessageId, UUID userId);
+
+    long countByRating(short rating);
 }

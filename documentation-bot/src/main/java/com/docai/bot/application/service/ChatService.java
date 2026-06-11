@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -14,6 +15,7 @@ import com.docai.bot.domain.entity.ChatMessage;
 import com.docai.bot.domain.entity.ChatSession;
 import com.docai.bot.domain.entity.UserPreference;
 import com.docai.bot.domain.model.RetrievedChunk;
+import com.docai.bot.domain.repository.AnswerUpvoteRepository;
 import com.docai.bot.domain.repository.ChatMessageRepository;
 import com.docai.bot.domain.repository.ChatSessionRepository;
 import com.docai.bot.domain.repository.ChatSummaryRepository;
@@ -29,16 +31,25 @@ public class ChatService {
     private final ChatSessionRepository sessionRepository;
     private final ChatMessageRepository messageRepository;
     private final ChatSummaryRepository summaryRepository;
+    private final AnswerUpvoteRepository upvoteRepository;
     private final VectorSearchService vectorSearchService;
     private final ContextManager contextManager;
     private final ChatSummaryService summaryService;
     private final AnswerGenerationService answerService;
     private final QueryAnalyzerService queryAnalyzer;
     private final UserPreferenceService preferenceService;
+    private final AnalyticsService analyticsService;
+
+    @Value("${bot.cost.input-per-1k-tokens:0.00015}")
+    private double costPerKInput;
+
+    @Value("${bot.cost.output-per-1k-tokens:0.00060}")
+    private double costPerKOutput;
 
     @Transactional
     public ChatResponse processQuery(ChatRequest request) {
         log.info("Processing query: {}", request.getQuestion());
+        long startMs = System.currentTimeMillis();
 
         ChatSession session = getOrCreateSession(request.getChatId(), request.getProduct(),
                 request.getVersion(), request.getUserId());
@@ -84,6 +95,21 @@ public class ChatService {
 
         double confidence = calculateConfidence(relevantChunks, version);
         List<SourceReference> sources = buildSources(relevantChunks);
+
+        // Async query logging for analytics
+        long latencyMs = System.currentTimeMillis() - startMs;
+        String[] citedDocs = relevantChunks.stream()
+            .map(RetrievedChunk::getDocumentName)
+            .distinct()
+            .toArray(String[]::new);
+        double estimatedCost = (result.promptTokens() / 1000.0 * costPerKInput)
+            + (result.completionTokens() / 1000.0 * costPerKOutput);
+        analyticsService.logQuery(
+            request.getUserId(), session.getId(), request.getQuestion(),
+            product, version, confidence, latencyMs,
+            result.promptTokens(), result.completionTokens(),
+            citedDocs, estimatedCost
+        );
 
         return ChatResponse.builder()
             .chatId(session.getId().toString())
@@ -284,16 +310,27 @@ public class ChatService {
     }
 
     @Transactional(readOnly = true)
-    public ChatHistoryResponse getChatHistory(String chatIdStr) {
+    public ChatHistoryResponse getChatHistory(String chatIdStr, UUID userId) {
         UUID chatId = UUID.fromString(chatIdStr);
         List<ChatMessage> messages = messageRepository.findByChatIdOrderByCreatedAtAsc(chatId);
         List<ChatMessageDTO> messageDTOs = messages.stream()
-            .map(msg -> ChatMessageDTO.builder()
-                .id(msg.getId().toString())
-                .role(msg.getRole().toString())
-                .content(msg.getContent())
-                .createdAt(msg.getCreatedAt())
-                .build())
+            .map(msg -> {
+                long upvoteCount = 0;
+                boolean userUpvoted = false;
+                if (msg.getRole() == ChatMessage.Role.ASSISTANT) {
+                    upvoteCount = upvoteRepository.countByChatMessageId(msg.getId());
+                    userUpvoted = userId != null
+                        && upvoteRepository.existsByChatMessageIdAndUserId(msg.getId(), userId);
+                }
+                return ChatMessageDTO.builder()
+                    .id(msg.getId().toString())
+                    .role(msg.getRole().toString())
+                    .content(msg.getContent())
+                    .createdAt(msg.getCreatedAt())
+                    .upvoteCount(upvoteCount)
+                    .userUpvoted(userUpvoted)
+                    .build();
+            })
             .collect(Collectors.toList());
         return ChatHistoryResponse.builder()
             .chatId(chatId.toString())
@@ -390,6 +427,8 @@ public class ChatService {
         private String role;
         private String content;
         private LocalDateTime createdAt;
+        private long upvoteCount;
+        private boolean userUpvoted;
     }
 
     @lombok.Data @lombok.Builder
