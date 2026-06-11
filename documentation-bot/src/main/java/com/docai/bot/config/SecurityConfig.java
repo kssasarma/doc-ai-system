@@ -28,14 +28,19 @@ public class SecurityConfig {
 
     private final JwtAuthFilter jwtAuthFilter;
     private final ApiKeyAuthFilter apiKeyAuthFilter;
+    private final TenantResolutionFilter tenantResolutionFilter;
 
     @Value("${app.cors.allowed-origins:http://localhost:5173,http://localhost:3000}")
     private String allowedOrigins;
 
     private static final String[] PUBLIC_PATHS = {
         "/api/auth/**",
+        "/api/auth/oidc/**",  // Phase 7 — OIDC callback + config
         "/api/share/**",
         "/api/v1/**",
+        "/api/faq",           // Phase 6 — public FAQ browsing
+        "/api/faq/{id}",
+        "/api/branding",      // Phase 7 — white-label branding
         "/actuator/health",
         "/actuator/info",
         "/actuator/prometheus",
@@ -56,6 +61,7 @@ public class SecurityConfig {
             )
             .addFilterBefore(apiKeyAuthFilter, UsernamePasswordAuthenticationFilter.class)
             .addFilterBefore(jwtAuthFilter, ApiKeyAuthFilter.class)
+            .addFilterBefore(tenantResolutionFilter, JwtAuthFilter.class)
             .build();
     }
 

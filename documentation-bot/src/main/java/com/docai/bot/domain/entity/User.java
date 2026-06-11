@@ -47,6 +47,22 @@ public class User {
     @Column(nullable = false, length = 10)
     private Role role;
 
+    @Column(name = "tenant_id", nullable = false)
+    private UUID tenantId;
+
+    // SSO / OIDC fields — null for password-auth users
+    @Column(name = "oidc_sub", length = 500)
+    private String oidcSub;
+
+    @Column(name = "oidc_provider", length = 100)
+    private String oidcProvider;
+
+    @Column(name = "display_name", length = 200)
+    private String displayName;
+
+    @Column(name = "avatar_url", length = 500)
+    private String avatarUrl;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;

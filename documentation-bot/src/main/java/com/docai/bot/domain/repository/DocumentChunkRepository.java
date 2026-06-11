@@ -21,32 +21,55 @@ public interface DocumentChunkRepository extends JpaRepository<DocumentChunk, UU
         double getSimilarity();
     }
 
-    @Query(value = "SELECT CAST(dc.id AS text) AS chunkId, dc.content AS content, " +
-                   "d.document_name AS documentName, d.product AS product, d.version AS version, " +
-                   "(1 - (dc.embedding <=> CAST(:embedding AS vector))) AS similarity " +
-                   "FROM document_chunks dc " +
-                   "JOIN documents d ON dc.document_id = d.id " +
-                   "WHERE d.product = :product AND d.version = :version " +
-                   "ORDER BY dc.embedding <=> CAST(:embedding AS vector) " +
-                   "LIMIT :limit", nativeQuery = true)
+    // Phase 6.7: Small-to-big retrieval — search leaf chunks, but if the leaf has a parent
+    // section chunk, return the parent's (richer) content instead.
+    @Query(value = """
+        SELECT CAST(COALESCE(parent.id, dc.id) AS text)          AS chunkId,
+               COALESCE(parent.content, dc.content)              AS content,
+               d.document_name                                   AS documentName,
+               d.product                                         AS product,
+               d.version                                         AS version,
+               (1 - (dc.embedding <=> CAST(:embedding AS vector))) AS similarity
+        FROM document_chunks dc
+        JOIN documents d ON dc.document_id = d.id
+        LEFT JOIN document_chunks parent ON dc.parent_chunk_id = parent.id
+        WHERE d.product = :product AND d.version = :version
+          AND (dc.is_leaf = TRUE OR dc.is_leaf IS NULL)
+        ORDER BY dc.embedding <=> CAST(:embedding AS vector)
+        LIMIT :limit
+        """, nativeQuery = true)
     List<ChunkSearchResult> findTopKSimilar(String product, String version, String embedding, int limit);
 
-    @Query(value = "SELECT CAST(dc.id AS text) AS chunkId, dc.content AS content, " +
-                   "d.document_name AS documentName, d.product AS product, d.version AS version, " +
-                   "(1 - (dc.embedding <=> CAST(:embedding AS vector))) AS similarity " +
-                   "FROM document_chunks dc " +
-                   "JOIN documents d ON dc.document_id = d.id " +
-                   "WHERE d.product = :product " +
-                   "ORDER BY dc.embedding <=> CAST(:embedding AS vector) " +
-                   "LIMIT :limit", nativeQuery = true)
+    @Query(value = """
+        SELECT CAST(COALESCE(parent.id, dc.id) AS text)          AS chunkId,
+               COALESCE(parent.content, dc.content)              AS content,
+               d.document_name                                   AS documentName,
+               d.product                                         AS product,
+               d.version                                         AS version,
+               (1 - (dc.embedding <=> CAST(:embedding AS vector))) AS similarity
+        FROM document_chunks dc
+        JOIN documents d ON dc.document_id = d.id
+        LEFT JOIN document_chunks parent ON dc.parent_chunk_id = parent.id
+        WHERE d.product = :product
+          AND (dc.is_leaf = TRUE OR dc.is_leaf IS NULL)
+        ORDER BY dc.embedding <=> CAST(:embedding AS vector)
+        LIMIT :limit
+        """, nativeQuery = true)
     List<ChunkSearchResult> findTopKSimilarByProduct(String product, String embedding, int limit);
 
-    @Query(value = "SELECT CAST(dc.id AS text) AS chunkId, dc.content AS content, " +
-                   "d.document_name AS documentName, d.product AS product, d.version AS version, " +
-                   "(1 - (dc.embedding <=> CAST(:embedding AS vector))) AS similarity " +
-                   "FROM document_chunks dc " +
-                   "JOIN documents d ON dc.document_id = d.id " +
-                   "ORDER BY dc.embedding <=> CAST(:embedding AS vector) " +
-                   "LIMIT :limit", nativeQuery = true)
+    @Query(value = """
+        SELECT CAST(COALESCE(parent.id, dc.id) AS text)          AS chunkId,
+               COALESCE(parent.content, dc.content)              AS content,
+               d.document_name                                   AS documentName,
+               d.product                                         AS product,
+               d.version                                         AS version,
+               (1 - (dc.embedding <=> CAST(:embedding AS vector))) AS similarity
+        FROM document_chunks dc
+        JOIN documents d ON dc.document_id = d.id
+        LEFT JOIN document_chunks parent ON dc.parent_chunk_id = parent.id
+        WHERE dc.is_leaf = TRUE OR dc.is_leaf IS NULL
+        ORDER BY dc.embedding <=> CAST(:embedding AS vector)
+        LIMIT :limit
+        """, nativeQuery = true)
     List<ChunkSearchResult> findTopKSimilarAll(String embedding, int limit);
 }

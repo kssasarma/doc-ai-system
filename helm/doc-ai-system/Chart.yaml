@@ -1,0 +1,13 @@
+apiVersion: v2
+name: doc-ai-system
+description: AI-powered documentation intelligence platform — documentation-bot + document-ingestor
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+keywords:
+  - ai
+  - documentation
+  - rag
+  - pgvector
+maintainers:
+  - name: doc-ai-team

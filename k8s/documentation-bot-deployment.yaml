@@ -1,0 +1,87 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: documentation-bot
+  namespace: doc-ai
+  labels:
+    app: documentation-bot
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: documentation-bot
+  template:
+    metadata:
+      labels:
+        app: documentation-bot
+    spec:
+      containers:
+        - name: documentation-bot
+          image: your-registry/documentation-bot:latest
+          ports:
+            - containerPort: 8082
+          envFrom:
+            - configMapRef:
+                name: doc-ai-config
+            - secretRef:
+                name: doc-ai-secrets
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8082
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8082
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            failureThreshold: 5
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "768Mi"
+            limits:
+              cpu: "2000m"
+              memory: "2Gi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: documentation-bot-service
+  namespace: doc-ai
+spec:
+  selector:
+    app: documentation-bot
+  ports:
+    - protocol: TCP
+      port: 8082
+      targetPort: 8082
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: documentation-bot-hpa
+  namespace: doc-ai
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: documentation-bot
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80

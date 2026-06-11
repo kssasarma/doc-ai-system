@@ -1,5 +1,5 @@
 import React, { Suspense, lazy, useState, useMemo, useEffect } from 'react';
-import { Plus, Menu, X, Settings, LogOut, Bookmark, SlidersHorizontal, Bell, Folder, Key } from 'lucide-react';
+import { Plus, Menu, X, Settings, LogOut, Bookmark, SlidersHorizontal, Bell, Folder, Key, BookOpen } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { ChatSession } from '../../types';
 import { useAuth } from '../../context/AuthContext';
@@ -207,6 +207,24 @@ const Sidebar: React.FC<SidebarProps> = ({
           >
             <Folder size={14} />
             {!isCollapsed && 'Collections'}
+          </button>
+
+          <button
+            onClick={() => navigate('/faq')}
+            title="FAQ"
+            className="flex items-center gap-1.5 px-2 py-1.5 text-xs text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
+          >
+            <BookOpen size={14} />
+            {!isCollapsed && 'FAQ'}
+          </button>
+
+          <button
+            onClick={() => navigate('/subscriptions')}
+            title="Subscriptions"
+            className="flex items-center gap-1.5 px-2 py-1.5 text-xs text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
+          >
+            <Bell size={14} />
+            {!isCollapsed && 'Subscriptions'}
           </button>
 
           <button

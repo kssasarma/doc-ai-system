@@ -1,0 +1,86 @@
+global:
+  imageRegistry: "your-registry"
+  imagePullPolicy: IfNotPresent
+  namespace: doc-ai
+
+# ── documentation-bot ──────────────────────────────────────────────────────────
+bot:
+  image:
+    repository: documentation-bot
+    tag: latest
+  replicaCount: 2
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "768Mi"
+    limits:
+      cpu: "2000m"
+      memory: "2Gi"
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    cpuUtilization: 70
+
+# ── document-ingestor ──────────────────────────────────────────────────────────
+ingestor:
+  image:
+    repository: document-ingestor
+    tag: latest
+  replicaCount: 2
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "1Gi"
+    limits:
+      cpu: "2000m"
+      memory: "3Gi"
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 6
+    cpuUtilization: 70
+
+# ── PostgreSQL ─────────────────────────────────────────────────────────────────
+postgres:
+  enabled: true
+  image: pgvector/pgvector:pg16
+  storageSize: "50Gi"
+  storageClass: ""   # use cluster default
+
+# ── Redis ──────────────────────────────────────────────────────────────────────
+redis:
+  enabled: true
+  image: redis:7-alpine
+  resources:
+    limits:
+      memory: "512Mi"
+
+# ── Ingress ────────────────────────────────────────────────────────────────────
+ingress:
+  enabled: true
+  className: nginx
+  host: api.your-domain.com
+  tlsSecret: doc-ai-tls
+  certIssuer: letsencrypt-prod
+
+# ── Secrets (override in CI/CD or use external-secrets) ───────────────────────
+secrets:
+  dbUsername: ""
+  dbPassword: ""
+  openaiApiKey: ""
+  anthropicApiKey: ""
+  jwtSecret: ""
+  redisPassword: ""
+  awsAccessKeyId: ""
+  awsSecretAccessKey: ""
+  s3Bucket: "docai-documents"
+
+# ── Config ─────────────────────────────────────────────────────────────────────
+config:
+  corsAllowedOrigins: "https://your-frontend-domain.com"
+  openaiChatModel: "gpt-4o-mini"
+  openaiEmbeddingModel: "gpt-4o-embedding-4k"
+  storageType: "s3"
+  awsRegion: "us-east-1"
+  rateLimitPerMinute: "30"

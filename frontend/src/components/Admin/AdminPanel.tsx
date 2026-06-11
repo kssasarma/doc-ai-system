@@ -1,6 +1,6 @@
 import React, { Suspense, lazy } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, BarChart2, FileText, Map, TrendingUp, DollarSign, Users, Shield, HelpCircle } from 'lucide-react';
+import { ArrowLeft, BarChart2, FileText, Map, TrendingUp, DollarSign, Users, Shield, HelpCircle, MessageSquare, AlertTriangle, Building2, Lock } from 'lucide-react';
 
 const OverviewTab = lazy(() => import('./OverviewTab'));
 const DocumentsTab = lazy(() => import('./DocumentsTab'));
@@ -10,16 +10,24 @@ const CostTrackingTab = lazy(() => import('./CostTrackingTab'));
 const UserAccessTab = lazy(() => import('./UserAccessTab'));
 const AuditLogTab = lazy(() => import('./AuditLogTab'));
 const EscalationsTab = lazy(() => import('./EscalationsTab'));
+const FaqManagementTab = lazy(() => import('./FaqManagementTab'));
+const GapReportTab = lazy(() => import('./GapReportTab'));
+const TenantManagementTab = lazy(() => import('./TenantManagementTab'));
+const GdprTab = lazy(() => import('./GdprTab'));
 
 const TABS = [
-  { id: 'overview', label: 'Overview', icon: <BarChart2 size={15} /> },
-  { id: 'documents', label: 'Documents', icon: <FileText size={15} /> },
-  { id: 'coverage', label: 'Coverage', icon: <Map size={15} /> },
-  { id: 'query-intel', label: 'Query Intel', icon: <TrendingUp size={15} /> },
-  { id: 'cost', label: 'Cost', icon: <DollarSign size={15} /> },
-  { id: 'users', label: 'Users & Access', icon: <Users size={15} /> },
-  { id: 'audit', label: 'Audit Log', icon: <Shield size={15} /> },
-  { id: 'escalations', label: 'Escalations', icon: <HelpCircle size={15} /> },
+  { id: 'overview',    label: 'Overview',      icon: <BarChart2 size={15} /> },
+  { id: 'documents',   label: 'Documents',     icon: <FileText size={15} /> },
+  { id: 'coverage',    label: 'Coverage',      icon: <Map size={15} /> },
+  { id: 'query-intel', label: 'Query Intel',   icon: <TrendingUp size={15} /> },
+  { id: 'faq',         label: 'FAQ Review',    icon: <MessageSquare size={15} /> },
+  { id: 'gap-reports', label: 'Gap Reports',   icon: <AlertTriangle size={15} /> },
+  { id: 'cost',        label: 'Cost',          icon: <DollarSign size={15} /> },
+  { id: 'users',       label: 'Users & Access',icon: <Users size={15} /> },
+  { id: 'audit',       label: 'Audit Log',     icon: <Shield size={15} /> },
+  { id: 'escalations', label: 'Escalations',   icon: <HelpCircle size={15} /> },
+  { id: 'tenants',     label: 'Tenants',       icon: <Building2 size={15} /> },
+  { id: 'gdpr',        label: 'GDPR',          icon: <Lock size={15} /> },
 ] as const;
 
 type TabId = (typeof TABS)[number]['id'];
@@ -82,6 +90,10 @@ export default function AdminPanel() {
           {activeTab === 'users' && <UserAccessTab />}
           {activeTab === 'audit' && <AuditLogTab />}
           {activeTab === 'escalations' && <EscalationsTab />}
+          {activeTab === 'faq' && <FaqManagementTab />}
+          {activeTab === 'gap-reports' && <GapReportTab />}
+          {activeTab === 'tenants' && <TenantManagementTab />}
+          {activeTab === 'gdpr' && <GdprTab />}
         </Suspense>
       </div>
     </div>

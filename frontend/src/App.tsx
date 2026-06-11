@@ -15,6 +15,8 @@ const CollectionsPage = lazy(() => import('./components/Collections/CollectionsP
 const SharedChatView = lazy(() => import('./components/Chat/SharedChatView'));
 const PreferencesModal = lazy(() => import('./components/Settings/PreferencesModal'));
 const ApiKeysPage = lazy(() => import('./components/Settings/ApiKeysPage'));
+const FaqPage = lazy(() => import('./components/Faq/FaqPage'));
+const SubscriptionsPage = lazy(() => import('./components/Subscriptions/SubscriptionsPage'));
 
 const LoadingSpinner = () => (
   <div className="flex h-screen w-full items-center justify-center">
@@ -85,6 +87,7 @@ function ChatPage() {
           sources: response.data.sources,
           confidence: response.data.confidence,
           relatedQuestions: response.data.relatedQuestions,
+          reasoningChain: response.data.reasoningChain,
         }));
       } else {
         removeTypingIndicators(activeSessionId);
@@ -207,6 +210,20 @@ function App() {
         <ProtectedRoute>
           <Suspense fallback={<LoadingSpinner />}>
             <ApiKeysPage />
+          </Suspense>
+        </ProtectedRoute>
+      } />
+      <Route path="/faq" element={
+        <ProtectedRoute>
+          <Suspense fallback={<LoadingSpinner />}>
+            <FaqPage />
+          </Suspense>
+        </ProtectedRoute>
+      } />
+      <Route path="/subscriptions" element={
+        <ProtectedRoute>
+          <Suspense fallback={<LoadingSpinner />}>
+            <SubscriptionsPage />
           </Suspense>
         </ProtectedRoute>
       } />

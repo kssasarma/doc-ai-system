@@ -3,7 +3,7 @@ import {
   User, Bot, Copy, Check, ThumbsUp, ThumbsDown,
   ChevronDown, ChevronUp, Bookmark, BookmarkCheck,
   RefreshCw, ChevronRight, ArrowUp, FolderPlus, HelpCircle,
-  MessageSquarePlus, Users,
+  MessageSquarePlus, Users, GitBranch,
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { ChatMessage } from '../../types';
@@ -78,6 +78,8 @@ const MessageItem: React.FC<MessageItemProps> = ({
 
   const hasSources = !isUser && message.sources && message.sources.length > 0;
   const showConfidence = !isUser && message.confidence !== undefined && !message.isTyping;
+  const hasReasoningChain = !isUser && message.reasoningChain && message.reasoningChain.length > 0 && !message.isTyping;
+  const [chainExpanded, setChainExpanded] = useState(false);
   const hasRelated = !isUser && message.relatedQuestions && message.relatedQuestions.length > 0 && !message.isTyping;
   const isLowConfidence = (message.confidence ?? 1) < 0.6;
   const isTeamVerified = upvoteCount >= 3;
@@ -392,6 +394,38 @@ const MessageItem: React.FC<MessageItemProps> = ({
                 )}
               </div>
             ))}
+          </div>
+        )}
+
+        {/* Multi-hop reasoning chain */}
+        {hasReasoningChain && (
+          <div className="mt-1.5 border border-purple-100 rounded-lg bg-purple-50">
+            <button
+              onClick={() => setChainExpanded(v => !v)}
+              className="flex items-center gap-2 w-full px-3 py-2 text-xs font-medium text-purple-700 hover:bg-purple-100 rounded-lg transition-colors"
+            >
+              <GitBranch size={12} />
+              Multi-hop reasoning — {message.reasoningChain!.length} search passes
+              {chainExpanded ? <ChevronUp size={11} className="ml-auto" /> : <ChevronDown size={11} className="ml-auto" />}
+            </button>
+            {chainExpanded && (
+              <div className="px-3 pb-2 space-y-1.5">
+                {message.reasoningChain!.map((step, i) => (
+                  <div key={i} className="flex items-start gap-2 text-xs">
+                    <span className="w-4 h-4 rounded-full bg-purple-200 text-purple-700 flex items-center justify-center flex-shrink-0 text-[10px] font-bold mt-0.5">
+                      {i + 1}
+                    </span>
+                    <div className="flex-1">
+                      <p className="text-purple-800 font-medium">{step.subQuestion}</p>
+                      <p className="text-purple-500 mt-0.5">
+                        {step.chunksFound} chunk{step.chunksFound !== 1 ? 's' : ''} found
+                        {step.maxSimilarity > 0 && ` · ${Math.round(step.maxSimilarity * 100)}% match`}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 

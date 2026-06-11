@@ -21,6 +21,7 @@
 		<java.version>21</java.version>
 		<pgvector.version>0.1.6</pgvector.version>
 		<jjwt.version>0.12.6</jjwt.version>
+		<aws.sdk.version>2.29.52</aws.sdk.version>
 	</properties>
 
 	<repositories>
@@ -163,6 +164,32 @@
 			<groupId>net.logstash.logback</groupId>
 			<artifactId>logstash-logback-encoder</artifactId>
 			<version>8.0</version>
+		</dependency>
+
+		<!-- Phase 7: Spring Security OAuth2 Client (OIDC / SSO) -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-oauth2-client</artifactId>
+		</dependency>
+
+		<!-- Phase 7: Redis (embedding cache, session store) -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-data-redis</artifactId>
+		</dependency>
+
+		<!-- Phase 7: Anthropic Claude via Spring AI -->
+		<dependency>
+			<groupId>org.springframework.ai</groupId>
+			<artifactId>spring-ai-starter-model-anthropic</artifactId>
+			<version>2.0.0-M2</version>
+		</dependency>
+
+		<!-- Phase 7: AWS SDK v2 S3 (used by documentation-bot for document URL resolution) -->
+		<dependency>
+			<groupId>software.amazon.awssdk</groupId>
+			<artifactId>s3</artifactId>
+			<version>${aws.sdk.version}</version>
 		</dependency>
 	</dependencies>
 

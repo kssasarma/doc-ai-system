@@ -1,0 +1,42 @@
+# Requires: nginx ingress controller (kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/cloud/deploy.yaml)
+# and cert-manager for TLS (https://cert-manager.io)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: doc-ai-ingress
+  namespace: doc-ai
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "120"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - api.your-domain.com
+      secretName: doc-ai-tls
+  rules:
+    - host: api.your-domain.com
+      http:
+        paths:
+          - path: /api/ingest
+            pathType: Prefix
+            backend:
+              service:
+                name: document-ingestor-service
+                port:
+                  number: 8081
+          - path: /api/documents
+            pathType: Prefix
+            backend:
+              service:
+                name: document-ingestor-service
+                port:
+                  number: 8081
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: documentation-bot-service
+                port:
+                  number: 8082

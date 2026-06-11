@@ -1,3 +1,9 @@
+export interface ReasoningStep {
+  subQuestion: string;
+  chunksFound: number;
+  maxSimilarity: number;
+}
+
 export interface ChatMessage {
   id: string;
   content: string;
@@ -12,6 +18,7 @@ export interface ChatMessage {
   isBookmarked?: boolean;
   upvoteCount?: number;
   userUpvoted?: boolean;
+  reasoningChain?: ReasoningStep[];
 }
 
 export interface ChatSession {
@@ -81,6 +88,7 @@ export interface BackendChatResponse {
   confidence: number;
   sessionTitle?: string;
   relatedQuestions?: string[];
+  reasoningChain?: ReasoningStep[];
 }
 
 export interface APIResponse {

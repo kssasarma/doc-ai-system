@@ -14,7 +14,7 @@ import com.docai.ingestor.domain.entity.Document;
 import com.docai.ingestor.domain.entity.Document.IngestionStatus;
 import com.docai.ingestor.domain.entity.DocumentChunk;
 import com.docai.ingestor.domain.model.FileMetadata;
-import com.docai.ingestor.domain.model.TextChunk;
+import com.docai.ingestor.domain.model.SemanticChunk;
 import com.docai.ingestor.domain.repository.DocumentChunkRepository;
 import com.docai.ingestor.domain.repository.DocumentRepository;
 
@@ -30,6 +30,7 @@ public class IngestionService {
     private final DocumentChunkRepository chunkRepository;
     private final List<DocumentParser> parsers;
     private final TextChunker textChunker;
+    private final SemanticChunker semanticChunker;
     private final EmbeddingService embeddingService;
 
     /**
@@ -139,36 +140,58 @@ public class IngestionService {
             throw new IllegalStateException("Parsed content is empty for: " + file.getName());
         }
 
-        List<TextChunk> textChunks = textChunker.chunkText(content);
+        List<SemanticChunk> semanticChunks = semanticChunker.chunk(content);
 
-        for (TextChunk textChunk : textChunks) {
-            log.debug("Generating embedding for chunk {} of {}", textChunk.getIndex(), file.getName());
-            float[] embedding = embeddingService.generateEmbedding(textChunk.getContent());
+        // Two-pass: first save all chunks to get their DB IDs, then update parent references.
+        // We use a list to track saved entities by chunk index for parent-linking.
+        DocumentChunk[] savedChunks = new DocumentChunk[semanticChunks.size()];
+
+        for (SemanticChunk sc : semanticChunks) {
+            log.debug("Embedding chunk {} ({}) of {}", sc.getIndex(), sc.getChunkType(), file.getName());
+            float[] embedding = embeddingService.generateEmbedding(sc.getContent());
 
             DocumentChunk chunk = DocumentChunk.builder()
                 .documentId(document.getId())
-                .chunkIndex(textChunk.getIndex())
-                .content(textChunk.getContent())
+                .chunkIndex(sc.getIndex())
+                .content(sc.getContent())
                 .embedding(embedding)
-                .tokenCount(textChunk.getTokenCount())
+                .tokenCount(sc.getTokenCount())
+                .chunkType(sc.getChunkType())
+                .sectionHeader(sc.getSectionHeader())
+                .pageNumber(sc.getPageNumber())
+                .codeLanguage(sc.getCodeLanguage())
+                .isLeaf(sc.isLeaf())
                 .build();
 
-            chunkRepository.save(chunk);
+            savedChunks[sc.getIndex()] = chunkRepository.save(chunk);
         }
 
-        document.setChunkCount(textChunks.size());
+        // Second pass: link leaf chunks to their parent section chunk
+        for (SemanticChunk sc : semanticChunks) {
+            if (sc.getParentChunkIndex() != null) {
+                DocumentChunk leaf   = savedChunks[sc.getIndex()];
+                DocumentChunk parent = savedChunks[sc.getParentChunkIndex()];
+                if (leaf != null && parent != null) {
+                    leaf.setParentChunkId(parent.getId());
+                    chunkRepository.save(leaf);
+                }
+            }
+        }
+
+        document.setChunkCount(semanticChunks.size());
         document.setStatus(IngestionStatus.COMPLETED);
-        document.setFilePath(null); // file path no longer valid after deletion
+        document.setFilePath(null);
         documentRepository.save(document);
 
-        // Delete original file after successful processing
         if (file.exists() && !file.delete()) {
             log.warn("Could not delete source file after ingestion: {}", file.getAbsolutePath());
         } else {
             log.info("Deleted source file after ingestion: {}", file.getAbsolutePath());
         }
 
-        log.info("Successfully ingested: {} with {} chunks", file.getName(), textChunks.size());
+        long leafCount = semanticChunks.stream().filter(SemanticChunk::isLeaf).count();
+        log.info("Successfully ingested: {} — {} total chunks ({} leaf, {} section)",
+            file.getName(), semanticChunks.size(), leafCount, semanticChunks.size() - leafCount);
     }
 
     private String parseDocument(File file, String fileType) throws Exception {

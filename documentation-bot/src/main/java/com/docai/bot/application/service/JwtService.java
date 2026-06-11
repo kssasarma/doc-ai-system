@@ -32,6 +32,7 @@ public class JwtService {
             .subject(user.getId().toString())
             .claim("username", user.getUsername())
             .claim("role", user.getRole().name())
+            .claim("tenantId", user.getTenantId() != null ? user.getTenantId().toString() : null)
             .issuedAt(new Date())
             .expiration(new Date(System.currentTimeMillis() + expirationMs))
             .signWith(getSigningKey())

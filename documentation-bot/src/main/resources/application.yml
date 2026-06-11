@@ -50,6 +50,20 @@ spring:
         options:
           model: ${OPENAI_EMBEDDING_MODEL:gpt-4o-embedding-4k}
           encodingFormat: float
+    # Phase 7.4 — Anthropic Claude (optional; omit key to disable)
+    anthropic:
+      api-key: ${ANTHROPIC_API_KEY:}
+      chat:
+        options:
+          model: ${ANTHROPIC_CHAT_MODEL:claude-sonnet-4-6}
+
+  # Phase 7.5 — Redis (optional; omit host to disable embedding cache)
+  data:
+    redis:
+      host: ${REDIS_HOST:}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: 2000ms
 
 server:
   port: 8082
@@ -63,6 +77,14 @@ app:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:3000}
   rate-limit:
     requests-per-minute: ${RATE_LIMIT_PER_MINUTE:30}
+  # Phase 7.1 — default tenant (all pre-Phase-7 data is assigned here)
+  tenant:
+    default-id: ${DEFAULT_TENANT_ID:00000000-0000-0000-0000-000000000001}
+  # Phase 7.5 — AWS / S3
+  aws:
+    region: ${AWS_REGION:us-east-1}
+    access-key: ${AWS_ACCESS_KEY_ID:}
+    secret-key: ${AWS_SECRET_ACCESS_KEY:}
 
 management:
   endpoints:
@@ -99,3 +121,4 @@ bot:
   cost:
     input-per-1k-tokens: ${BOT_COST_INPUT_PER_1K:0.00015}
     output-per-1k-tokens: ${BOT_COST_OUTPUT_PER_1K:0.00060}
+

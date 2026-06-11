@@ -36,6 +36,8 @@ public class ChatService {
     private final ContextManager contextManager;
     private final ChatSummaryService summaryService;
     private final AnswerGenerationService answerService;
+    private final MultiHopReasoningService multiHopService;
+    private final PeopleAlsoAskedService peopleAlsoAskedService;
     private final QueryAnalyzerService queryAnalyzer;
     private final UserPreferenceService preferenceService;
     private final AnalyticsService analyticsService;
@@ -70,14 +72,39 @@ public class ChatService {
         String chatContext = contextManager.buildContextPrompt(session.getId());
         String enhancedQuery = enhanceQueryWithContext(request.getQuestion(), chatContext);
 
-        List<RetrievedChunk> relevantChunks = vectorSearchService.search(enhancedQuery, product, version);
-        AnswerGenerationService.AnswerResult result = answerService.generateAnswer(
-            request.getQuestion(), chatContext, relevantChunks,
-            prefs.getVerbosity(), prefs.getAnswerFormat()
-        );
+        String finalAnswer;
+        List<String> relatedQuestionsFromLlm;
+        List<RetrievedChunk> relevantChunks;
+        List<MultiHopReasoningService.HopResult> reasoningChain = null;
+        int promptTokens, completionTokens;
+
+        if (multiHopService.isComplexQuery(request.getQuestion())) {
+            log.info("Complex query detected — using multi-hop reasoning");
+            MultiHopReasoningService.MultiHopAnswer multiHop = multiHopService.reason(
+                request.getQuestion(), chatContext, product, version,
+                prefs.getVerbosity(), prefs.getAnswerFormat()
+            );
+            finalAnswer = multiHop.answer();
+            relatedQuestionsFromLlm = multiHop.relatedQuestions();
+            reasoningChain = multiHop.hops();
+            relevantChunks = multiHop.hops().stream()
+                .flatMap(h -> h.chunks().stream()).distinct().toList();
+            promptTokens = multiHop.promptTokens();
+            completionTokens = multiHop.completionTokens();
+        } else {
+            relevantChunks = vectorSearchService.search(enhancedQuery, product, version);
+            AnswerGenerationService.AnswerResult result = answerService.generateAnswer(
+                request.getQuestion(), chatContext, relevantChunks,
+                prefs.getVerbosity(), prefs.getAnswerFormat()
+            );
+            finalAnswer = result.answer();
+            relatedQuestionsFromLlm = result.relatedQuestions();
+            promptTokens = result.promptTokens();
+            completionTokens = result.completionTokens();
+        }
 
         saveMessage(session.getId(), ChatMessage.Role.USER, request.getQuestion());
-        ChatMessage assistantMessage = saveMessage(session.getId(), ChatMessage.Role.ASSISTANT, result.answer());
+        ChatMessage assistantMessage = saveMessage(session.getId(), ChatMessage.Role.ASSISTANT, finalAnswer);
 
         if (session.getProduct() == null && product != null) session.setProduct(product);
         if (session.getVersion() == null && version != null) session.setVersion(version);
@@ -85,7 +112,7 @@ public class ChatService {
 
         String sessionTitle = null;
         if (isFirstExchange) {
-            sessionTitle = answerService.generateSessionTitle(request.getQuestion(), result.answer());
+            sessionTitle = answerService.generateSessionTitle(request.getQuestion(), finalAnswer);
             session.setTitle(sessionTitle);
             log.info("Generated session title: {}", sessionTitle);
         }
@@ -96,29 +123,50 @@ public class ChatService {
         double confidence = calculateConfidence(relevantChunks, version);
         List<SourceReference> sources = buildSources(relevantChunks);
 
-        // Async query logging for analytics
+        // Async: log query to session graph + analytics
         long latencyMs = System.currentTimeMillis() - startMs;
         String[] citedDocs = relevantChunks.stream()
             .map(RetrievedChunk::getDocumentName)
             .distinct()
             .toArray(String[]::new);
-        double estimatedCost = (result.promptTokens() / 1000.0 * costPerKInput)
-            + (result.completionTokens() / 1000.0 * costPerKOutput);
+        double estimatedCost = (promptTokens / 1000.0 * costPerKInput)
+            + (completionTokens / 1000.0 * costPerKOutput);
         analyticsService.logQuery(
             request.getUserId(), session.getId(), request.getQuestion(),
             product, version, confidence, latencyMs,
-            result.promptTokens(), result.completionTokens(),
-            citedDocs, estimatedCost
+            promptTokens, completionTokens, citedDocs, estimatedCost
         );
+        peopleAlsoAskedService.recordQuery(
+            session.getId(), request.getUserId(), request.getQuestion(), product, version
+        );
+
+        // "People Also Asked" from real query data; fall back to LLM-generated if sparse
+        List<String> realAlsoAsked = peopleAlsoAskedService.getPeopleAlsoAsked(
+            request.getQuestion(), session.getId(), product, version
+        );
+        List<String> relatedQuestions = realAlsoAsked.isEmpty() ? relatedQuestionsFromLlm : realAlsoAsked;
+
+        // Build reasoning chain summary for multi-hop responses
+        List<ReasoningStep> chain = null;
+        if (reasoningChain != null) {
+            chain = reasoningChain.stream()
+                .map(h -> ReasoningStep.builder()
+                    .subQuestion(h.subQuestion())
+                    .chunksFound(h.chunks().size())
+                    .maxSimilarity(h.maxSimilarity())
+                    .build())
+                .toList();
+        }
 
         return ChatResponse.builder()
             .chatId(session.getId().toString())
             .messageId(assistantMessage.getId().toString())
-            .answer(result.answer())
+            .answer(finalAnswer)
             .sources(sources)
             .confidence(confidence)
             .sessionTitle(sessionTitle)
-            .relatedQuestions(result.relatedQuestions())
+            .relatedQuestions(relatedQuestions)
+            .reasoningChain(chain)
             .build();
     }
 
@@ -394,6 +442,14 @@ public class ChatService {
         private double confidence;
         private String sessionTitle;
         private List<String> relatedQuestions;
+        private List<ReasoningStep> reasoningChain;
+    }
+
+    @lombok.Data @lombok.Builder
+    public static class ReasoningStep {
+        private String subQuestion;
+        private int chunksFound;
+        private double maxSimilarity;
     }
 
     @lombok.Data @lombok.Builder

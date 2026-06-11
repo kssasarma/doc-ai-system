@@ -20,8 +20,12 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 @Entity
-@Table(name = "document_chunks", indexes = { @Index(name = "idx_document_id", columnList = "document_id"),
-		@Index(name = "idx_chunk_index", columnList = "document_id,chunk_index") })
+@Table(name = "document_chunks", indexes = {
+    @Index(name = "idx_document_id",    columnList = "document_id"),
+    @Index(name = "idx_chunk_index",    columnList = "document_id,chunk_index"),
+    @Index(name = "idx_chunks_type_doc",columnList = "document_id,chunk_type"),
+    @Index(name = "idx_chunks_leaf",    columnList = "document_id,is_leaf")
+})
 @Data
 @Builder
 @NoArgsConstructor
@@ -47,6 +51,27 @@ public class DocumentChunk {
 
 	@Column(name = "token_count")
 	private Integer tokenCount;
+
+	/** Phase 6.7 — semantic chunking v2 fields */
+	@Column(name = "chunk_type", length = 50)
+	@Builder.Default
+	private String chunkType = "TEXT";   // TEXT | CODE | TABLE | HEADER
+
+	@Column(name = "parent_chunk_id")
+	private UUID parentChunkId;
+
+	@Column(name = "section_header", columnDefinition = "TEXT")
+	private String sectionHeader;
+
+	@Column(name = "page_number")
+	private Integer pageNumber;
+
+	@Column(name = "code_language", length = 50)
+	private String codeLanguage;
+
+	@Column(name = "is_leaf", nullable = false)
+	@Builder.Default
+	private boolean isLeaf = true;
 
 	@CreationTimestamp
 	@Column(name = "created_at", nullable = false, updatable = false)

@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: doc-ai-config
+  namespace: {{ .Values.global.namespace }}
+data:
+  SPRING_DATABASE_URL: "jdbc:postgresql://postgres-service:5432/docai"
+  REDIS_HOST: "redis-service"
+  REDIS_PORT: "6379"
+  OPENAI_BASE_URL: "https://api.openai.com/v1"
+  OPENAI_CHAT_MODEL: {{ .Values.config.openaiChatModel | quote }}
+  OPENAI_EMBEDDING_MODEL: {{ .Values.config.openaiEmbeddingModel | quote }}
+  CORS_ALLOWED_ORIGINS: {{ .Values.config.corsAllowedOrigins | quote }}
+  STORAGE_TYPE: {{ .Values.config.storageType | quote }}
+  AWS_REGION: {{ .Values.config.awsRegion | quote }}
+  RATE_LIMIT_PER_MINUTE: {{ .Values.config.rateLimitPerMinute | quote }}

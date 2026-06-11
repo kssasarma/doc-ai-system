@@ -22,6 +22,7 @@
 		<tika.version>3.2.3</tika.version>
 		<pgvector.version>0.1.6</pgvector.version>
 		<jjwt.version>0.12.6</jjwt.version>
+		<aws.sdk.version>2.29.52</aws.sdk.version>
 	</properties>
 
 	<repositories>
@@ -157,6 +158,13 @@
 			<groupId>net.logstash.logback</groupId>
 			<artifactId>logstash-logback-encoder</artifactId>
 			<version>8.0</version>
+		</dependency>
+
+		<!-- Phase 7: AWS SDK v2 S3 (S3DocumentStorageService) -->
+		<dependency>
+			<groupId>software.amazon.awssdk</groupId>
+			<artifactId>s3</artifactId>
+			<version>${aws.sdk.version}</version>
 		</dependency>
 	</dependencies>
 

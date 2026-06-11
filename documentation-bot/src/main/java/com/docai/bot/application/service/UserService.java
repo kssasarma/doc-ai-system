@@ -1,9 +1,14 @@
 package com.docai.bot.application.service;
 
+import java.util.UUID;
+
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.docai.bot.config.TenantContext;
 import com.docai.bot.domain.entity.User;
 import com.docai.bot.domain.repository.UserRepository;
 
@@ -35,11 +40,21 @@ public class UserService {
             .email(email)
             .passwordHash(passwordEncoder.encode(password))
             .role(role)
+            .tenantId(TenantContext.get())
             .build();
 
         User saved = userRepository.save(user);
         log.info("Registered user '{}' with role {}", username, role);
         return saved;
+    }
+
+    /** Returns the UUID of the currently authenticated user from the Spring Security context. */
+    public UUID currentUserId() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated()) {
+            throw new IllegalStateException("No authenticated user in context");
+        }
+        return UUID.fromString(auth.getName());
     }
 
     public User authenticate(String username, String password) {
