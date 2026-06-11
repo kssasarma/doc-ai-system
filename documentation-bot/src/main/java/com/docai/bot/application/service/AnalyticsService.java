@@ -230,6 +230,8 @@ public class AnalyticsService {
             .map(row -> DocumentCoverageDTO.builder()
                 .documentName(str(row[0]))
                 .citationCount(toLong(row[1]))
+                .product(str(row[2]))
+                .version(str(row[3]))
                 .build())
             .collect(Collectors.toList());
     }

@@ -1,6 +1,7 @@
 package com.docai.ingestor.config;
 
 import java.time.Instant;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 import org.springframework.http.HttpStatus;
@@ -74,6 +75,7 @@ public class GlobalExceptionHandler {
         private String message;
         private String path;
         private long timestamp;
+        private String traceId;
 
         public static ErrorResponse of(String code, String message, WebRequest request) {
             return ErrorResponse.builder()
@@ -81,6 +83,7 @@ public class GlobalExceptionHandler {
                 .message(message)
                 .path(request.getDescription(false).replace("uri=", ""))
                 .timestamp(Instant.now().toEpochMilli())
+                .traceId(UUID.randomUUID().toString().replace("-", ""))
                 .build();
         }
     }

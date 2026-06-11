@@ -7,12 +7,16 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import com.docai.bot.domain.model.RetrievedChunk;
 
-import lombok.RequiredArgsConstructor;
+import io.github.resilience4j.bulkhead.Bulkhead;
+import io.github.resilience4j.bulkhead.BulkheadFullException;
+import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
+import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import lombok.extern.slf4j.Slf4j;
 
 /**
@@ -22,17 +26,30 @@ import lombok.extern.slf4j.Slf4j;
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class MultiHopReasoningService {
 
     private static final int MAX_SUBQUESTIONS = 3;
     private static final String SUB_MARKER = "SUB:";
+    private static final String LLM_UNAVAILABLE =
+        "The AI service is temporarily unavailable. Please try again in a moment.";
 
     private final ChatClient.Builder chatClientBuilder;
     private final VectorSearchService vectorSearchService;
+    private final CircuitBreaker llmCircuitBreaker;
+    private final Bulkhead llmBulkhead;
 
     @Value("${bot.min-similarity-threshold:0.55}")
     private double minSimilarityThreshold;
+
+    public MultiHopReasoningService(ChatClient.Builder chatClientBuilder,
+                                    VectorSearchService vectorSearchService,
+                                    @Qualifier("llmCircuitBreaker") CircuitBreaker llmCircuitBreaker,
+                                    @Qualifier("llmBulkhead") Bulkhead llmBulkhead) {
+        this.chatClientBuilder = chatClientBuilder;
+        this.vectorSearchService = vectorSearchService;
+        this.llmCircuitBreaker = llmCircuitBreaker;
+        this.llmBulkhead = llmBulkhead;
+    }
 
     public record HopResult(
         String subQuestion,
@@ -118,7 +135,7 @@ public class MultiHopReasoningService {
             """.formatted(MAX_SUBQUESTIONS, productCtx, question, SUB_MARKER);
 
         try {
-            String response = chatClientBuilder.build().prompt().user(prompt).call().content();
+            String response = callLlmProtected(prompt);
             if (response == null || response.isBlank()) return List.of(question);
 
             List<String> subQs = response.lines()
@@ -182,7 +199,11 @@ public class MultiHopReasoningService {
         prompt.append("Then provide 3 follow-up questions, one per line.\n");
 
         try {
-            var chatResponse = chatClientBuilder.build().prompt().user(prompt.toString()).call().chatResponse();
+            var chatResponse = llmBulkhead.executeSupplier(
+                () -> llmCircuitBreaker.executeSupplier(
+                    () -> chatClientBuilder.build().prompt().user(prompt.toString()).call().chatResponse()
+                )
+            );
             String content = chatResponse != null && chatResponse.getResult() != null
                 ? chatResponse.getResult().getOutput().getText() : null;
 
@@ -211,12 +232,29 @@ public class MultiHopReasoningService {
                 answer != null ? answer : "Unable to synthesize an answer at this time.",
                 hops, related, promptTokens, completionTokens
             );
+        } catch (CallNotPermittedException | BulkheadFullException e) {
+            log.error("LLM resilience barrier blocked multi-hop synthesis: {}", e.getMessage());
+            return new MultiHopAnswer(LLM_UNAVAILABLE, hops, List.of(), 0, 0);
         } catch (Exception e) {
             log.error("Multi-hop synthesis failed: {}", e.getMessage());
-            return new MultiHopAnswer(
-                "The AI service is temporarily unavailable. Please try again in a moment.",
-                hops, List.of(), 0, 0
+            return new MultiHopAnswer(LLM_UNAVAILABLE, hops, List.of(), 0, 0);
+        }
+    }
+
+    /** Single LLM text call wrapped with bulkhead → circuit breaker. */
+    private String callLlmProtected(String prompt) {
+        try {
+            return llmBulkhead.executeSupplier(
+                () -> llmCircuitBreaker.executeSupplier(
+                    () -> chatClientBuilder.build().prompt().user(prompt).call().content()
+                )
             );
+        } catch (CallNotPermittedException e) {
+            log.error("LLM circuit breaker OPEN in MultiHopReasoningService");
+            return null;
+        } catch (BulkheadFullException e) {
+            log.error("LLM bulkhead full in MultiHopReasoningService");
+            return null;
         }
     }
 }

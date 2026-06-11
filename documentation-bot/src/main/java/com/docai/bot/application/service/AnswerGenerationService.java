@@ -6,27 +6,42 @@ import java.util.List;
 
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import com.docai.bot.domain.model.RetrievedChunk;
 
-import lombok.RequiredArgsConstructor;
+import io.github.resilience4j.bulkhead.Bulkhead;
+import io.github.resilience4j.bulkhead.BulkheadFullException;
+import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
+import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class AnswerGenerationService {
 
     private static final int MAX_ATTEMPTS = 3;
     private static final long INITIAL_BACKOFF_MS = 1000L;
     private static final String FOLLOW_UP_MARKER = "---FOLLOW-UP-QUESTIONS---";
+    private static final String LLM_UNAVAILABLE =
+        "The AI service is temporarily unavailable. Please try again in a moment.";
 
     private final ChatClient.Builder chatClientBuilder;
+    private final CircuitBreaker llmCircuitBreaker;
+    private final Bulkhead llmBulkhead;
 
     @Value("${bot.min-similarity-threshold:0.55}")
     private double minSimilarityThreshold;
+
+    public AnswerGenerationService(ChatClient.Builder chatClientBuilder,
+                                   @Qualifier("llmCircuitBreaker") CircuitBreaker llmCircuitBreaker,
+                                   @Qualifier("llmBulkhead") Bulkhead llmBulkhead) {
+        this.chatClientBuilder = chatClientBuilder;
+        this.llmCircuitBreaker = llmCircuitBreaker;
+        this.llmBulkhead = llmBulkhead;
+    }
 
     public record AnswerResult(String answer, List<String> relatedQuestions,
                                int promptTokens, int completionTokens) {}
@@ -153,41 +168,25 @@ public class AnswerGenerationService {
         return new AnswerResult(answer, relatedQuestions, 0, 0);
     }
 
+    /**
+     * Calls the LLM with retry (up to MAX_ATTEMPTS), with each attempt protected by
+     * the circuit breaker (opens after 5/10 failures) and bulkhead (max 5 concurrent calls).
+     * Returns a degraded message instead of throwing on permanent failure.
+     */
     private LlmResult callWithRetry(String prompt, String question) {
         Exception lastException = null;
         for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
             try {
-                ChatResponse chatResponse = chatClientBuilder.build()
-                    .prompt()
-                    .user(prompt)
-                    .call()
-                    .chatResponse();
-
-                String content = chatResponse != null && chatResponse.getResult() != null
-                    ? chatResponse.getResult().getOutput().getText() : null;
-
-                int promptTokens = 0;
-                int completionTokens = 0;
-                try {
-                    if (chatResponse != null && chatResponse.getMetadata() != null
-                            && chatResponse.getMetadata().getUsage() != null) {
-                        var usage = chatResponse.getMetadata().getUsage();
-                        promptTokens = usage.getPromptTokens() != null
-                            ? usage.getPromptTokens().intValue() : estimateTokens(prompt);
-                        completionTokens = usage.getCompletionTokens() != null
-                            ? usage.getCompletionTokens().intValue() : estimateTokens(content);
-                    } else {
-                        promptTokens = estimateTokens(prompt);
-                        completionTokens = estimateTokens(content);
-                    }
-                } catch (Exception ex) {
-                    promptTokens = estimateTokens(prompt);
-                    completionTokens = estimateTokens(content);
-                }
-
+                LlmResult result = callProtectedLlm(prompt);
                 if (attempt > 1) log.info("LLM call succeeded on attempt {}", attempt);
                 log.info("Generated answer for: {}", question.substring(0, Math.min(60, question.length())));
-                return new LlmResult(content, promptTokens, completionTokens);
+                return result;
+            } catch (CallNotPermittedException e) {
+                log.error("LLM circuit breaker is OPEN — serving degraded response for: {}", question);
+                return new LlmResult(LLM_UNAVAILABLE, estimateTokens(prompt), 0);
+            } catch (BulkheadFullException e) {
+                log.error("LLM bulkhead full ({} concurrent calls) — serving degraded response", e.getMessage());
+                return new LlmResult(LLM_UNAVAILABLE, estimateTokens(prompt), 0);
             } catch (Exception e) {
                 lastException = e;
                 log.warn("LLM call attempt {}/{} failed: {}", attempt, MAX_ATTEMPTS, e.getMessage());
@@ -195,8 +194,46 @@ public class AnswerGenerationService {
             }
         }
         log.error("All {} LLM attempts failed for question: {}", MAX_ATTEMPTS, question, lastException);
-        return new LlmResult("The AI service is temporarily unavailable. Please try again in a moment.",
-            estimateTokens(prompt), 0);
+        return new LlmResult(LLM_UNAVAILABLE, estimateTokens(prompt), 0);
+    }
+
+    /** Single LLM call wrapped in bulkhead → circuit breaker. Throws on any failure. */
+    private LlmResult callProtectedLlm(String prompt) {
+        return llmBulkhead.executeSupplier(
+            () -> llmCircuitBreaker.executeSupplier(() -> callLlmOnce(prompt))
+        );
+    }
+
+    /** Bare LLM call — no resilience logic. Throws on any failure so decorators can react. */
+    private LlmResult callLlmOnce(String prompt) {
+        ChatResponse chatResponse = chatClientBuilder.build()
+            .prompt()
+            .user(prompt)
+            .call()
+            .chatResponse();
+
+        String content = chatResponse != null && chatResponse.getResult() != null
+            ? chatResponse.getResult().getOutput().getText() : null;
+
+        int promptTokens;
+        int completionTokens;
+        try {
+            if (chatResponse != null && chatResponse.getMetadata() != null
+                    && chatResponse.getMetadata().getUsage() != null) {
+                var usage = chatResponse.getMetadata().getUsage();
+                promptTokens = usage.getPromptTokens() != null
+                    ? usage.getPromptTokens().intValue() : estimateTokens(prompt);
+                completionTokens = usage.getCompletionTokens() != null
+                    ? usage.getCompletionTokens().intValue() : estimateTokens(content);
+            } else {
+                promptTokens = estimateTokens(prompt);
+                completionTokens = estimateTokens(content);
+            }
+        } catch (Exception ex) {
+            promptTokens = estimateTokens(prompt);
+            completionTokens = estimateTokens(content);
+        }
+        return new LlmResult(content, promptTokens, completionTokens);
     }
 
     private static int estimateTokens(String text) {

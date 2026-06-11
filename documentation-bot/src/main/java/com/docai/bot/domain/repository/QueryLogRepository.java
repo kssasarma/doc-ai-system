@@ -104,7 +104,9 @@ public interface QueryLogRepository extends JpaRepository<QueryLog, UUID> {
 
     @Query(value = """
         SELECT UNNEST(cited_documents) AS doc_name,
-               COUNT(*) AS citations
+               COUNT(*) AS citations,
+               MAX(product) AS product,
+               MAX(version) AS version
         FROM query_logs
         WHERE cited_documents IS NOT NULL AND created_at >= :since
         GROUP BY doc_name
