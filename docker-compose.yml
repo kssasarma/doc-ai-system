@@ -19,7 +19,160 @@ services:
       timeout: 5s
       retries: 5
     restart: unless-stopped
+    networks:
+      - docai-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: docai-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - docai-net
+
+  document-ingestor:
+    build:
+      context: ./document-ingestor
+      dockerfile: Dockerfile
+    container_name: docai-ingestor
+    environment:
+      SPRING_DATABASE_URL: jdbc:postgresql://postgres:5432/docai
+      SPRING_DATABASE_USERNAME: postgres
+      SPRING_DATABASE_PASSWORD: postgres
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      OPENAI_EMBEDDING_MODEL: ${OPENAI_EMBEDDING_MODEL:-text-embedding-3-small}
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-in-prod-must-be-at-least-32-chars}
+      CORS_ALLOWED_ORIGINS: http://localhost:3000
+      INGEST_DIR: /app/watched-docs
+      UPLOAD_DIR: /app/uploads
+    volumes:
+      - ingestor_watched:/app/watched-docs
+      - ingestor_uploads:/app/uploads
+    ports:
+      - "8081:8081"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8081/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
+    restart: unless-stopped
+    networks:
+      - docai-net
+
+  documentation-bot:
+    build:
+      context: ./documentation-bot
+      dockerfile: Dockerfile
+    container_name: docai-bot
+    environment:
+      SPRING_DATABASE_URL: jdbc:postgresql://postgres:5432/docai
+      SPRING_DATABASE_USERNAME: postgres
+      SPRING_DATABASE_PASSWORD: postgres
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      OPENAI_CHAT_MODEL: ${OPENAI_CHAT_MODEL:-gpt-4o-mini}
+      OPENAI_EMBEDDING_MODEL: ${OPENAI_EMBEDDING_MODEL:-text-embedding-3-small}
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-in-prod-must-be-at-least-32-chars}
+      JWT_EXPIRATION_MS: ${JWT_EXPIRATION_MS:-86400000}
+      CORS_ALLOWED_ORIGINS: http://localhost:3000
+      RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-30}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    ports:
+      - "8082:8082"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8082/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
+    restart: unless-stopped
+    networks:
+      - docai-net
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_BACKEND_URL: ${VITE_BACKEND_URL:-http://localhost:8082}
+        VITE_INGESTOR_URL: ${VITE_INGESTOR_URL:-http://localhost:8081}
+    container_name: docai-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - documentation-bot
+      - document-ingestor
+    restart: unless-stopped
+    networks:
+      - docai-net
+
+  slack-bot:
+    build:
+      context: ./slack-bot
+      dockerfile: Dockerfile
+    container_name: docai-slack-bot
+    environment:
+      SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN}
+      SLACK_SIGNING_SECRET: ${SLACK_SIGNING_SECRET}
+      SLACK_APP_TOKEN: ${SLACK_APP_TOKEN}
+      DOCS_API_URL: http://documentation-bot:8082
+      DOCS_API_KEY: ${DOCS_API_KEY}
+      PORT: 3010
+    ports:
+      - "3010:3010"
+    depends_on:
+      - documentation-bot
+    restart: unless-stopped
+    networks:
+      - docai-net
+    profiles:
+      - bots
+
+  teams-bot:
+    build:
+      context: ./teams-bot
+      dockerfile: Dockerfile
+    container_name: docai-teams-bot
+    environment:
+      MICROSOFT_APP_ID: ${MICROSOFT_APP_ID}
+      MICROSOFT_APP_PASSWORD: ${MICROSOFT_APP_PASSWORD}
+      DOCS_API_URL: http://documentation-bot:8082
+      DOCS_API_KEY: ${DOCS_API_KEY}
+      DOCS_APP_URL: ${DOCS_APP_URL:-http://localhost:3000}
+      PORT: 3020
+    ports:
+      - "3020:3020"
+    depends_on:
+      - documentation-bot
+    restart: unless-stopped
+    networks:
+      - docai-net
+    profiles:
+      - bots
 
 volumes:
   postgres_data:
     driver: local
+  ingestor_watched:
+  ingestor_uploads:
+
+networks:
+  docai-net:
+    driver: bridge
