@@ -10,7 +10,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 /**
  * Shared base for ingestor integration tests requiring a real PostgreSQL + pgvector database.
  */
-@Testcontainers
+@Testcontainers(disabledWithoutDocker = true)
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 public abstract class PostgresTestContainerBase {
 

@@ -14,7 +14,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
  * startup overhead. The pgvector extension is created via the SQL init script defined
  * in the container configuration below.
  */
-@Testcontainers
+@Testcontainers(disabledWithoutDocker = true)
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 public abstract class PostgresTestContainerBase {
 

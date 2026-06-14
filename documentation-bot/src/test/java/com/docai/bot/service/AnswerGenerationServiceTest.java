@@ -12,6 +12,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.ai.chat.client.ChatClient.CallResponseSpec;
 import org.springframework.ai.chat.client.ChatClient.ChatClientRequestSpec;
 import org.springframework.ai.chat.model.ChatResponse;
@@ -46,6 +47,7 @@ class AnswerGenerationServiceTest {
         CircuitBreaker cb = CircuitBreaker.of("test", CircuitBreakerConfig.ofDefaults());
         Bulkhead bh = Bulkhead.of("test", BulkheadConfig.ofDefaults());
         service = new AnswerGenerationService(chatClientBuilder, cb, bh);
+        ReflectionTestUtils.setField(service, "minSimilarityThreshold", 0.55);
     }
 
     @Test

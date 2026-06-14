@@ -59,7 +59,8 @@ class EmbeddingServiceTest {
     @Test
     void generateEmbedding_success_returnsFloatArray() {
         float[] expected = {0.1f, 0.2f, 0.3f};
-        when(embeddingModel.call(any(EmbeddingRequest.class))).thenReturn(mockResponse(expected));
+        EmbeddingResponse response = mockResponse(expected);
+        when(embeddingModel.call(any(EmbeddingRequest.class))).thenReturn(response);
 
         float[] result = embeddingService.generateEmbedding("hello world");
 
@@ -107,9 +108,10 @@ class EmbeddingServiceTest {
                 .build());
         EmbeddingService service = new EmbeddingService(embeddingModel, lenient, bulkhead);
 
+        EmbeddingResponse response = mockResponse(expected);
         when(embeddingModel.call(any(EmbeddingRequest.class)))
             .thenThrow(new RuntimeException("transient error"))
-            .thenReturn(mockResponse(expected));
+            .thenReturn(response);
 
         float[] result = service.generateEmbedding("text");
 
@@ -121,9 +123,11 @@ class EmbeddingServiceTest {
     void generateEmbeddings_multipleTexts_returnsAllEmbeddings() {
         float[] emb1 = {0.1f};
         float[] emb2 = {0.2f};
+        EmbeddingResponse response1 = mockResponse(emb1);
+        EmbeddingResponse response2 = mockResponse(emb2);
         when(embeddingModel.call(any(EmbeddingRequest.class)))
-            .thenReturn(mockResponse(emb1))
-            .thenReturn(mockResponse(emb2));
+            .thenReturn(response1)
+            .thenReturn(response2);
 
         List<float[]> results = embeddingService.generateEmbeddings(List.of("a", "b"));
 
