@@ -2,3 +2,5 @@
 ./document-ingestor/.classpath
 ./document-ingestor/.factorypath
 ./document-ingestor/.project
+
+.env
