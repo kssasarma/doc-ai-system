@@ -27,7 +27,7 @@ spring:
 
   ai:
     openai:
-      base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
+      base-url: ${OPENAI_BASE_URL:https://api.openai.com}
       api-key: ${OPENAI_API_KEY}
       embedding:
         options:
