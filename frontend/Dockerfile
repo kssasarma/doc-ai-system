@@ -1,9 +1,9 @@
 FROM node:22-alpine AS build
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci
+RUN npm install
 COPY . .
-ARG VITE_BACKEND_URL=http://localhost:8082
+ARG VITE_BACKEND_URL=http://localhost:8080
 ARG VITE_INGESTOR_URL=http://localhost:8081
 ENV VITE_BACKEND_URL=$VITE_BACKEND_URL
 ENV VITE_INGESTOR_URL=$VITE_INGESTOR_URL
