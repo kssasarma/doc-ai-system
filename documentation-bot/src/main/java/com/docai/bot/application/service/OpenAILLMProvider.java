@@ -2,13 +2,12 @@ package com.docai.bot.application.service;
 
 import java.util.List;
 
-import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.openai.OpenAiEmbeddingOptions;
-import org.springframework.ai.openai.api.OpenAiApi;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -21,14 +20,14 @@ import lombok.extern.slf4j.Slf4j;
 @Component
 public class OpenAILLMProvider implements LLMProvider {
 
-    private final ChatClient chatClient;
+    private final OpenAiChatModel chatModel;
     private final EmbeddingModel embeddingModel;
 
     @Value("${spring.ai.openai.api-key}")
     private String apiKey;
 
-    public OpenAILLMProvider(ChatClient.Builder chatClientBuilder, EmbeddingModel embeddingModel) {
-        this.chatClient    = chatClientBuilder.build();
+    public OpenAILLMProvider(OpenAiChatModel chatModel, EmbeddingModel embeddingModel) {
+        this.chatModel      = chatModel;
         this.embeddingModel = embeddingModel;
     }
 
@@ -39,10 +38,10 @@ public class OpenAILLMProvider implements LLMProvider {
 
     @Override
     public String chat(String systemPrompt, String userMessage, String model) {
-        return chatClient.prompt(new Prompt(
+        return chatModel.call(new Prompt(
             List.of(new SystemMessage(systemPrompt), new UserMessage(userMessage)),
             OpenAiChatOptions.builder().model(model).build()
-        )).call().content();
+        )).getResult().getOutput().getText();
     }
 
     @Override
