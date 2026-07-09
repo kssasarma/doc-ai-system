@@ -46,15 +46,15 @@ public class DataExportService {
         export.put("createdAt", user.getCreatedAt().toString());
 
         // Chat sessions (metadata only — not full message content for compactness)
-        var sessions = chatSessionRepository.findByUserId(userId);
+        var sessions = chatSessionRepository.findByUserIdOrderByLastActiveAtDesc(userId);
         export.put("chatSessions", sessions.stream().map(s -> Map.of(
-            "id", s.getChatId(),
+            "id", s.getId().toString(),
             "title", s.getTitle() != null ? s.getTitle() : "",
             "createdAt", s.getCreatedAt().toString()
         )).toList());
 
         // Bookmarks
-        export.put("bookmarks", bookmarkRepository.findByUserId(userId).stream().map(b -> Map.of(
+        export.put("bookmarks", bookmarkRepository.findByUserIdOrderByCreatedAtDesc(userId).stream().map(b -> Map.of(
             "id", b.getId().toString(),
             "title", b.getTitle() != null ? b.getTitle() : "",
             "note", b.getNote() != null ? b.getNote() : "",
