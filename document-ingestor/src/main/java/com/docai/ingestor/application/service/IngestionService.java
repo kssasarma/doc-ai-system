@@ -59,6 +59,7 @@ public class IngestionService {
             });
 
             Document document = Document.builder()
+                .tenantId(Document.DEFAULT_TENANT_ID)
                 .product(metadata.getProduct())
                 .version(metadata.getVersion())
                 .documentName(metadata.getDocumentName())

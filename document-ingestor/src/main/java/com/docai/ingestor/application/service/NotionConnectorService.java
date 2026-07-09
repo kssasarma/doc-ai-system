@@ -150,6 +150,7 @@ public class NotionConnectorService {
             Files.writeString(mdFile, content, StandardCharsets.UTF_8);
 
             Document doc = documentRepository.save(Document.builder()
+                .tenantId(Document.DEFAULT_TENANT_ID)
                 .product(product)
                 .version(version)
                 .documentName("Notion: " + title)

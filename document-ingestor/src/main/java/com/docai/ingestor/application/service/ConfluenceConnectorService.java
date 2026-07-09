@@ -156,6 +156,7 @@ public class ConfluenceConnectorService {
             Files.writeString(htmlFile, html, StandardCharsets.UTF_8);
 
             Document doc = documentRepository.save(Document.builder()
+                .tenantId(Document.DEFAULT_TENANT_ID)
                 .product(product)
                 .version(version)
                 .documentName("Confluence: " + title)

@@ -98,6 +98,7 @@ public class DocumentUploadController {
                 document = documentRepository.save(document);
             } else {
                 document = documentRepository.save(Document.builder()
+                    .tenantId(Document.DEFAULT_TENANT_ID)
                     .product(product.trim())
                     .version(version.trim())
                     .documentName(docName)

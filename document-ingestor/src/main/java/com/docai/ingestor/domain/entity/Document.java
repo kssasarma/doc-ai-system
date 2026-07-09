@@ -31,9 +31,15 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class Document {
 
+    /** Single-tenant default until per-request tenant resolution is wired into document-ingestor. */
+    public static final UUID DEFAULT_TENANT_ID = UUID.fromString("00000000-0000-0000-0000-000000000001");
+
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
+
+    @Column(name = "tenant_id", nullable = false)
+    private UUID tenantId;
 
     @Column(nullable = false, length = 100)
     private String product;

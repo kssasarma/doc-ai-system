@@ -99,6 +99,7 @@ public class WebhookIngestionService {
                 String extension = getExtension(downloaded.getName());
 
                 document = documentRepository.save(Document.builder()
+                    .tenantId(Document.DEFAULT_TENANT_ID)
                     .product(event.getProduct())
                     .version(event.getVersion())
                     .documentName(docName)
