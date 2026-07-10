@@ -43,9 +43,16 @@ services:
       OPENAI_EMBEDDING_MODEL: ${OPENAI_EMBEDDING_MODEL:-text-embedding-3-small}
       JWT_SECRET: ${JWT_SECRET}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000}
-      UPLOAD_DIR: /app/uploads
-    volumes:
-      - ingestor_uploads:/app/uploads
+      # Point at your own S3-compatible object store — a real production deployment should not
+      # bundle a single-node MinIO into this compose file's own lifecycle. No defaults for
+      # endpoint/credentials: set them explicitly in .env, same as JWT_SECRET/POSTGRES_PASSWORD.
+      STORAGE_TYPE: s3
+      S3_BUCKET: ${S3_BUCKET}
+      S3_ENDPOINT: ${S3_ENDPOINT}
+      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+      S3_PATH_STYLE_ACCESS: ${S3_PATH_STYLE_ACCESS:-false}
     ports:
       - "8081:8081"
     depends_on:
@@ -113,7 +120,6 @@ services:
 
 volumes:
   postgres_data:
-  ingestor_uploads:
 
 networks:
   docai-net:

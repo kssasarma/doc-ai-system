@@ -47,11 +47,23 @@ public class Document {
     @Column(name = "document_name", nullable = false, length = 255)
     private String documentName;
 
-    @Column(name = "file_path", nullable = false, length = 500)
+    /** @deprecated legacy local-disk path — no longer populated for new documents, only
+     * historical rows. See {@link #storageKey} / {@link #storageType}. */
+    @Deprecated
+    @Column(name = "file_path", length = 500)
     private String filePath;
 
     @Column(name = "file_hash", nullable = false, length = 64)
     private String fileHash;
+
+    /** Key used to resolve/delete this file via {@code DocumentStorageService}. Null once the
+     * file has been deleted post-ingestion (see {@code IngestionService#processDocument}). */
+    @Column(name = "storage_key", length = 1000)
+    private String storageKey;
+
+    /** Which {@code DocumentStorageService} implementation stored this file (e.g. "S3"). */
+    @Column(name = "storage_type", length = 20)
+    private String storageType;
 
     @Column(name = "file_type", length = 10)
     private String fileType;

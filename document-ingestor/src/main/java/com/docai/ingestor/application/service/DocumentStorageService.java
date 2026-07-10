@@ -4,26 +4,32 @@ import java.io.InputStream;
 import java.nio.file.Path;
 
 /**
- * Storage abstraction for ingested document files.
- * Implementations: LocalDocumentStorageService (default), S3DocumentStorageService.
+ * Storage abstraction for ingested document files — the only thing any ingestion code path
+ * (upload, webhook download, Confluence/Notion sync) knows about where files live. Adding a new
+ * backend (GCS, Azure Blob, ...) means adding one new implementation gated by
+ * {@code ingestor.storage.type}; nothing else in the codebase changes.
  */
 public interface DocumentStorageService {
 
     /**
-     * Persist an uploaded file and return its storage key (path or S3 object key).
+     * Persist a file and return its storage key.
      *
-     * @param inputStream  raw bytes of the uploaded file
+     * @param inputStream  raw bytes of the file
      * @param originalName original filename (used to derive extension / key)
      * @param tenantId     tenant to scope the storage path
-     * @return storage key — passed to {@link #resolve(String)} to read the file back
+     * @return storage key — passed to {@link #resolve(String)}/{@link #exists(String)}/{@link #delete(String)}
      */
     String store(InputStream inputStream, String originalName, String tenantId);
 
     /**
-     * Return a local {@link Path} suitable for passing to Apache Tika.
-     * For S3, the file is downloaded to a temp location first.
+     * Return a local {@link Path} suitable for passing to Apache Tika. The caller owns the
+     * returned file's lifecycle and must delete it once done — this is always a fresh working
+     * copy, never the authoritative stored file.
      */
     Path resolve(String storageKey);
+
+    /** Whether a file exists at the given storage key. */
+    boolean exists(String storageKey);
 
     /** Delete the file at the given storage key. No-op if not found. */
     void delete(String storageKey);

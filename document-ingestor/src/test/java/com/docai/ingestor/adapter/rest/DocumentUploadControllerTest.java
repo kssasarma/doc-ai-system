@@ -12,6 +12,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -21,9 +23,11 @@ import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import com.docai.ingestor.application.service.DocumentStorageService;
 import com.docai.ingestor.application.service.IngestionService;
 import com.docai.ingestor.config.GlobalExceptionHandler;
 import com.docai.ingestor.config.SecurityConfig;
+import com.docai.ingestor.config.TenantContext;
 import com.docai.ingestor.domain.entity.Document;
 import com.docai.ingestor.domain.entity.Document.IngestionStatus;
 import com.docai.ingestor.domain.repository.DocumentRepository;
@@ -34,6 +38,9 @@ import com.docai.ingestor.domain.repository.DocumentRepository;
  * user() post-processors are used instead of @WithMockUser because the STATELESS
  * session policy causes SecurityContextHolderFilter to reload an empty context,
  * which clears @WithMockUser's thread-local authentication before it is evaluated.
+ * They also bypass JwtTokenFilter's real JWT parsing entirely, so TenantContext is never
+ * populated by the filter chain in this test — each test that reaches the controller's tenant-
+ * scoped body sets it directly.
  */
 @WebMvcTest(DocumentUploadController.class)
 @Import({SecurityConfig.class, GlobalExceptionHandler.class})
@@ -42,6 +49,19 @@ class DocumentUploadControllerTest {
     @Autowired MockMvc mockMvc;
     @MockitoBean DocumentRepository documentRepository;
     @MockitoBean IngestionService ingestionService;
+    @MockitoBean DocumentStorageService documentStorageService;
+
+    private static final UUID TENANT_ID = UUID.randomUUID();
+
+    @BeforeEach
+    void setUp() {
+        TenantContext.set(TENANT_ID);
+    }
+
+    @AfterEach
+    void tearDown() {
+        TenantContext.clear();
+    }
 
     @Test
     void upload_unauthenticated_returns401() throws Exception {
@@ -95,15 +115,19 @@ class DocumentUploadControllerTest {
     void upload_adminValidPdf_returns202WithDocumentId() throws Exception {
         UUID docId = UUID.randomUUID();
         Document saved = Document.builder()
+            .tenantId(TENANT_ID)
             .product("prod").version("1.0")
             .documentName("test").fileHash("abc").fileType("pdf")
-            .filePath("/tmp/test.pdf").status(IngestionStatus.PROCESSING)
+            .storageKey("documents/" + TENANT_ID + "/generated-key.pdf")
+            .storageType("S3")
+            .status(IngestionStatus.PROCESSING)
             .build();
         setId(saved, docId);
 
-        when(ingestionService.calculateFileHash(any())).thenReturn("abc123hash");
-        when(documentRepository.existsByFileHashAndStatus(any(), any())).thenReturn(false);
-        when(documentRepository.findByFileHash(any())).thenReturn(Optional.empty());
+        when(documentStorageService.store(any(), any(), any())).thenReturn(saved.getStorageKey());
+        when(documentStorageService.storageType()).thenReturn("S3");
+        when(documentRepository.existsByFileHashAndTenantIdAndStatus(any(), any(), any())).thenReturn(false);
+        when(documentRepository.findByFileHashAndTenantId(any(), any())).thenReturn(Optional.empty());
         when(documentRepository.save(any())).thenReturn(saved);
 
         mockMvc.perform(multipart("/api/documents/upload")
@@ -118,7 +142,7 @@ class DocumentUploadControllerTest {
 
     @Test
     void getAllDocuments_admin_returns200WithList() throws Exception {
-        when(documentRepository.findAll()).thenReturn(List.of());
+        when(documentRepository.findByTenantId(TENANT_ID)).thenReturn(List.of());
 
         mockMvc.perform(get("/api/documents")
                 .with(user("admin").roles("ADMIN")))
@@ -127,8 +151,8 @@ class DocumentUploadControllerTest {
 
     @Test
     void upload_duplicateDocument_returns409() throws Exception {
-        when(ingestionService.calculateFileHash(any())).thenReturn("existinghash");
-        when(documentRepository.existsByFileHashAndStatus(any(), any())).thenReturn(true);
+        when(documentStorageService.store(any(), any(), any())).thenReturn("documents/" + TENANT_ID + "/dup.pdf");
+        when(documentRepository.existsByFileHashAndTenantIdAndStatus(any(), any(), any())).thenReturn(true);
 
         mockMvc.perform(multipart("/api/documents/upload")
                 .file(pdfFile("test.pdf"))
@@ -138,6 +162,9 @@ class DocumentUploadControllerTest {
             .andExpect(status().isConflict())
             .andExpect(jsonPath("$.error").value(
                 org.hamcrest.Matchers.containsString("already been processed")));
+
+        // The just-stored duplicate must be cleaned back up, not left orphaned in storage.
+        org.mockito.Mockito.verify(documentStorageService).delete("documents/" + TENANT_ID + "/dup.pdf");
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────

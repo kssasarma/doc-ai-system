@@ -22,6 +22,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import static org.mockito.Mockito.mock;
 
 import com.docai.ingestor.PostgresTestContainerBase;
+import com.docai.ingestor.application.service.DocumentStorageService;
 import com.docai.ingestor.application.service.IngestionService;
 import com.docai.ingestor.application.service.SemanticChunker;
 import com.docai.ingestor.domain.entity.Document;
@@ -30,6 +31,11 @@ import com.docai.ingestor.domain.model.SemanticChunk;
 import com.docai.ingestor.domain.repository.DocumentChunkRepository;
 import com.docai.ingestor.domain.repository.DocumentRepository;
 
+/**
+ * DocumentStorageService is mocked here (no real S3/MinIO in this test environment) — resolve()
+ * is stubbed to hand back the same local file the test itself created, simulating "storage
+ * returned a local working copy with this content" without needing a real object store.
+ */
 class IngestionServiceIntegrationTest extends PostgresTestContainerBase {
 
     @Autowired IngestionService ingestionService;
@@ -38,40 +44,20 @@ class IngestionServiceIntegrationTest extends PostgresTestContainerBase {
 
     @MockitoBean EmbeddingModel embeddingModel;
     @MockitoBean SemanticChunker semanticChunker;
-
-    // ── calculateFileHash ─────────────────────────────────────────────────────
-
-    @Test
-    void calculateFileHash_sameContent_returnsSameHash() throws Exception {
-        File f1 = createTempTextFile("deterministic content");
-        File f2 = createTempTextFile("deterministic content");
-
-        String h1 = ingestionService.calculateFileHash(f1);
-        String h2 = ingestionService.calculateFileHash(f2);
-
-        assertThat(h1).isEqualTo(h2);
-        assertThat(h1).hasSize(64); // SHA-256 hex
-    }
-
-    @Test
-    void calculateFileHash_differentContent_returnsDifferentHashes() throws Exception {
-        File f1 = createTempTextFile("content A");
-        File f2 = createTempTextFile("content B");
-
-        assertThat(ingestionService.calculateFileHash(f1))
-            .isNotEqualTo(ingestionService.calculateFileHash(f2));
-    }
+    @MockitoBean DocumentStorageService documentStorageService;
 
     // ── prepareRetrigger ──────────────────────────────────────────────────────
 
     @Test
-    void prepareRetrigger_failedDocument_resetsToProcessing() throws Exception {
-        File file = createTempTextFile("test content");
+    void prepareRetrigger_failedDocument_resetsToProcessing() {
+        when(documentStorageService.exists("some-key")).thenReturn(true);
+
         Document doc = documentRepository.save(Document.builder()
             .product("prod").version("1.0")
             .documentName("test.txt")
-            .filePath(file.getAbsolutePath())
-            .fileHash(ingestionService.calculateFileHash(file))
+            .storageKey("some-key")
+            .storageType("S3")
+            .fileHash("abc123")
             .fileType("txt")
             .status(IngestionStatus.FAILED)
             .errorMessage("previous error")
@@ -89,7 +75,6 @@ class IngestionServiceIntegrationTest extends PostgresTestContainerBase {
         Document doc = documentRepository.save(Document.builder()
             .product("prod").version("1.0")
             .documentName("done.txt")
-            .filePath("/some/path")
             .fileHash("abc123")
             .fileType("txt")
             .status(IngestionStatus.COMPLETED)
@@ -98,6 +83,25 @@ class IngestionServiceIntegrationTest extends PostgresTestContainerBase {
         assertThatThrownBy(() -> ingestionService.prepareRetrigger(doc.getId()))
             .isInstanceOf(IllegalStateException.class)
             .hasMessageContaining("already processed");
+    }
+
+    @Test
+    void prepareRetrigger_missingFromStorage_throwsIllegalState() {
+        when(documentStorageService.exists("gone-key")).thenReturn(false);
+
+        Document doc = documentRepository.save(Document.builder()
+            .product("prod").version("1.0")
+            .documentName("test.txt")
+            .storageKey("gone-key")
+            .storageType("S3")
+            .fileHash("abc123")
+            .fileType("txt")
+            .status(IngestionStatus.FAILED)
+            .build());
+
+        assertThatThrownBy(() -> ingestionService.prepareRetrigger(doc.getId()))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("Original file not found");
     }
 
     @Test
@@ -112,6 +116,8 @@ class IngestionServiceIntegrationTest extends PostgresTestContainerBase {
     @Test
     void ingestUploadedFile_validFile_setsCompletedAndSavesChunks() throws Exception {
         File file = createTempTextFile("This is the document content for ingestion testing.");
+        when(documentStorageService.exists("upload-key")).thenReturn(true);
+        when(documentStorageService.resolve("upload-key")).thenReturn(file.toPath());
 
         // One simple leaf chunk returned by the mocked chunker
         when(semanticChunker.chunk(any())).thenReturn(List.of(
@@ -126,8 +132,9 @@ class IngestionServiceIntegrationTest extends PostgresTestContainerBase {
         Document doc = documentRepository.save(Document.builder()
             .product("prod").version("2.0")
             .documentName("ingestion-test.txt")
-            .filePath(file.getAbsolutePath())
-            .fileHash(ingestionService.calculateFileHash(file))
+            .storageKey("upload-key")
+            .storageType("S3")
+            .fileHash("irrelevant-for-this-test")
             .fileType("txt")
             .status(IngestionStatus.PROCESSING)
             .build());
@@ -139,7 +146,29 @@ class IngestionServiceIntegrationTest extends PostgresTestContainerBase {
 
         assertThat(result.getStatus()).isEqualTo(IngestionStatus.COMPLETED);
         assertThat(result.getChunkCount()).isEqualTo(1);
+        assertThat(result.getStorageKey()).isNull(); // cleared on successful completion
         assertThat(chunkRepository.findByDocumentIdOrderByChunkIndex(doc.getId())).hasSize(1);
+    }
+
+    @Test
+    void ingestUploadedFile_missingFromStorage_setsFailed() {
+        when(documentStorageService.exists("missing-key")).thenReturn(false);
+
+        Document doc = documentRepository.save(Document.builder()
+            .product("prod").version("1.0")
+            .documentName("missing.txt")
+            .storageKey("missing-key")
+            .storageType("S3")
+            .fileHash("abc123")
+            .fileType("txt")
+            .status(IngestionStatus.PROCESSING)
+            .build());
+
+        ingestionService.ingestUploadedFile(doc.getId());
+
+        Document reloaded = documentRepository.findById(doc.getId()).orElseThrow();
+        assertThat(reloaded.getStatus()).isEqualTo(IngestionStatus.FAILED);
+        assertThat(reloaded.getErrorMessage()).isEqualTo("Upload file not found");
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────

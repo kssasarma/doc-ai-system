@@ -77,19 +77,28 @@ Was: `UserProductAccess` granted access by product/version string, globally, wit
 
 ---
 
-## Phase 3 — No files on the application server
+## Phase 3 — No files on the application server (done)
 
-Today: `ingestor.storage.type` defaults to `local` (`LocalDocumentStorageService`), backed by Docker volumes (`ingestor_watched`, `ingestor_uploads`) mounted into the `document-ingestor` container's own filesystem. `S3DocumentStorageService` is fully implemented but inactive (needs `STORAGE_TYPE=s3`, never set in `docker-compose.yml`). `documentation-bot` declares the AWS S3 SDK dependency but no code anywhere uses it — dead dependency.
+Was: `ingestor.storage.type` defaulted to `local` (`LocalDocumentStorageService`), backed by a Docker volume mounted into the container's own filesystem. `S3DocumentStorageService`/the whole `DocumentStorageService` abstraction existed but was **completely dead code** — grepping the codebase found zero callers; every real upload/ingest path (`DocumentUploadController`, `IngestionService`, `ConfluenceConnectorService`, `NotionConnectorService`, `WebhookIngestionService`) wrote directly to local disk via raw `Files`/`Paths` calls, bypassing the abstraction entirely. `documentation-bot` declared the AWS S3 SDK with no consumer at all.
 
-**Decision: keep the source file, but move it off the app server, on MinIO.** Considered deleting files entirely post-ingestion (nothing left to store), but `document-ingestor` already has a retrigger/reprocess feature (`DocumentUploadController.retrigger`, `IngestionService.prepareRetrigger`) that re-parses from the stored file without requiring re-upload — deleting the file post-ingestion would silently break that capability. MinIO satisfies "not on the app server" (it's its own container/volume) without needing a real AWS account.
+- [x] **Actually wired up the pre-existing (but unused) `DocumentStorageService` abstraction** into all 5 places that touched local disk — this turned out to be the real scope of "Phase 3," not just pointing an already-integrated service at a new endpoint.
+- [x] Added `exists(storageKey)` to the interface (needed by retrigger/ingest to check without a full download); deleted `LocalDocumentStorageService` outright (the resolved decision was to remove the disk option entirely, not leave it as a silent fallback).
+- [x] `S3Config`: `S3Client` bean (custom endpoint + path-style access for MinIO; both are no-ops for real AWS S3 — just omit `S3_ENDPOINT` and set `path-style-access=false`), plus an `ApplicationRunner` that creates the target bucket on startup if missing (MinIO doesn't auto-create buckets).
+- [x] `FileHashing` utility (`sha256Hex(byte[])`, and `wrap()`/`hexOf()` for streaming): every upload path now hashes **while** streaming into storage — `DocumentUploadController.upload()` and `WebhookIngestionService`'s download no longer touch local disk even transiently; `DigestInputStream` computes the SHA-256 in the same pass as the `PutObject`. Confluence/Notion sync (already in-memory strings) hash the byte array directly.
+- [x] Adopted the `storage_key`/`storage_type` columns Phase 7's original migration (V6) had already added to `documents` but which — like the storage abstraction itself — no code ever actually populated. `file_path` is now `@Deprecated`, nullable, no longer written by new code; a new V8 migration just drops its `NOT NULL` constraint.
+- [x] `IngestionService.processDocument`: on success, deletes the file from **storage** (not a local `File.delete()`) and clears `storageKey`/`storageType` — same "delete after ingest" behavior as before, just correctly targeting the authoritative stored copy instead of a local path. On failure, the stored copy is deliberately left in place so retrigger keeps working, exactly as it did pre-migration.
+- [x] `ingestUploadedFile`: resolves a **local working copy** via `documentStorageService.resolve()` for Tika to read, and unconditionally deletes that working copy in a `finally` block (success or failure) — cleanly separating "the local temp copy this request created" from "the authoritative copy in storage," which only the success path touches.
+- [x] Fixed two latent, previously-untested bugs this surfaced (this code had never actually run before, same story as the Flyway discovery in Phase 0):
+  - `S3DocumentStorageService.resolve()` pre-created its destination temp file via `Files.createTempFile()`, then handed that already-existing path to the AWS SDK's `getObject(request, Path)`, which throws `FileAlreadyExistsException` on a pre-existing target. Fixed by deleting the (empty) placeholder immediately after reserving the unique filename, before the SDK writes to it.
+  - `DocumentUploadController`/`WebhookIngestionService`'s duplicate-file-hash reuse path silently orphaned the previous local file when overwriting `filePath` on an existing record — now explicitly deletes the stale stored object first.
+- [x] `docker-compose.yml`: added a `minio` service (bundled, auto-creates its bucket, healthchecked via `mc ready local`) — the convenient local-dev default. `docker-compose.prod.yml` deliberately does **not** bundle MinIO — a real production deployment should point `S3_ENDPOINT`/`S3_ACCESS_KEY`/`S3_SECRET_KEY` at its own properly-run object store (real AWS S3 or a dedicated MinIO deployment), not a single-node container tied to this compose file's lifecycle. Removed the now-unused `ingestor_uploads` volume from both compose files and the ingestor `Dockerfile`.
+- [x] Removed `documentation-bot`'s dead AWS S3 SDK dependency and the `app.aws.*` properties nothing read. Also found and removed an unrelated leftover from Phase 1 while in the same file: `app.tenant.default-id`, a config property for the `DEFAULT_TENANT_ID` constant deleted back in Phase 1 that nobody had cleaned up from `application.yml`.
+- [x] Updated/repaired tests that depended on the removed `calculateFileHash(File)` method and the old local-path assumptions: `DocumentUploadControllerTest` (also fixed pre-existing staleness — it was mocking repository methods the controller stopped calling back in Phase 1), `IngestionServiceIntegrationTest` (now mocks `DocumentStorageService`), new `FileHashingTest`. Also fixed `PostgresTestContainerBase`'s pgvector bootstrapping (see Phase 2) which these tests share.
+- [x] **Verified live end-to-end**: uploaded a document → confirmed via `mc ls` inside the MinIO container that the object actually exists at the expected key (not on the ingestor container's disk) → confirmed chat retrieval returns the correct content → confirmed the object is deleted from MinIO once ingestion completes (`storage_key` cleared, `mc ls` empty) → manually placed a file in MinIO against a simulated `FAILED` document and confirmed `retrigger` correctly resolves it, reprocesses it, and cleans up afterward → confirmed `retrigger` on an already-`COMPLETED` document (file already gone) is correctly rejected.
 
-- [ ] Add a `minio` service to `docker-compose.yml` (image `minio/minio`, its own volume, console port for admin inspection).
-- [ ] Point `S3DocumentStorageService` at MinIO via its endpoint-override support (S3 SDK v2 supports custom endpoints) — set `STORAGE_TYPE=s3` plus a MinIO endpoint/credentials/bucket, and confirm it path-styles correctly (MinIO needs path-style access, not virtual-hosted-style).
-- [ ] Switch default storage to `s3` and remove the `local` option so it can't silently regress back to disk.
-- [ ] Remove `ingestor_watched`/`ingestor_uploads` local volumes from `docker-compose.yml` once local storage is gone.
-- [ ] Rework watched-folder ingestion (Phase 1 also flags this for tenant-resolution reasons) — drop it; it's both a local-disk mechanism and tenant-less.
-- [ ] Wire up or remove `documentation-bot`'s unused S3 dependency — if the bot needs to let users view/download the original source document, implement presigned URL generation against MinIO; otherwise delete the dependency.
-- [ ] Confirm uploaded files never linger in a local temp path after the `PutObject` succeeds (check `DocumentUploadController`'s `tempFile` handling — currently writes to local disk before upload; that transient file must be deleted immediately after the object-store write, success or failure).
+### Deferred (separate follow-up work, not Phase 3)
+
+- `documentation-bot` never wires up any document download/preview feature — nobody asked for one, so none was built (would be presigned-URL generation against MinIO if ever needed).
 
 ---
 
@@ -111,8 +120,8 @@ Today: `frontend/src/components/Admin/` is a flat 12-tab client-state switcher (
 
 1. ~~**Phase 1** (tenant model + roles)~~ — done.
 2. ~~**Phase 2** (document ACL + retrieval rewrite)~~ — done.
-3. **Phase 3** (storage) — next up; independent of 1/2, can be done in parallel with Phase 4 planning, but do it before or alongside Phase 4 so the upload UI is built once against the final storage backend.
-4. **Phase 4** (frontend) — depends on the APIs from 1-3 being stable, since it's the UI over all of them. Needs: the Accept-Invite page (Phase 1), the document-upload access-grant step against `DocumentAccessController` (Phase 2), and the final storage backend (Phase 3).
+3. ~~**Phase 3** (storage)~~ — done.
+4. **Phase 4** (frontend) — next up; the only remaining phase. Depends on the APIs from 1-3, all now stable: the Accept-Invite page (Phase 1), the document-upload access-grant step against `DocumentAccessController` (Phase 2), and uploads already going to the final storage backend (Phase 3) so the upload UI is being built against what production will actually run.
 
 ## Decisions (resolved)
 

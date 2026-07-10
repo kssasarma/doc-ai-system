@@ -36,6 +36,27 @@ services:
     networks:
       - docai-net
 
+  minio:
+    image: minio/minio:latest
+    container_name: docai-minio
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin123}
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # Web console
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - docai-net
+
   document-ingestor:
     build:
       context: ./document-ingestor
@@ -50,13 +71,19 @@ services:
       OPENAI_EMBEDDING_MODEL: ${OPENAI_EMBEDDING_MODEL:-text-embedding-3-small}
       JWT_SECRET: ${JWT_SECRET:-dev-secret-change-in-prod-must-be-at-least-32-chars}
       CORS_ALLOWED_ORIGINS: http://localhost:3000
-      UPLOAD_DIR: /app/uploads
-    volumes:
-      - ingestor_uploads:/app/uploads
+      STORAGE_TYPE: s3
+      S3_BUCKET: ${S3_BUCKET:-docai-documents}
+      S3_ENDPOINT: http://minio:9000
+      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin123}
+      S3_PATH_STYLE_ACCESS: "true"
     ports:
       - "8081:8081"
     depends_on:
       postgres:
+        condition: service_healthy
+      minio:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8081/actuator/health || exit 1"]
@@ -168,7 +195,7 @@ services:
 volumes:
   postgres_data:
     driver: local
-  ingestor_uploads:
+  minio_data:
 
 networks:
   docai-net:

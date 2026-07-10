@@ -1,21 +1,18 @@
 package com.docai.ingestor.application.service;
 
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.security.DigestInputStream;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.Optional;
 import java.util.UUID;
 
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -38,9 +35,7 @@ public class WebhookIngestionService {
     private final WebhookEventRepository webhookEventRepository;
     private final DocumentRepository documentRepository;
     private final IngestionService ingestionService;
-
-    @Value("${ingestor.upload-directory:./uploads}")
-    private String uploadDirectory;
+    private final DocumentStorageService documentStorageService;
 
     private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder()
         .connectTimeout(Duration.ofSeconds(30))
@@ -73,24 +68,29 @@ public class WebhookIngestionService {
         webhookEventRepository.save(event);
 
         try {
-            File downloaded = downloadFile(event.getDownloadUrl(), event.getProduct(), event.getVersion());
-            String fileHash = ingestionService.calculateFileHash(downloaded);
+            DownloadResult downloaded = downloadAndStore(event.getDownloadUrl(), event.getTenantId());
 
             // Skip if already ingested — scoped to this event's tenant
-            if (documentRepository.existsByFileHashAndTenantIdAndStatus(fileHash, event.getTenantId(), IngestionStatus.COMPLETED)) {
+            if (documentRepository.existsByFileHashAndTenantIdAndStatus(
+                    downloaded.fileHash(), event.getTenantId(), IngestionStatus.COMPLETED)) {
                 log.info("Webhook: document already ingested (hash match). Skipping.");
-                downloaded.delete();
+                documentStorageService.delete(downloaded.storageKey());
                 event.setStatus(WebhookEvent.Status.COMPLETED);
                 event.setProcessedAt(LocalDateTime.now());
                 webhookEventRepository.save(event);
                 return;
             }
 
-            Optional<Document> existing = documentRepository.findByFileHashAndTenantId(fileHash, event.getTenantId());
+            Optional<Document> existing = documentRepository.findByFileHashAndTenantId(downloaded.fileHash(), event.getTenantId());
             Document document;
             if (existing.isPresent()) {
                 document = existing.get();
-                document.setFilePath(downloaded.getAbsolutePath());
+                if (document.getStorageKey() != null) {
+                    // Replacing a stale (failed/pending) download's file with this fresh one.
+                    documentStorageService.delete(document.getStorageKey());
+                }
+                document.setStorageKey(downloaded.storageKey());
+                document.setStorageType(documentStorageService.storageType());
                 document.setStatus(IngestionStatus.PROCESSING);
                 document.setErrorMessage(null);
                 document = documentRepository.save(document);
@@ -98,16 +98,16 @@ public class WebhookIngestionService {
                 String docName = event.getDocumentName() != null
                     ? event.getDocumentName()
                     : deriveDocName(event.getDownloadUrl());
-                String extension = getExtension(downloaded.getName());
 
                 document = documentRepository.save(Document.builder()
                     .tenantId(event.getTenantId())
                     .product(event.getProduct())
                     .version(event.getVersion())
                     .documentName(docName)
-                    .filePath(downloaded.getAbsolutePath())
-                    .fileHash(fileHash)
-                    .fileType(extension)
+                    .storageKey(downloaded.storageKey())
+                    .storageType(documentStorageService.storageType())
+                    .fileHash(downloaded.fileHash())
+                    .fileType(downloaded.extension())
                     .status(IngestionStatus.PROCESSING)
                     .build());
             }
@@ -130,14 +130,14 @@ public class WebhookIngestionService {
         }
     }
 
-    private File downloadFile(String url, String product, String version) throws IOException, InterruptedException {
+    private record DownloadResult(String storageKey, String fileHash, String extension) {}
+
+    /** Streams the remote file straight into storage while hashing it — never touches local disk. */
+    private DownloadResult downloadAndStore(String url, UUID tenantId) throws IOException, InterruptedException {
         URI uri = URI.create(url);
         String fileName = Paths.get(uri.getPath()).getFileName().toString();
         String extension = getExtension(fileName);
         if (extension.isBlank()) extension = "pdf";
-
-        Files.createDirectories(Paths.get(uploadDirectory));
-        Path destination = Paths.get(uploadDirectory, UUID.randomUUID() + "." + extension);
 
         HttpRequest request = HttpRequest.newBuilder(uri)
             .GET()
@@ -150,12 +150,15 @@ public class WebhookIngestionService {
             throw new IOException("Download failed: HTTP " + response.statusCode() + " for " + url);
         }
 
-        try (InputStream in = response.body()) {
-            Files.copy(in, destination);
+        String storageKey;
+        String fileHash;
+        try (DigestInputStream digestStream = FileHashing.wrap(response.body())) {
+            storageKey = documentStorageService.store(digestStream, fileName, tenantId.toString());
+            fileHash = FileHashing.hexOf(digestStream.getMessageDigest());
         }
 
-        log.info("Downloaded {} → {}", url, destination);
-        return destination.toFile();
+        log.info("Downloaded and stored {} → {}", url, storageKey);
+        return new DownloadResult(storageKey, fileHash, extension);
     }
 
     private String getExtension(String filename) {

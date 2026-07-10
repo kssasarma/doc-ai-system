@@ -1,10 +1,9 @@
 package com.docai.ingestor.application.service;
 
 import java.io.File;
-import java.io.FileInputStream;
-import java.security.MessageDigest;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.scheduling.annotation.Async;
@@ -27,13 +26,16 @@ public class IngestionService {
 
     private final DocumentRepository documentRepository;
     private final DocumentChunkRepository chunkRepository;
+    private final DocumentStorageService documentStorageService;
     private final List<DocumentParser> parsers;
     private final TextChunker textChunker;
     private final SemanticChunker semanticChunker;
     private final EmbeddingService embeddingService;
 
     /**
-     * Ingest an uploaded file with explicit metadata. Deletes the temp file after success.
+     * Ingest an uploaded file with explicit metadata. Downloads a working copy from storage for
+     * Apache Tika to read, always cleans that local copy up (success or failure), and — on
+     * success only — deletes the authoritative copy from storage too (see {@link #processDocument}).
      */
     @Async
     @Transactional
@@ -41,22 +43,25 @@ public class IngestionService {
         Document document = documentRepository.findById(documentId)
             .orElseThrow(() -> new IllegalArgumentException("Document not found: " + documentId));
 
-        File file = new File(document.getFilePath());
-        if (!file.exists()) {
-            log.error("Upload file not found at path: {}", document.getFilePath());
+        String storageKey = document.getStorageKey();
+        if (storageKey == null || !documentStorageService.exists(storageKey)) {
+            log.error("Upload file not found in storage for document: {}", documentId);
             document.setStatus(IngestionStatus.FAILED);
             document.setErrorMessage("Upload file not found");
             documentRepository.save(document);
             return;
         }
 
+        Path localCopy = documentStorageService.resolve(storageKey);
         try {
-            processDocument(document, file);
+            processDocument(document, localCopy.toFile());
         } catch (Exception e) {
             log.error("Failed to process uploaded document: {}", document.getDocumentName(), e);
             document.setStatus(IngestionStatus.FAILED);
             document.setErrorMessage(e.getMessage());
             documentRepository.save(document);
+        } finally {
+            deleteQuietly(localCopy);
         }
     }
 
@@ -75,8 +80,8 @@ public class IngestionService {
                 "Document already processed. Original file has been deleted. Please re-upload.");
         }
 
-        String filePath = doc.getFilePath();
-        if (filePath == null || !new File(filePath).exists()) {
+        String storageKey = doc.getStorageKey();
+        if (storageKey == null || !documentStorageService.exists(storageKey)) {
             throw new IllegalStateException(
                 "Original file not found. Please re-upload the document.");
         }
@@ -85,6 +90,14 @@ public class IngestionService {
         doc.setStatus(IngestionStatus.PROCESSING);
         doc.setErrorMessage(null);
         documentRepository.save(doc);
+    }
+
+    private void deleteQuietly(Path path) {
+        try {
+            Files.deleteIfExists(path);
+        } catch (Exception e) {
+            log.warn("Could not delete working copy {}: {}", path, e.getMessage());
+        }
     }
 
     private void processDocument(Document document, File file) throws Exception {
@@ -133,16 +146,18 @@ public class IngestionService {
             }
         }
 
+        // Capture before clearing — this is the authoritative stored copy, distinct from the
+        // local working copy in `file`, which the caller (ingestUploadedFile) cleans up itself.
+        String storageKey = document.getStorageKey();
+
         document.setChunkCount(semanticChunks.size());
         document.setStatus(IngestionStatus.COMPLETED);
-        document.setFilePath(null);
+        document.setStorageKey(null);
+        document.setStorageType(null);
         documentRepository.save(document);
 
-        if (file.exists() && !file.delete()) {
-            log.warn("Could not delete source file after ingestion: {}", file.getAbsolutePath());
-        } else {
-            log.info("Deleted source file after ingestion: {}", file.getAbsolutePath());
-        }
+        documentStorageService.delete(storageKey);
+        log.info("Deleted source file from storage after ingestion: {}", storageKey);
 
         long leafCount = semanticChunks.stream().filter(SemanticChunk::isLeaf).count();
         log.info("Successfully ingested: {} — {} total chunks ({} leaf, {} section)",
@@ -155,25 +170,6 @@ public class IngestionService {
             .findFirst()
             .orElseThrow(() -> new IllegalArgumentException("No parser for file type: " + fileType));
         return parser.parseDocument(file);
-    }
-
-    public String calculateFileHash(File file) throws Exception {
-        MessageDigest digest = MessageDigest.getInstance("SHA-256");
-        try (FileInputStream fis = new FileInputStream(file)) {
-            byte[] buffer = new byte[8192];
-            int bytesRead;
-            while ((bytesRead = fis.read(buffer)) != -1) {
-                digest.update(buffer, 0, bytesRead);
-            }
-        }
-        byte[] hashBytes = digest.digest();
-        StringBuilder sb = new StringBuilder();
-        for (byte b : hashBytes) {
-            String hex = Integer.toHexString(0xff & b);
-            if (hex.length() == 1) sb.append('0');
-            sb.append(hex);
-        }
-        return sb.toString();
     }
 
 }

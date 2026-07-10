@@ -1,14 +1,12 @@
 package com.docai.ingestor.application.service;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -16,7 +14,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -44,10 +41,8 @@ public class ConfluenceConnectorService {
     private final ConnectorSyncPageRepository syncPageRepository;
     private final DocumentRepository documentRepository;
     private final IngestionService ingestionService;
+    private final DocumentStorageService documentStorageService;
     private final ObjectMapper objectMapper;
-
-    @Value("${ingestor.upload-directory:./uploads}")
-    private String uploadDirectory;
 
     private static final HttpClient HTTP = HttpClient.newBuilder()
         .connectTimeout(Duration.ofSeconds(15))
@@ -152,18 +147,19 @@ public class ConfluenceConnectorService {
             JsonNode content = apiGet(token, contentUrl);
             String html = content.path("body").path("storage").path("value").asText("");
 
-            // Save as an HTML file and ingest
-            Files.createDirectories(Paths.get(uploadDirectory));
-            Path htmlFile = Paths.get(uploadDirectory, "confluence-" + externalId + ".html");
-            Files.writeString(htmlFile, html, StandardCharsets.UTF_8);
+            byte[] bytes = html.getBytes(StandardCharsets.UTF_8);
+            String storageKey = documentStorageService.store(
+                new ByteArrayInputStream(bytes), "confluence-" + externalId + ".html",
+                token.getTenantId().toString());
 
             Document doc = documentRepository.save(Document.builder()
                 .tenantId(token.getTenantId())
                 .product(product)
                 .version(version)
                 .documentName("Confluence: " + title)
-                .filePath(htmlFile.toAbsolutePath().toString())
-                .fileHash(ingestionService.calculateFileHash(htmlFile.toFile()))
+                .storageKey(storageKey)
+                .storageType(documentStorageService.storageType())
+                .fileHash(FileHashing.sha256Hex(bytes))
                 .fileType("html")
                 .status(IngestionStatus.PROCESSING)
                 .build());

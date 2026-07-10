@@ -1,14 +1,10 @@
 package com.docai.ingestor.adapter.rest;
 
-import java.io.File;
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Paths;
+import java.security.DigestInputStream;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -20,6 +16,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
+import com.docai.ingestor.application.service.DocumentStorageService;
+import com.docai.ingestor.application.service.FileHashing;
 import com.docai.ingestor.application.service.IngestionService;
 import com.docai.ingestor.config.TenantContext;
 import com.docai.ingestor.domain.entity.Document;
@@ -40,9 +38,7 @@ public class DocumentUploadController {
 
     private final DocumentRepository documentRepository;
     private final IngestionService ingestionService;
-
-    @Value("${ingestor.upload-directory:./uploads}")
-    private String uploadDirectory;
+    private final DocumentStorageService documentStorageService;
 
     private static final List<String> ALLOWED_EXTENSIONS = List.of("pdf", "chm");
 
@@ -75,17 +71,21 @@ public class DocumentUploadController {
             ? documentName : stripExtension(originalFilename);
 
         try {
-            Files.createDirectories(Paths.get(uploadDirectory));
-            File tempFile = Paths.get(uploadDirectory, UUID.randomUUID() + "." + extension).toFile();
-            file.transferTo(tempFile);
-
-            String fileHash = ingestionService.calculateFileHash(tempFile);
             UUID tenantId = TenantContext.get();
+
+            // Hash while streaming straight into storage — the file never touches this
+            // container's disk, not even transiently.
+            String storageKey;
+            String fileHash;
+            try (DigestInputStream digestStream = FileHashing.wrap(file.getInputStream())) {
+                storageKey = documentStorageService.store(digestStream, originalFilename, tenantId.toString());
+                fileHash = FileHashing.hexOf(digestStream.getMessageDigest());
+            }
 
             // Reject exact duplicate that is already successfully processed — scoped to this tenant,
             // since two different tenants uploading byte-identical files must not collide.
             if (documentRepository.existsByFileHashAndTenantIdAndStatus(fileHash, tenantId, IngestionStatus.COMPLETED)) {
-                tempFile.delete();
+                documentStorageService.delete(storageKey);
                 return ResponseEntity.status(HttpStatus.CONFLICT)
                     .body(DocumentResponse.error("This exact document has already been processed"));
             }
@@ -95,7 +95,12 @@ public class DocumentUploadController {
             Document document;
             if (existing.isPresent()) {
                 document = existing.get();
-                document.setFilePath(tempFile.getAbsolutePath());
+                if (document.getStorageKey() != null) {
+                    // Replacing a stale (failed/pending) upload's file with this fresh one.
+                    documentStorageService.delete(document.getStorageKey());
+                }
+                document.setStorageKey(storageKey);
+                document.setStorageType(documentStorageService.storageType());
                 document.setStatus(IngestionStatus.PROCESSING);
                 document.setErrorMessage(null);
                 document = documentRepository.save(document);
@@ -105,7 +110,8 @@ public class DocumentUploadController {
                     .product(product.trim())
                     .version(version.trim())
                     .documentName(docName)
-                    .filePath(tempFile.getAbsolutePath())
+                    .storageKey(storageKey)
+                    .storageType(documentStorageService.storageType())
                     .fileHash(fileHash)
                     .fileType(extension)
                     .status(IngestionStatus.PROCESSING)
@@ -117,10 +123,6 @@ public class DocumentUploadController {
             log.info("Upload accepted: {} ({} v{})", docName, product, version);
             return ResponseEntity.accepted().body(DocumentResponse.of(document, "Processing started"));
 
-        } catch (IOException e) {
-            log.error("Failed to save uploaded file", e);
-            return ResponseEntity.internalServerError()
-                .body(DocumentResponse.error("Failed to save file: " + e.getMessage()));
         } catch (Exception e) {
             log.error("Upload processing error", e);
             return ResponseEntity.internalServerError()

@@ -81,14 +81,22 @@ springdoc:
     operationsSorter: method
 
 ingestor:
-  upload-directory: ${UPLOAD_DIR:./uploads}
   chunk-size: 800
   chunk-overlap: 100
   parallel-processing: true
   max-threads: 4
-  # Phase 7.5 — storage backend: local (default) or s3
+  # Phase 3 — files live on S3-compatible storage (MinIO in this deployment), never on this
+  # container's own disk. "s3" is the only supported backend (see DocumentStorageService); a
+  # future backend is a new implementation gated the same way, not a config toggle back to disk.
   storage:
-    type: ${STORAGE_TYPE:local}
+    type: ${STORAGE_TYPE:s3}
     s3:
       bucket: ${S3_BUCKET:docai-documents}
+      endpoint: ${S3_ENDPOINT:http://minio:9000}
+      region: ${S3_REGION:us-east-1}
+      access-key: ${S3_ACCESS_KEY:minioadmin}
+      secret-key: ${S3_SECRET_KEY:minioadmin123}
+      # MinIO needs path-style (http://host:port/bucket/key); real AWS S3 uses virtual-hosted
+      # style (https://bucket.s3.amazonaws.com/key) — set this to false there.
+      path-style-access: ${S3_PATH_STYLE_ACCESS:true}
 
