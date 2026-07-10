@@ -34,12 +34,6 @@ public class UserPreference {
     @Builder.Default
     private String answerFormat = "PROSE";   // PROSE | BULLET_POINTS | CODE_FIRST
 
-    @Column(name = "default_product", length = 100)
-    private String defaultProduct;
-
-    @Column(name = "default_version", length = 50)
-    private String defaultVersion;
-
     @UpdateTimestamp
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;

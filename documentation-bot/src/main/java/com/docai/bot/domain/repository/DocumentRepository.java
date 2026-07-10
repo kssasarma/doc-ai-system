@@ -24,6 +24,23 @@ public interface DocumentRepository extends JpaRepository<Document, UUID> {
     @Query("SELECT DISTINCT d.product FROM Document d ORDER BY d.product")
     List<String> findDistinctProducts();
 
-    @Query("SELECT DISTINCT d.version FROM Document d WHERE d.product = :product ORDER BY d.version")
+    /** Unordered — callers needing "latest" must sort with {@link com.docai.bot.domain.model.VersionComparator}
+     * rather than trusting this query's order, which is a plain (lexicographic) SQL string sort. */
+    @Query("SELECT DISTINCT d.version FROM Document d WHERE d.product = :product")
     List<String> findVersionsByProduct(String product);
+
+    interface ProductVersion {
+        String getProduct();
+        String getVersion();
+    }
+
+    /** Distinct product+version pairs the caller can actually search — used to populate the
+     * chat UI's scope picker and any other product/version enumeration that must not leak the
+     * existence of documents outside the caller's tenant or access grants. Callers must not pass
+     * an empty {@code documentIds} (JPQL's {@code IN ()} on an empty collection is undefined
+     * behavior across JPA providers) — short-circuit before calling, same convention as
+     * {@link com.docai.bot.application.service.VectorSearchService}. */
+    @Query("SELECT DISTINCT d.product AS product, d.version AS version FROM Document d " +
+           "WHERE d.tenantId = :tenantId AND d.id IN :documentIds")
+    List<ProductVersion> findDistinctProductVersionsAccessible(UUID tenantId, Set<UUID> documentIds);
 }

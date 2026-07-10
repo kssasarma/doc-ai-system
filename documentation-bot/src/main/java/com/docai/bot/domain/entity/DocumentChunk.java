@@ -41,6 +41,17 @@ public class DocumentChunk {
 	@Column(nullable = false, columnDefinition = "TEXT")
 	private String content;
 
+	/**
+	 * Mirrors the generated column added by document-ingestor's V9 migration (which owns this
+	 * table in the shared production database) so this service's own Hibernate-generated test
+	 * schema (ddl-auto=create-drop, Flyway disabled — see PostgresTestContainerBase) also has it;
+	 * the hybrid lexical query in {@link com.docai.bot.domain.repository.DocumentChunkRepository}
+	 * needs the column to exist under test, not just in production. Never written by this service.
+	 */
+	@Column(name = "search_vector", insertable = false, updatable = false,
+	        columnDefinition = "tsvector GENERATED ALWAYS AS (to_tsvector('english', content)) STORED")
+	private String searchVector;
+
 	@JdbcTypeCode(SqlTypes.OTHER)
 	@Column(columnDefinition = "vector(1024)")
 	private PGvector embedding;

@@ -5,6 +5,7 @@ import java.util.List;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Service;
 
+import com.docai.bot.domain.model.VersionComparator;
 import com.docai.bot.domain.repository.DocumentRepository;
 
 import lombok.RequiredArgsConstructor;
@@ -128,11 +129,7 @@ public class QueryAnalyzerService {
 
 	private String getLatestVersion(String product) {
 		List<String> versions = documentRepository.findVersionsByProduct(product);
-		if (!versions.isEmpty()) {
-			// Return the last version (assuming sorted)
-			return versions.get(versions.size() - 1);
-		}
-		return null;
+		return versions.stream().max(VersionComparator.INSTANCE).orElse(null);
 	}
 
 	@lombok.Data

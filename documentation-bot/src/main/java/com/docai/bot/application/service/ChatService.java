@@ -15,6 +15,7 @@ import com.docai.bot.config.TenantContext;
 import com.docai.bot.domain.entity.ChatMessage;
 import com.docai.bot.domain.entity.ChatSession;
 import com.docai.bot.domain.entity.UserPreference;
+import com.docai.bot.domain.model.ExcerptBuilder;
 import com.docai.bot.domain.model.RetrievedChunk;
 import com.docai.bot.domain.model.SearchScope;
 import com.docai.bot.domain.repository.AnswerUpvoteRepository;
@@ -72,6 +73,13 @@ public class ChatService {
         log.info("Using product: {}, version: {}", product, version);
 
         SearchScope scope = documentAccessPolicy.resolveScope(request.getUserId(), TenantContext.get());
+        // request.getProduct()/getVersion() being explicitly present means the caller pinned a
+        // scope (the chat UI's scope chip) — as opposed to `product`/`version` above, which may
+        // just be the LLM's own best-effort guess from the question text. Only an explicit pin
+        // narrows what's actually searchable; access (scope.documentIds()) always wins regardless.
+        if (request.getProduct() != null || request.getVersion() != null) {
+            scope = scope.withVersionNarrow(request.getProduct(), request.getVersion());
+        }
 
         UserPreference prefs = preferenceService.getPreferences(request.getUserId());
         String chatContext = contextManager.buildContextPrompt(session.getId());
@@ -100,7 +108,7 @@ public class ChatService {
             relevantChunks = vectorSearchService.search(enhancedQuery, scope);
             AnswerGenerationService.AnswerResult result = answerService.generateAnswer(
                 request.getQuestion(), chatContext, relevantChunks,
-                prefs.getVerbosity(), prefs.getAnswerFormat()
+                prefs.getVerbosity(), prefs.getAnswerFormat(), product, version
             );
             finalAnswer = result.answer();
             relatedQuestionsFromLlm = result.relatedQuestions();
@@ -205,7 +213,7 @@ public class ChatService {
         SearchScope scope = documentAccessPolicy.resolveScope(userId, TenantContext.get());
         List<RetrievedChunk> chunks = vectorSearchService.search(question, scope);
         AnswerGenerationService.AnswerResult result = answerService.generateAnswer(
-            question, null, chunks, verbosity, format
+            question, null, chunks, verbosity, format, session.getProduct(), session.getVersion()
         );
 
         double confidence = calculateConfidence(chunks, session.getVersion());
@@ -318,9 +326,7 @@ public class ChatService {
                 .relevanceScore(chunk.getSimilarity())
                 .product(chunk.getProduct())
                 .version(chunk.getVersion())
-                .excerpt(chunk.getContent().length() > 200
-                    ? chunk.getContent().substring(0, 200) + "…"
-                    : chunk.getContent())
+                .excerpt(ExcerptBuilder.build(chunk.getContent()))
                 .build())
             .collect(Collectors.toList());
     }

@@ -239,8 +239,12 @@ export interface Bookmark {
 export interface UserPreference {
   verbosity: 'CONCISE' | 'BALANCED' | 'DETAILED';
   answerFormat: 'PROSE' | 'BULLET_POINTS' | 'CODE_FIRST';
-  defaultProduct?: string;
-  defaultVersion?: string;
+}
+
+// Product/version catalog (Phase 7 — backs the chat scope chip)
+export interface ProductEntry {
+  product: string;
+  versions: string[];
 }
 
 // Phase 3 — Team Collaboration types

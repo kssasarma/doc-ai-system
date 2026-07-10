@@ -5,7 +5,7 @@ import {
   RefreshCw, ChevronRight, ArrowUp, FolderPlus, HelpCircle,
   MessageSquarePlus, Users, GitBranch,
 } from 'lucide-react';
-import ReactMarkdown from 'react-markdown';
+import MarkdownContent from './MarkdownContent';
 import { ChatMessage } from '../../types';
 import { formatTimestamp } from '../../utils/chatUtils';
 import { submitFeedback, regenerateAnswer } from '../../services/chatService';
@@ -196,11 +196,11 @@ const MessageItem: React.FC<MessageItemProps> = ({
             {copied ? <Check size={14} /> : <Copy size={14} />}
           </button>
 
-          <div className={`text-sm leading-relaxed pr-6 ${isUser ? '' : 'prose prose-sm max-w-none prose-p:my-2 prose-pre:bg-gray-100 prose-pre:p-3 prose-pre:rounded prose-code:text-blue-600 prose-code:bg-gray-100 prose-code:px-1 prose-code:rounded prose-code:before:content-none prose-code:after:content-none'}`}>
+          <div className={`text-sm leading-relaxed pr-6 ${isUser ? '' : 'prose prose-sm max-w-none prose-p:my-2 prose-pre:rounded prose-pre:p-0 prose-code:text-blue-600 prose-code:bg-gray-100 prose-code:px-1 prose-code:rounded prose-code:before:content-none prose-code:after:content-none [&_pre_code]:bg-transparent [&_pre_code]:text-inherit [&_pre_code]:px-0'}`}>
             {isUser ? (
               <div className="whitespace-pre-wrap">{message.content}</div>
             ) : (
-              <ReactMarkdown>{message.content}</ReactMarkdown>
+              <MarkdownContent content={message.content} />
             )}
           </div>
 

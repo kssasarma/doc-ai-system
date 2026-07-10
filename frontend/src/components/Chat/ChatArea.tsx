@@ -1,17 +1,23 @@
-import React, { Suspense, lazy, useState, useCallback } from 'react';
+import React, { Suspense, lazy, useState, useCallback, useEffect } from 'react';
 import { ChatSession } from '../../types';
 import { MessageSquarePlus, SearchX, Download, Pencil, Check, X, Share2 } from 'lucide-react';
 import { exportConversation } from '../../services/chatService';
 import { useAuth } from '../../context/AuthContext';
+import ScopeChip from './ScopeChip';
 
 const ShareModal = lazy(() => import('./ShareModal'));
 
 const MessageList = lazy(() => import('./MessageList'));
 const MessageInput = lazy(() => import('./MessageInput'));
 
+export interface ChatScope {
+  product?: string;
+  version?: string;
+}
+
 interface ChatAreaProps {
   session: ChatSession | null;
-  onSendMessage: (message: string) => void;
+  onSendMessage: (message: string, scope?: ChatScope) => void;
   isLoading: boolean;
   onCreateSession?: () => void;
   chatNotFound?: boolean;
@@ -34,6 +40,14 @@ const ChatArea: React.FC<ChatAreaProps> = ({
   const [exportPending, setExportPending] = useState(false);
   const [prefillQuestion, setPrefillQuestion] = useState<string | undefined>();
   const [shareOpen, setShareOpen] = useState(false);
+  const [scopeProduct, setScopeProduct] = useState<string | undefined>();
+  const [scopeVersion, setScopeVersion] = useState<string | undefined>();
+
+  // Scope is per-conversation, not global — switching to a different (or new) chat clears any pin.
+  useEffect(() => {
+    setScopeProduct(undefined);
+    setScopeVersion(undefined);
+  }, [session?.chatId]);
 
   const handleStartEditTitle = () => {
     setTitleValue(session?.title ?? '');
@@ -66,8 +80,8 @@ const ChatArea: React.FC<ChatAreaProps> = ({
 
   const handleSend = useCallback((msg: string) => {
     setPrefillQuestion(undefined);
-    onSendMessage(msg);
-  }, [onSendMessage]);
+    onSendMessage(msg, { product: scopeProduct, version: scopeVersion });
+  }, [onSendMessage, scopeProduct, scopeVersion]);
 
   if (chatNotFound) {
     return (
@@ -152,6 +166,13 @@ const ChatArea: React.FC<ChatAreaProps> = ({
             )}
             <p className="text-sm text-gray-500">{session.messages.length} messages</p>
           </div>
+
+          {/* Retrieval scope (optional, per-conversation) */}
+          <ScopeChip
+            product={scopeProduct}
+            version={scopeVersion}
+            onChange={(p, v) => { setScopeProduct(p); setScopeVersion(v); }}
+          />
 
           {/* Share button */}
           <button

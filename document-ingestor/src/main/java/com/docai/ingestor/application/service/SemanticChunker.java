@@ -29,6 +29,11 @@ public class SemanticChunker {
     private static final Pattern FENCED_CODE_BLOCK =
         Pattern.compile("```(\\w*)\\n([\\s\\S]*?)```", Pattern.MULTILINE);
 
+    // A Markdown pipe table: a header row, a separator row (only -, :, |, and whitespace), then
+    // zero or more further rows — matches what HtmlToMarkdownConverter emits for <table> elements.
+    private static final Pattern MARKDOWN_TABLE = Pattern.compile(
+        "^(\\|.*\\|[ \\t]*\\n\\|[ \\t:|-]+\\|[ \\t]*\\n(?:\\|.*\\|[ \\t]*\\n?)*)", Pattern.MULTILINE);
+
     private static final Pattern HEADING =
         Pattern.compile("^(#{1,6})\\s+(.+)$", Pattern.MULTILINE);
 
@@ -71,11 +76,31 @@ public class SemanticChunker {
         // 2. Remove code blocks from text before semantic splitting
         String textWithoutCode = FENCED_CODE_BLOCK.matcher(text).replaceAll("\n\n[CODE_BLOCK]\n\n");
 
+        // 2b. Extract Markdown tables the same way — a support-matrix table diluted into a
+        // generic paragraph chunk is exactly the kind of factual content a similarity search
+        // struggles to surface; keeping it as its own dedicated, searchable chunk fixes that.
+        Matcher tableMatcher = MARKDOWN_TABLE.matcher(textWithoutCode);
+        List<SemanticChunk> tableChunks = new ArrayList<>();
+        int tableIndex = codeIndex;
+        while (tableMatcher.find()) {
+            String table = tableMatcher.group(1).trim();
+            if (!table.isBlank()) {
+                tableChunks.add(SemanticChunk.builder()
+                    .index(tableIndex++)
+                    .content(table)
+                    .chunkType("TABLE")
+                    .isLeaf(true)
+                    .tokenCount(estimateTokens(table))
+                    .build());
+            }
+        }
+        String textWithoutTables = MARKDOWN_TABLE.matcher(textWithoutCode).replaceAll("\n\n[TABLE_BLOCK]\n\n");
+
         // 3. Split into sections by headings
-        List<Section> sections = splitIntoSections(textWithoutCode);
+        List<Section> sections = splitIntoSections(textWithoutTables);
 
         // 4. For each section, further split paragraphs into leaf chunks
-        int leafIndex = codeIndex;
+        int leafIndex = tableIndex;
         for (Section section : sections) {
             List<String> paragraphs = splitParagraphs(section.body());
             List<String> merged = mergeTinyParagraphs(paragraphs);
@@ -120,13 +145,15 @@ public class SemanticChunker {
             }
         }
 
-        // 5. Append code chunks at the end (they reference no parent)
+        // 5. Append code and table chunks at the end (they reference no parent)
         result.addAll(codeChunks);
+        result.addAll(tableChunks);
 
-        log.info("SemanticChunker: {} leaf + {} parent + {} code chunks from {} chars",
+        log.info("SemanticChunker: {} leaf + {} parent + {} code + {} table chunks from {} chars",
             result.stream().filter(SemanticChunk::isLeaf).count(),
             result.stream().filter(c -> !c.isLeaf()).count(),
             codeChunks.size(),
+            tableChunks.size(),
             text.length());
 
         return result;
@@ -178,13 +205,19 @@ public class SemanticChunker {
         List<String> result = new ArrayList<>();
         for (String p : parts) {
             String trimmed = p.trim();
-            if (!trimmed.isBlank() && !trimmed.equals("[CODE_BLOCK]")) {
+            if (!trimmed.isBlank() && !trimmed.equals("[CODE_BLOCK]") && !trimmed.equals("[TABLE_BLOCK]")) {
                 result.add(trimmed);
             }
         }
         return result;
     }
 
+    /**
+     * Merges paragraphs up to {@code maxTokens} per chunk. Each new chunk (after the first)
+     * starts with the last {@code overlap} tokens' worth of text carried over from the end of the
+     * previous chunk, so a fact split across a chunk boundary still has surrounding context in
+     * both resulting chunks instead of being orphaned in whichever half it happened to land in.
+     */
     private List<String> mergeTinyParagraphs(List<String> paragraphs) {
         if (paragraphs.isEmpty()) return List.of();
         int minTokens = Math.max(30, maxTokens / 8);
@@ -200,11 +233,30 @@ public class SemanticChunker {
                 current.append("\n\n").append(para);
             } else {
                 merged.add(current.toString());
-                current = new StringBuilder(para);
+                String carryOver = tailOverlap(current.toString());
+                // If the new paragraph alone already fills (or nearly fills) the token budget,
+                // dropping the carry-over here is the right trade — the alternative is
+                // `trimToTokens` downstream silently truncating the *new* paragraph's own tail
+                // to make room for the overlap, which would lose real content to keep supplementary
+                // context.
+                if (!carryOver.isEmpty() && estimateTokens(carryOver) + estimateTokens(para) > maxTokens) {
+                    carryOver = "";
+                }
+                current = new StringBuilder(carryOver.isEmpty() ? para : carryOver + "\n\n" + para);
             }
         }
         if (!current.isEmpty()) merged.add(current.toString());
         return merged;
+    }
+
+    /** Last ~{@code overlap} tokens of {@code text}, cut at a word boundary. */
+    private String tailOverlap(String text) {
+        if (overlap <= 0) return "";
+        int charLimit = overlap * 4;
+        if (text.length() <= charLimit) return text;
+        String tail = text.substring(text.length() - charLimit);
+        int firstSpace = tail.indexOf(' ');
+        return (firstSpace > 0 && firstSpace < tail.length() - 1) ? tail.substring(firstSpace + 1) : tail;
     }
 
     private static String trimToTokens(String text, int limit) {

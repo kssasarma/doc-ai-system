@@ -108,6 +108,18 @@ public class MultiHopReasoningService {
         }
 
         if (subAnswers.isEmpty()) {
+            // No sub-question scored above threshold — mirror AnswerGenerationService's graceful
+            // degradation rather than refusing outright: synthesize from whatever each hop
+            // actually retrieved (best effort), and only fall back to the canned refusal below
+            // if every single hop came back with genuinely zero chunks.
+            for (HopResult hop : hops) {
+                if (!hop.chunks().isEmpty()) {
+                    subAnswers.put(hop.subQuestion(), hop.chunks());
+                }
+            }
+        }
+
+        if (subAnswers.isEmpty()) {
             return new MultiHopAnswer(
                 "I couldn't find reliable documentation to answer this multi-part question. " +
                 "Try asking each part separately.",

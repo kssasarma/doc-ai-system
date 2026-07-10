@@ -1,3 +1,6 @@
+/* Syntax highlighting theme for fenced code blocks in chat answers (see MarkdownContent.tsx) */
+@import 'highlight.js/styles/github.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

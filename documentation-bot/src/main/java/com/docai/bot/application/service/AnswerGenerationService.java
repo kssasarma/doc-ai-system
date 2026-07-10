@@ -11,6 +11,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import com.docai.bot.domain.model.RetrievedChunk;
+import com.docai.bot.domain.model.SearchScope;
 
 import io.github.resilience4j.bulkhead.Bulkhead;
 import io.github.resilience4j.bulkhead.BulkheadFullException;
@@ -48,9 +49,25 @@ public class AnswerGenerationService {
 
     private record LlmResult(String content, int promptTokens, int completionTokens) {}
 
+    /** @deprecated use the {@code product}/{@code version} overload — kept for callers (e.g.
+     * {@code AutoFaqService}'s canonical-question generation) that have no meaningful version
+     * context to supply; behaves identically to passing {@code null} for both. */
+    @Deprecated
     public AnswerResult generateAnswer(String question, String chatContext,
                                        List<RetrievedChunk> relevantChunks,
                                        String verbosity, String answerFormat) {
+        return generateAnswer(question, chatContext, relevantChunks, verbosity, answerFormat, null, null);
+    }
+
+    /**
+     * @param product descriptive product context for the prompt (not an eligibility filter —
+     *                that's {@link SearchScope}); null if unknown.
+     * @param version descriptive version context for the prompt; null if unknown.
+     */
+    public AnswerResult generateAnswer(String question, String chatContext,
+                                       List<RetrievedChunk> relevantChunks,
+                                       String verbosity, String answerFormat,
+                                       String product, String version) {
 
         if (relevantChunks == null || relevantChunks.isEmpty()) {
             log.warn("No relevant chunks found for question: {}", question);
@@ -62,19 +79,30 @@ public class AnswerGenerationService {
             .max()
             .orElse(0.0);
 
-        if (maxSimilarity < minSimilarityThreshold) {
-            String closestTopic = relevantChunks.get(0).getDocumentName();
-            String product = relevantChunks.get(0).getProduct();
-            String version = relevantChunks.get(0).getVersion();
-            log.warn("Max similarity {} below threshold {} for question: {}",
+        // Graceful degradation, not a hard refusal: a weak top score doesn't mean the retrieved
+        // chunks are useless — it often just means the match is real but partial (e.g. a fact
+        // that's present but surrounded by unrelated text). Always let the LLM see what was
+        // retrieved; below the threshold, tell it to be explicit about the weak match rather than
+        // silently either bluffing confidence or refusing outright. The canned refusal above is
+        // reserved for the genuine zero-candidate case.
+        boolean lowConfidence = maxSimilarity < minSimilarityThreshold;
+        if (lowConfidence) {
+            log.info("Max similarity {} below threshold {} for question: {} — answering with a confidence caveat",
                 String.format("%.3f", maxSimilarity), String.format("%.3f", minSimilarityThreshold), question);
-            return new AnswerResult(
-                buildEmptyStateMessage(question, closestTopic, product + " " + version),
-                Collections.emptyList(), 0, 0
-            );
         }
 
-        String prompt = buildPrompt(question, chatContext, relevantChunks, verbosity, answerFormat);
+        // Phase 7: the retrieved chunks may span more than one version of the product (product/
+        // version narrow the scope but never gate it — SearchScope's access grant is the only
+        // hard filter) — when they do, the LLM must say so explicitly rather than silently
+        // answering from whichever chunk happened to score highest.
+        boolean spansMultipleVersions = relevantChunks.stream()
+            .map(RetrievedChunk::getVersion)
+            .filter(java.util.Objects::nonNull)
+            .distinct()
+            .count() > 1;
+
+        String prompt = buildPrompt(question, chatContext, relevantChunks, verbosity, answerFormat,
+            lowConfidence, product, version, spansMultipleVersions);
         LlmResult llm = callWithRetry(prompt, question);
         AnswerResult parsed = parseOutput(llm.content());
         return new AnswerResult(parsed.answer(), parsed.relatedQuestions(),
@@ -109,10 +137,32 @@ public class AnswerGenerationService {
     }
 
     private String buildPrompt(String question, String chatContext, List<RetrievedChunk> chunks,
-                                String verbosity, String answerFormat) {
+                                String verbosity, String answerFormat, boolean lowConfidence,
+                                String product, String version, boolean spansMultipleVersions) {
         StringBuilder prompt = new StringBuilder();
         prompt.append("You are a helpful documentation assistant. ");
         prompt.append("Answer the user's question based only on the provided documentation excerpts.\n");
+
+        if (product != null || version != null) {
+            prompt.append("The user is asking about ")
+                  .append(product != null ? product : "the product")
+                  .append(version != null ? " version " + version : "")
+                  .append(".\n");
+        }
+
+        if (spansMultipleVersions) {
+            prompt.append("The excerpts below come from more than one version of this product. ");
+            prompt.append("If the documented behavior differs between versions, say so explicitly — name ");
+            prompt.append("which version each behavior applies to — rather than silently answering from only ");
+            prompt.append("one version's excerpt.\n");
+        }
+
+        if (lowConfidence) {
+            prompt.append("These excerpts are only a weak match for the question — they may be tangential ");
+            prompt.append("or only partially relevant. If they don't actually answer the question, say so ");
+            prompt.append("explicitly and describe what they DO cover instead of presenting a weak match as ");
+            prompt.append("a confident answer.\n");
+        }
 
         if ("CONCISE".equals(verbosity)) {
             prompt.append("Be concise: 2-3 sentences maximum.\n");

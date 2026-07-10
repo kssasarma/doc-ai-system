@@ -6,6 +6,7 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Service;
 
 import com.docai.bot.domain.model.RetrievedChunk;
+import com.docai.bot.domain.model.SearchScope;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -35,11 +36,13 @@ public class VersionDiffService {
         String summary
     ) {}
 
-    public DiffResult diff(String topic, String product, String versionA, String versionB) {
+    /** {@code scope} is the caller's own resolved access — both per-version searches stay within
+     * it, so the diff can never surface content from a version's documents the caller can't access. */
+    public DiffResult diff(String topic, SearchScope scope, String product, String versionA, String versionB) {
         log.info("Computing version diff: {} — {} vs {}", topic, versionA, versionB);
 
-        List<RetrievedChunk> chunksA = vectorSearchService.search(topic, product, versionA);
-        List<RetrievedChunk> chunksB = vectorSearchService.search(topic, product, versionB);
+        List<RetrievedChunk> chunksA = vectorSearchService.search(topic, scope.withVersionNarrow(product, versionA));
+        List<RetrievedChunk> chunksB = vectorSearchService.search(topic, scope.withVersionNarrow(product, versionB));
 
         if (chunksA.isEmpty() && chunksB.isEmpty()) {
             return new DiffResult(topic, product, versionA, versionB,

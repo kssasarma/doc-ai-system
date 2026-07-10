@@ -2,6 +2,7 @@ package com.docai.bot.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.util.List;
@@ -9,6 +10,7 @@ import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.ai.chat.client.ChatClient;
@@ -51,7 +53,13 @@ class AnswerGenerationServiceTest {
     }
 
     @Test
-    void generateAnswer_belowThreshold_returnsEmptyStateMessage() {
+    void generateAnswer_belowThreshold_stillCallsLlmInsteadOfRefusing() {
+        // Graceful degradation (Phase 6): a weak top score doesn't mean the chunks are useless —
+        // the LLM still gets to see them and answer, just with an instruction to be explicit
+        // about the weak match rather than either bluffing confidence or refusing outright. The
+        // canned "couldn't find reliable documentation" message is reserved for zero candidates.
+        stubLlmResponse("Here is a tentative answer.\n---FOLLOW-UP-QUESTIONS---\nQ1?\nQ2?\nQ3?");
+
         RetrievedChunk lowScoreChunk = RetrievedChunk.builder()
             .chunkId("c1")
             .content("some content")
@@ -63,8 +71,39 @@ class AnswerGenerationServiceTest {
 
         var result = service.generateAnswer("question?", null, List.of(lowScoreChunk), "BALANCED", "PROSE");
 
-        assertThat(result.answer()).contains("couldn't find reliable documentation");
-        assertThat(result.relatedQuestions()).isEmpty();
+        assertThat(result.answer()).isEqualTo("Here is a tentative answer.");
+        assertThat(result.relatedQuestions()).containsExactly("Q1?", "Q2?", "Q3?");
+    }
+
+    @Test
+    void generateAnswer_belowThreshold_promptIncludesConfidenceCaveat() {
+        stubLlmResponse("Tentative answer.");
+        ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
+
+        RetrievedChunk lowScoreChunk = RetrievedChunk.builder()
+            .chunkId("c1")
+            .content("some content")
+            .documentName("doc.pdf")
+            .similarity(0.3)
+            .product("product-a")
+            .version("1.0")
+            .build();
+
+        service.generateAnswer("question?", null, List.of(lowScoreChunk), "BALANCED", "PROSE");
+
+        verify(requestSpec).user(promptCaptor.capture());
+        assertThat(promptCaptor.getValue()).contains("weak match");
+    }
+
+    @Test
+    void generateAnswer_aboveThreshold_promptHasNoConfidenceCaveat() {
+        stubLlmResponse("Confident answer.");
+        ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
+
+        service.generateAnswer("question?", null, List.of(highSimilarityChunk()), "BALANCED", "PROSE");
+
+        verify(requestSpec).user(promptCaptor.capture());
+        assertThat(promptCaptor.getValue()).doesNotContain("weak match");
     }
 
     @Test
@@ -96,6 +135,75 @@ class AnswerGenerationServiceTest {
 
         assertThat(result.answer()).isEqualTo("Simple answer with no follow-up marker.");
         assertThat(result.relatedQuestions()).isEmpty();
+    }
+
+    @Test
+    void generateAnswer_withProductAndVersion_promptStatesTheContext() {
+        stubLlmResponse("Answer.");
+        ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
+
+        service.generateAnswer("question?", null, List.of(highSimilarityChunk()), "BALANCED", "PROSE",
+            "case360", "14.2.0");
+
+        verify(requestSpec).user(promptCaptor.capture());
+        assertThat(promptCaptor.getValue()).contains("case360").contains("14.2.0");
+    }
+
+    @Test
+    void generateAnswer_noProductOrVersion_promptOmitsVersionContextLine() {
+        stubLlmResponse("Answer.");
+        ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
+
+        service.generateAnswer("question?", null, List.of(highSimilarityChunk()), "BALANCED", "PROSE", null, null);
+
+        verify(requestSpec).user(promptCaptor.capture());
+        assertThat(promptCaptor.getValue()).doesNotContain("The user is asking about");
+    }
+
+    @Test
+    void generateAnswer_chunksSpanMultipleVersions_promptInstructsExplicitVersionCallout() {
+        stubLlmResponse("Answer.");
+        ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
+
+        RetrievedChunk v1 = RetrievedChunk.builder()
+            .chunkId("c1").content("content A").documentName("doc.pdf")
+            .similarity(0.9).product("case360").version("14.2.0").build();
+        RetrievedChunk v2 = RetrievedChunk.builder()
+            .chunkId("c2").content("content B").documentName("doc.pdf")
+            .similarity(0.85).product("case360").version("14.7.0").build();
+
+        service.generateAnswer("question?", null, List.of(v1, v2), "BALANCED", "PROSE", "case360", null);
+
+        verify(requestSpec).user(promptCaptor.capture());
+        assertThat(promptCaptor.getValue()).contains("more than one version");
+    }
+
+    @Test
+    void generateAnswer_chunksAllSameVersion_promptHasNoCrossVersionInstruction() {
+        stubLlmResponse("Answer.");
+        ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
+
+        RetrievedChunk chunk1 = RetrievedChunk.builder()
+            .chunkId("c1").content("content A").documentName("doc.pdf")
+            .similarity(0.9).product("case360").version("14.2.0").build();
+        RetrievedChunk chunk2 = RetrievedChunk.builder()
+            .chunkId("c2").content("content B").documentName("doc.pdf")
+            .similarity(0.85).product("case360").version("14.2.0").build();
+
+        service.generateAnswer("question?", null, List.of(chunk1, chunk2), "BALANCED", "PROSE", "case360", "14.2.0");
+
+        verify(requestSpec).user(promptCaptor.capture());
+        assertThat(promptCaptor.getValue()).doesNotContain("more than one version");
+    }
+
+    @Test
+    void deprecatedFiveArgOverload_delegatesWithNullProductVersion() {
+        // Backward compatibility for callers with no meaningful version context (e.g. AutoFaqService).
+        stubLlmResponse("Answer.");
+
+        var result = service.generateAnswer("question?", null, List.of(highSimilarityChunk()), "BALANCED", "PROSE");
+
+        assertThat(result.answer()).isEqualTo("Answer.");
     }
 
     @Test

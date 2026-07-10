@@ -7,6 +7,8 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Service;
 
 import com.docai.bot.domain.model.RetrievedChunk;
+import com.docai.bot.domain.model.SearchScope;
+import com.docai.bot.domain.model.VersionComparator;
 import com.docai.bot.domain.repository.DocumentRepository;
 
 import lombok.RequiredArgsConstructor;
@@ -39,8 +41,12 @@ public class AnswerEvolutionService {
         String breakingSummary
     ) {}
 
-    public EvolutionTimeline getEvolution(String question, String product) {
-        List<String> versions = documentRepository.findVersionsByProduct(product);
+    /** {@code scope} is the caller's own resolved access — every per-version search below stays
+     * within it, so the timeline can never surface a version's content the caller can't access. */
+    public EvolutionTimeline getEvolution(String question, SearchScope scope, String product) {
+        List<String> versions = documentRepository.findVersionsByProduct(product).stream()
+            .sorted(VersionComparator.INSTANCE)
+            .toList();
         if (versions.isEmpty()) {
             return new EvolutionTimeline(question, product, List.of(),
                 "No documentation found for product: " + product);
@@ -51,7 +57,7 @@ public class AnswerEvolutionService {
 
         List<VersionSnapshot> snapshots = new ArrayList<>();
         for (String version : versions) {
-            VersionSnapshot snap = buildSnapshot(question, product, version);
+            VersionSnapshot snap = buildSnapshot(question, scope, product, version);
             snapshots.add(snap);
         }
 
@@ -62,8 +68,8 @@ public class AnswerEvolutionService {
         return new EvolutionTimeline(question, product, snapshots, breakingSummary);
     }
 
-    private VersionSnapshot buildSnapshot(String question, String product, String version) {
-        List<RetrievedChunk> chunks = vectorSearchService.search(question, product, version);
+    private VersionSnapshot buildSnapshot(String question, SearchScope scope, String product, String version) {
+        List<RetrievedChunk> chunks = vectorSearchService.search(question, scope.withVersionNarrow(product, version));
         if (chunks.isEmpty()) {
             return new VersionSnapshot(version, null, 0.0, false);
         }

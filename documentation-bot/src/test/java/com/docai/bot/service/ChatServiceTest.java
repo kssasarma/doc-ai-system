@@ -155,7 +155,7 @@ class ChatServiceTest {
         when(preferenceService.getPreferences(any())).thenReturn(defaultPrefs());
         when(contextManager.buildContextPrompt(any())).thenReturn("");
         when(multiHopService.isComplexQuery(anyString())).thenReturn(false);
-        when(answerService.generateAnswer(any(), any(), any(), any(), any()))
+        when(answerService.generateAnswer(any(), any(), any(), any(), any(), any(), any()))
             .thenReturn(new AnswerGenerationService.AnswerResult("Answer.", List.of(), 10, 5));
         when(answerService.generateSessionTitle(anyString(), anyString())).thenReturn("Title");
         stubMessageSave();
@@ -187,7 +187,7 @@ class ChatServiceTest {
         when(contextManager.buildContextPrompt(any())).thenReturn("");
         when(multiHopService.isComplexQuery(anyString())).thenReturn(false);
         when(vectorSearchService.search(anyString(), any(SearchScope.class))).thenReturn(List.of());
-        when(answerService.generateAnswer(any(), any(), any(), any(), any()))
+        when(answerService.generateAnswer(any(), any(), any(), any(), any(), any(), any()))
             .thenReturn(new AnswerGenerationService.AnswerResult(answer, List.of(), 10, 5));
         stubMessageSave();
         when(peopleAlsoAskedService.getPeopleAlsoAsked(any(), any(), any(), any())).thenReturn(List.of());

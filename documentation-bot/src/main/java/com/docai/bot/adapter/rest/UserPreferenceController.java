@@ -37,9 +37,7 @@ public class UserPreferenceController {
         UserPreference saved = preferenceService.savePreferences(
             principal.userId(),
             request.getVerbosity(),
-            request.getAnswerFormat(),
-            request.getDefaultProduct(),
-            request.getDefaultVersion()
+            request.getAnswerFormat()
         );
         return ResponseEntity.ok(toResponse(saved));
     }
@@ -48,8 +46,6 @@ public class UserPreferenceController {
         PreferenceResponse r = new PreferenceResponse();
         r.setVerbosity(p.getVerbosity());
         r.setAnswerFormat(p.getAnswerFormat());
-        r.setDefaultProduct(p.getDefaultProduct());
-        r.setDefaultVersion(p.getDefaultVersion());
         return r;
     }
 
@@ -57,15 +53,11 @@ public class UserPreferenceController {
     static class PreferenceRequest {
         private String verbosity;
         private String answerFormat;
-        private String defaultProduct;
-        private String defaultVersion;
     }
 
     @Data
     static class PreferenceResponse {
         private String verbosity;
         private String answerFormat;
-        private String defaultProduct;
-        private String defaultVersion;
     }
 }

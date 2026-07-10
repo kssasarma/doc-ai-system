@@ -25,15 +25,12 @@ public class UserPreferenceService {
     }
 
     @Transactional
-    public UserPreference savePreferences(UUID userId, String verbosity, String answerFormat,
-                                          String defaultProduct, String defaultVersion) {
+    public UserPreference savePreferences(UUID userId, String verbosity, String answerFormat) {
         UserPreference prefs = preferenceRepository.findById(userId)
             .orElseGet(() -> UserPreference.builder().userId(userId).build());
 
         if (verbosity != null && isValidVerbosity(verbosity)) prefs.setVerbosity(verbosity);
         if (answerFormat != null && isValidFormat(answerFormat))  prefs.setAnswerFormat(answerFormat);
-        if (defaultProduct != null) prefs.setDefaultProduct(defaultProduct.isBlank() ? null : defaultProduct);
-        if (defaultVersion != null) prefs.setDefaultVersion(defaultVersion.isBlank() ? null : defaultVersion);
 
         UserPreference saved = preferenceRepository.save(prefs);
         log.info("Saved preferences for user {}: verbosity={}, format={}", userId, saved.getVerbosity(), saved.getAnswerFormat());

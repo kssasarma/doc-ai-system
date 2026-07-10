@@ -25,8 +25,6 @@ const PreferencesModal: React.FC<PreferencesModalProps> = ({ onClose }) => {
   const [prefs, setPrefs] = useState<UserPreference>({
     verbosity: 'BALANCED',
     answerFormat: 'PROSE',
-    defaultProduct: '',
-    defaultVersion: '',
   });
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -112,30 +110,6 @@ const PreferencesModal: React.FC<PreferencesModalProps> = ({ onClose }) => {
                     <span className="text-center opacity-70 leading-tight">{opt.desc}</span>
                   </button>
                 ))}
-              </div>
-            </div>
-
-            {/* Default product / version */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Default product</label>
-                <input
-                  type="text"
-                  placeholder="e.g. case360"
-                  value={prefs.defaultProduct ?? ''}
-                  onChange={e => setPrefs(p => ({ ...p, defaultProduct: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Default version</label>
-                <input
-                  type="text"
-                  placeholder="e.g. 23.4"
-                  value={prefs.defaultVersion ?? ''}
-                  onChange={e => setPrefs(p => ({ ...p, defaultVersion: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
               </div>
             </div>
           </div>

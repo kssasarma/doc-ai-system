@@ -51,7 +51,7 @@ function ChatPage() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [prefsOpen, setPrefsOpen] = useState(false);
 
-  const handleSendMessage = useCallback(async (content: string) => {
+  const handleSendMessage = useCallback(async (content: string, scope?: { product?: string; version?: string }) => {
     if (!activeSessionId || isLoading || !token) return;
 
     const currentSession = sessions.find(s => s.chatId === activeSessionId);
@@ -69,7 +69,7 @@ function ChatPage() {
         ? undefined
         : activeSessionId;
 
-      const response = await sendChatMessage(content, token, chatIdToSend);
+      const response = await sendChatMessage(content, token, chatIdToSend, scope);
 
       if (response.success && response.data) {
         let effectiveChatId = activeSessionId;

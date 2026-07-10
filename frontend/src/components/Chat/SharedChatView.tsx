@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, GitFork, User, Bot, AlertTriangle } from 'lucide-react';
-import ReactMarkdown from 'react-markdown';
+import MarkdownContent from './MarkdownContent';
 import { SharedChatSession } from '../../types';
 import { fetchSharedChat, forkSharedChat } from '../../services/shareService';
 import { useAuth } from '../../context/AuthContext';
@@ -122,8 +122,8 @@ const SharedChatView: React.FC = () => {
                   : 'bg-white border border-gray-200 text-gray-800 rounded-tl-sm shadow-sm'
               }`}>
                 {msg.role === 'ASSISTANT' ? (
-                  <div className="prose prose-sm max-w-none prose-p:my-1 prose-headings:my-2">
-                    <ReactMarkdown>{msg.content}</ReactMarkdown>
+                  <div className="prose prose-sm max-w-none prose-p:my-1 prose-headings:my-2 prose-pre:rounded prose-pre:p-0 prose-code:text-blue-600 prose-code:bg-gray-100 prose-code:px-1 prose-code:rounded prose-code:before:content-none prose-code:after:content-none [&_pre_code]:bg-transparent [&_pre_code]:text-inherit [&_pre_code]:px-0">
+                    <MarkdownContent content={msg.content} />
                   </div>
                 ) : (
                   msg.content
