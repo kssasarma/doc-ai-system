@@ -33,6 +33,10 @@ public class WebhookEvent {
     @Column(name = "document_id")
     private UUID documentId;
 
+    /** Captured synchronously at event-creation time — processEvent() runs @Async on a different thread. */
+    @Column(name = "tenant_id")
+    private UUID tenantId;
+
     @Column(name = "download_url", nullable = false, columnDefinition = "TEXT")
     private String downloadUrl;
 

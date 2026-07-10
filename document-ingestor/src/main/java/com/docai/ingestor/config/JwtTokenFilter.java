@@ -36,37 +36,46 @@ public class JwtTokenFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
             FilterChain filterChain) throws ServletException, IOException {
+        try {
+            String token = extractToken(request);
 
-        String token = extractToken(request);
+            if (token != null) {
+                try {
+                    Claims claims = Jwts.parser()
+                        .verifyWith(getSigningKey())
+                        .build()
+                        .parseSignedClaims(token)
+                        .getPayload();
 
-        if (token != null) {
-            try {
-                Claims claims = Jwts.parser()
-                    .verifyWith(getSigningKey())
-                    .build()
-                    .parseSignedClaims(token)
-                    .getPayload();
+                    String role = claims.get("role", String.class);
+                    String username = claims.get("username", String.class);
+                    UUID userId = UUID.fromString(claims.getSubject());
+                    String tenantClaim = claims.get("tenantId", String.class);
+                    UUID tenantId = tenantClaim != null ? UUID.fromString(tenantClaim) : null;
 
-                String role = claims.get("role", String.class);
-                String username = claims.get("username", String.class);
-                UUID userId = UUID.fromString(claims.getSubject());
+                    if (tenantId != null) {
+                        TenantContext.set(tenantId);
+                    }
 
-                List<SimpleGrantedAuthority> authorities = List.of(
-                    new SimpleGrantedAuthority("ROLE_" + role)
-                );
+                    List<SimpleGrantedAuthority> authorities = List.of(
+                        new SimpleGrantedAuthority("ROLE_" + role)
+                    );
 
-                AdminPrincipal principal = new AdminPrincipal(userId, username, role);
-                UsernamePasswordAuthenticationToken auth =
-                    new UsernamePasswordAuthenticationToken(principal, null, authorities);
-                auth.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                    AdminPrincipal principal = new AdminPrincipal(userId, username, role, tenantId);
+                    UsernamePasswordAuthenticationToken auth =
+                        new UsernamePasswordAuthenticationToken(principal, null, authorities);
+                    auth.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
 
-                SecurityContextHolder.getContext().setAuthentication(auth);
-            } catch (JwtException | IllegalArgumentException e) {
-                log.warn("Invalid JWT token: {}", e.getMessage());
+                    SecurityContextHolder.getContext().setAuthentication(auth);
+                } catch (JwtException | IllegalArgumentException e) {
+                    log.warn("Invalid JWT token: {}", e.getMessage());
+                }
             }
-        }
 
-        filterChain.doFilter(request, response);
+            filterChain.doFilter(request, response);
+        } finally {
+            TenantContext.clear();
+        }
     }
 
     private String extractToken(HttpServletRequest request) {
@@ -81,5 +90,5 @@ public class JwtTokenFilter extends OncePerRequestFilter {
         return Keys.hmacShaKeyFor(Decoders.BASE64.decode(secret));
     }
 
-    public record AdminPrincipal(UUID userId, String username, String role) {}
+    public record AdminPrincipal(UUID userId, String username, String role, UUID tenantId) {}
 }

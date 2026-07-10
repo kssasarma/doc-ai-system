@@ -46,14 +46,12 @@ services:
       SPRING_DATABASE_USERNAME: postgres
       SPRING_DATABASE_PASSWORD: postgres
       OPENAI_API_KEY: ${OPENAI_API_KEY}
-      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com}
       OPENAI_EMBEDDING_MODEL: ${OPENAI_EMBEDDING_MODEL:-text-embedding-3-small}
       JWT_SECRET: ${JWT_SECRET:-dev-secret-change-in-prod-must-be-at-least-32-chars}
       CORS_ALLOWED_ORIGINS: http://localhost:3000
-      INGEST_DIR: /app/watched-docs
       UPLOAD_DIR: /app/uploads
     volumes:
-      - ingestor_watched:/app/watched-docs
       - ingestor_uploads:/app/uploads
     ports:
       - "8081:8081"
@@ -80,7 +78,7 @@ services:
       SPRING_DATABASE_USERNAME: postgres
       SPRING_DATABASE_PASSWORD: postgres
       OPENAI_API_KEY: ${OPENAI_API_KEY}
-      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com}
       OPENAI_CHAT_MODEL: ${OPENAI_CHAT_MODEL:-gpt-4o-mini}
       OPENAI_EMBEDDING_MODEL: ${OPENAI_EMBEDDING_MODEL:-text-embedding-3-small}
       JWT_SECRET: ${JWT_SECRET:-dev-secret-change-in-prod-must-be-at-least-32-chars}
@@ -170,7 +168,6 @@ services:
 volumes:
   postgres_data:
     driver: local
-  ingestor_watched:
   ingestor_uploads:
 
 networks:

@@ -32,7 +32,6 @@ public class SecurityConfig {
     private String allowedOrigins;
 
     private static final String[] PUBLIC_PATHS = {
-        "/api/v1/**",     // API key authenticated via header — auth handled in controller
         "/actuator/health",
         "/actuator/info",
         "/actuator/prometheus",

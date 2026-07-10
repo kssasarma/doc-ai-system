@@ -22,8 +22,11 @@ import lombok.extern.slf4j.Slf4j;
  * Resolves the current tenant from (in priority order):
  * 1. X-Tenant-Id header (UUID) — for inter-service or API-key calls that already know the tenant
  * 2. X-Tenant-Slug header — resolves slug → UUID via DB
- * 3. JWT claim "tenantId" — for browser sessions
- * 4. Falls back to the default tenant when none of the above are present
+ * 3. JWT claim "tenantId" — for browser sessions (null for a SUPER_ADMIN token, which is expected)
+ *
+ * If none resolve, TenantContext is left unset — there is no default/fallback tenant.
+ * {@link TenantContext#get()} fails closed for any handler that requires a real tenant;
+ * {@link TenantContext#getOrNull()} is available for the few legitimately tenant-optional endpoints.
  */
 @Slf4j
 @Component
@@ -41,7 +44,9 @@ public class TenantResolutionFilter extends OncePerRequestFilter {
             throws ServletException, IOException {
         try {
             UUID tenantId = resolve(request);
-            TenantContext.set(tenantId);
+            if (tenantId != null) {
+                TenantContext.set(tenantId);
+            }
             chain.doFilter(request, response);
         } finally {
             TenantContext.clear();
@@ -62,7 +67,7 @@ public class TenantResolutionFilter extends OncePerRequestFilter {
         if (StringUtils.hasText(slugHeader)) {
             return tenantRepository.findBySlug(slugHeader.trim())
                 .map(t -> t.getId())
-                .orElseGet(() -> TenantContext.get());
+                .orElse(null);
         }
 
         // 3. JWT claim
@@ -77,6 +82,6 @@ public class TenantResolutionFilter extends OncePerRequestFilter {
             } catch (Exception ignored) {}
         }
 
-        return TenantContext.get(); // default
+        return null; // unresolved — no default tenant
     }
 }

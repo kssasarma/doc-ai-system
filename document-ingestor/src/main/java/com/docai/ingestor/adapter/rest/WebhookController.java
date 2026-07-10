@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.docai.ingestor.application.service.WebhookIngestionService;
+import com.docai.ingestor.config.TenantContext;
 import com.docai.ingestor.domain.entity.WebhookEvent;
 import com.docai.ingestor.domain.repository.WebhookEventRepository;
 
@@ -82,7 +83,9 @@ public class WebhookController {
      */
     @GetMapping("/webhook/{jobId}")
     public ResponseEntity<?> getWebhookStatus(@PathVariable UUID jobId) {
+        UUID tenantId = TenantContext.get();
         return webhookEventRepository.findById(jobId)
+            .filter(event -> tenantId.equals(event.getTenantId()))
             .map(event -> ResponseEntity.ok(WebhookStatusResponse.builder()
                 .jobId(event.getId().toString())
                 .status(event.getStatus().name())

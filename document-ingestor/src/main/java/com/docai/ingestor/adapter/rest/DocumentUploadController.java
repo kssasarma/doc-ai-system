@@ -21,6 +21,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 import com.docai.ingestor.application.service.IngestionService;
+import com.docai.ingestor.config.TenantContext;
 import com.docai.ingestor.domain.entity.Document;
 import com.docai.ingestor.domain.entity.Document.IngestionStatus;
 import com.docai.ingestor.domain.repository.DocumentRepository;
@@ -79,16 +80,18 @@ public class DocumentUploadController {
             file.transferTo(tempFile);
 
             String fileHash = ingestionService.calculateFileHash(tempFile);
+            UUID tenantId = TenantContext.get();
 
-            // Reject exact duplicate that is already successfully processed
-            if (documentRepository.existsByFileHashAndStatus(fileHash, IngestionStatus.COMPLETED)) {
+            // Reject exact duplicate that is already successfully processed — scoped to this tenant,
+            // since two different tenants uploading byte-identical files must not collide.
+            if (documentRepository.existsByFileHashAndTenantIdAndStatus(fileHash, tenantId, IngestionStatus.COMPLETED)) {
                 tempFile.delete();
                 return ResponseEntity.status(HttpStatus.CONFLICT)
                     .body(DocumentResponse.error("This exact document has already been processed"));
             }
 
-            // Reuse or create document record
-            Optional<Document> existing = documentRepository.findByFileHash(fileHash);
+            // Reuse or create document record — scoped to this tenant
+            Optional<Document> existing = documentRepository.findByFileHashAndTenantId(fileHash, tenantId);
             Document document;
             if (existing.isPresent()) {
                 document = existing.get();
@@ -98,7 +101,7 @@ public class DocumentUploadController {
                 document = documentRepository.save(document);
             } else {
                 document = documentRepository.save(Document.builder()
-                    .tenantId(Document.DEFAULT_TENANT_ID)
+                    .tenantId(tenantId)
                     .product(product.trim())
                     .version(version.trim())
                     .documentName(docName)
@@ -127,6 +130,13 @@ public class DocumentUploadController {
 
     @PostMapping("/{id}/retrigger")
     public ResponseEntity<DocumentResponse> retrigger(@PathVariable UUID id) {
+        UUID tenantId = TenantContext.get();
+        boolean ownedByCaller = documentRepository.findById(id)
+            .map(doc -> tenantId.equals(doc.getTenantId()))
+            .orElse(false);
+        if (!ownedByCaller) {
+            return ResponseEntity.notFound().build();
+        }
         try {
             // prepareRetrigger commits the PROCESSING state before async starts
             ingestionService.prepareRetrigger(id);
@@ -144,7 +154,7 @@ public class DocumentUploadController {
 
     @GetMapping
     public ResponseEntity<List<DocumentResponse>> getAllDocuments() {
-        return ResponseEntity.ok(documentRepository.findAll().stream()
+        return ResponseEntity.ok(documentRepository.findByTenantId(TenantContext.get()).stream()
             .map(doc -> DocumentResponse.of(doc, null))
             .toList());
     }

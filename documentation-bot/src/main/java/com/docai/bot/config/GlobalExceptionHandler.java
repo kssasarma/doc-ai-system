@@ -12,6 +12,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.WebRequest;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import lombok.Builder;
 import lombok.Data;
@@ -36,6 +37,20 @@ public class GlobalExceptionHandler {
             IllegalArgumentException ex, WebRequest request) {
         return ResponseEntity.badRequest()
             .body(ErrorResponse.of("BAD_REQUEST", ex.getMessage(), request));
+    }
+
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ErrorResponse> handleNoResourceFound(
+            NoResourceFoundException ex, WebRequest request) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+            .body(ErrorResponse.of("NOT_FOUND", "No such endpoint", request));
+    }
+
+    @ExceptionHandler(TenantNotResolvedException.class)
+    public ResponseEntity<ErrorResponse> handleTenantNotResolved(
+            TenantNotResolvedException ex, WebRequest request) {
+        return ResponseEntity.badRequest()
+            .body(ErrorResponse.of("TENANT_NOT_RESOLVED", ex.getMessage(), request));
     }
 
     @ExceptionHandler(IllegalStateException.class)

@@ -8,7 +8,6 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.docai.bot.config.TenantContext;
 import com.docai.bot.domain.entity.User;
 import com.docai.bot.domain.repository.UserRepository;
 
@@ -23,28 +22,27 @@ public class UserService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
 
+    /**
+     * One-time first-run bootstrap: the very first account on a fresh install becomes SUPER_ADMIN
+     * (not scoped to any tenant). Fails once any account exists — every subsequent account is
+     * provisioned via {@link InvitationService}.
+     */
     @Transactional
-    public User register(String username, String email, String password) {
-        if (userRepository.existsByUsername(username)) {
-            throw new IllegalArgumentException("Username already taken");
+    public User bootstrapSuperAdmin(String username, String email, String password) {
+        if (userRepository.count() > 0) {
+            throw new IllegalStateException("Bootstrap already completed — use an invitation instead");
         }
-        if (userRepository.existsByEmail(email)) {
-            throw new IllegalArgumentException("Email already registered");
-        }
-
-        // First registered user automatically becomes ADMIN
-        User.Role role = userRepository.count() == 0 ? User.Role.ADMIN : User.Role.USER;
 
         User user = User.builder()
             .username(username)
             .email(email)
             .passwordHash(passwordEncoder.encode(password))
-            .role(role)
-            .tenantId(TenantContext.get())
+            .role(User.Role.SUPER_ADMIN)
+            .tenantId(null)
             .build();
 
         User saved = userRepository.save(user);
-        log.info("Registered user '{}' with role {}", username, role);
+        log.info("Bootstrapped first SUPER_ADMIN account '{}'", username);
         return saved;
     }
 

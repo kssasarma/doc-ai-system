@@ -13,7 +13,6 @@ import org.springframework.transaction.annotation.Transactional;
 import com.docai.ingestor.domain.entity.Document;
 import com.docai.ingestor.domain.entity.Document.IngestionStatus;
 import com.docai.ingestor.domain.entity.DocumentChunk;
-import com.docai.ingestor.domain.model.FileMetadata;
 import com.docai.ingestor.domain.model.SemanticChunk;
 import com.docai.ingestor.domain.repository.DocumentChunkRepository;
 import com.docai.ingestor.domain.repository.DocumentRepository;
@@ -32,51 +31,6 @@ public class IngestionService {
     private final TextChunker textChunker;
     private final SemanticChunker semanticChunker;
     private final EmbeddingService embeddingService;
-
-    /**
-     * Ingest a file from the watched directory. Skips if already ingested with same hash.
-     * Deletes the source file after successful ingestion.
-     */
-    @Async
-    @Transactional
-    public void ingestDocument(File file) {
-        log.info("Starting ingestion for file: {}", file.getName());
-
-        try {
-            String fileHash = calculateFileHash(file);
-
-            if (documentRepository.existsByFileHashAndStatus(fileHash, IngestionStatus.COMPLETED)) {
-                log.info("Document already ingested with same hash. Skipping: {}", file.getName());
-                return;
-            }
-
-            FileMetadata metadata = FileMetadata.fromFileName(file.getName(), file.getAbsolutePath(), fileHash);
-
-            // Remove any failed/pending record for same hash so we start fresh
-            documentRepository.findByFileHash(fileHash).ifPresent(existing -> {
-                chunkRepository.deleteByDocumentId(existing.getId());
-                documentRepository.delete(existing);
-            });
-
-            Document document = Document.builder()
-                .tenantId(Document.DEFAULT_TENANT_ID)
-                .product(metadata.getProduct())
-                .version(metadata.getVersion())
-                .documentName(metadata.getDocumentName())
-                .filePath(metadata.getFilePath())
-                .fileHash(fileHash)
-                .fileType(metadata.getFileType())
-                .status(IngestionStatus.PROCESSING)
-                .build();
-
-            document = documentRepository.save(document);
-            processDocument(document, file);
-
-        } catch (Exception e) {
-            log.error("Failed to ingest document: {}", file.getName(), e);
-            updateErrorStatus(file, e);
-        }
-    }
 
     /**
      * Ingest an uploaded file with explicit metadata. Deletes the temp file after success.
@@ -222,16 +176,4 @@ public class IngestionService {
         return sb.toString();
     }
 
-    private void updateErrorStatus(File file, Exception e) {
-        try {
-            String fileHash = calculateFileHash(file);
-            documentRepository.findByFileHash(fileHash).ifPresent(doc -> {
-                doc.setStatus(IngestionStatus.FAILED);
-                doc.setErrorMessage(e.getMessage());
-                documentRepository.save(doc);
-            });
-        } catch (Exception ex) {
-            log.error("Failed to update error status for: {}", file.getName(), ex);
-        }
-    }
 }

@@ -23,7 +23,12 @@ spring:
     locations: classpath:db/migration
     table: flyway_schema_history_ingestor
     baseline-on-migrate: true
-    baseline-version: 0
+    # Flyway never actually ran in this environment before now (missing spring-boot-starter-flyway —
+    # Spring Boot 4 split the autoconfiguration out of flyway-core). The live schema already matches
+    # V1-V6 (previously applied via Hibernate ddl-auto=update, before it was switched to 'none').
+    # Baselining at 6 makes only V7+ pending here; baseline is ignored entirely for a genuinely
+    # empty/fresh database, where migrate() still runs V1 onward normally.
+    baseline-version: 6
 
   ai:
     openai:
@@ -76,9 +81,7 @@ springdoc:
     operationsSorter: method
 
 ingestor:
-  watch-directory: ${INGEST_DIR:./watched-docs}
   upload-directory: ${UPLOAD_DIR:./uploads}
-  polling-interval-ms: 5000
   chunk-size: 800
   chunk-overlap: 100
   parallel-processing: true

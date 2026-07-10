@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.docai.bot.application.service.InvitationService;
 import com.docai.bot.application.service.JwtService;
 import com.docai.bot.application.service.UserService;
 import com.docai.bot.config.UserPrincipal;
@@ -23,23 +24,43 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 
+/**
+ * There is no public self-registration. The very first account on a fresh install bootstraps as
+ * SUPER_ADMIN ({@code /bootstrap}); every other account is provisioned via an invitation
+ * (see {@link com.docai.bot.adapter.rest.InvitationController}) and activated here via
+ * {@code /accept-invite}.
+ */
 @RestController
 @RequestMapping("/api/auth")
 @RequiredArgsConstructor
 public class AuthController {
 
     private final UserService userService;
+    private final InvitationService invitationService;
     private final JwtService jwtService;
     private final UserRepository userRepository;
 
-    @PostMapping("/register")
-    public ResponseEntity<AuthResponse> register(@Valid @RequestBody RegisterRequest request) {
+    @PostMapping("/bootstrap")
+    public ResponseEntity<AuthResponse> bootstrap(@Valid @RequestBody RegisterRequest request) {
         try {
-            User user = userService.register(request.getUsername(), request.getEmail(), request.getPassword());
+            User user = userService.bootstrapSuperAdmin(request.getUsername(), request.getEmail(), request.getPassword());
+            String token = jwtService.generateToken(user);
+            return ResponseEntity.status(HttpStatus.CREATED).body(AuthResponse.of(user, token));
+        } catch (IllegalStateException e) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(AuthResponse.error(e.getMessage()));
+        }
+    }
+
+    @PostMapping("/accept-invite")
+    public ResponseEntity<AuthResponse> acceptInvite(@Valid @RequestBody AcceptInviteRequest request) {
+        try {
+            User user = invitationService.accept(request.getToken(), request.getUsername(), request.getPassword());
             String token = jwtService.generateToken(user);
             return ResponseEntity.status(HttpStatus.CREATED).body(AuthResponse.of(user, token));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(AuthResponse.error(e.getMessage()));
+        } catch (IllegalStateException e) {
+            return ResponseEntity.status(HttpStatus.GONE).body(AuthResponse.error(e.getMessage()));
         }
     }
 
@@ -79,6 +100,18 @@ public class AuthController {
         @NotBlank
         private String username;
         @NotBlank
+        private String password;
+    }
+
+    @Data
+    static class AcceptInviteRequest {
+        @NotBlank
+        private String token;
+        @NotBlank
+        @Size(min = 3, max = 50)
+        private String username;
+        @NotBlank
+        @Size(min = 6)
         private String password;
     }
 

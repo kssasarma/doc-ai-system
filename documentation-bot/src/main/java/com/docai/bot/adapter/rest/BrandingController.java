@@ -17,9 +17,9 @@ public class BrandingController {
 
     private final TenantService tenantService;
 
-    /** Public — no auth required. Returns branding config for the resolved tenant. */
+    /** Public — no auth required. Returns branding config for the resolved tenant, or a neutral default if none resolves. */
     @GetMapping
     public TenantBranding getBranding() {
-        return tenantService.getBranding(TenantContext.get());
+        return tenantService.getBranding(TenantContext.getOrNull());
     }
 }

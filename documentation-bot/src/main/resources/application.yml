@@ -22,7 +22,12 @@ spring:
     locations: classpath:db/migration
     table: flyway_schema_history_bot
     baseline-on-migrate: true
-    baseline-version: 0
+    # Flyway never actually ran in this environment before now (missing spring-boot-starter-flyway —
+    # Spring Boot 4 split the autoconfiguration out of flyway-core). The live schema already matches
+    # V1-V12 (previously applied via Hibernate ddl-auto=update, before it was switched to 'none').
+    # Baselining at 12 makes only V13+ pending here; baseline is ignored entirely for a genuinely
+    # empty/fresh database, where migrate() still runs V1 onward normally.
+    baseline-version: 12
 
   mail:
     host: ${MAIL_HOST:smtp.gmail.com}

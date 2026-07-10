@@ -15,11 +15,17 @@ public interface DocumentRepository extends JpaRepository<Document, UUID> {
 
     Optional<Document> findByFileHash(String fileHash);
 
+    Optional<Document> findByFileHashAndTenantId(String fileHash, UUID tenantId);
+
     List<Document> findByProductAndVersion(String product, String version);
 
     List<Document> findByStatus(IngestionStatus status);
 
+    List<Document> findByTenantId(UUID tenantId);
+
     boolean existsByFileHash(String fileHash);
 
     boolean existsByFileHashAndStatus(String fileHash, IngestionStatus status);
+
+    boolean existsByFileHashAndTenantIdAndStatus(String fileHash, UUID tenantId, IngestionStatus status);
 }

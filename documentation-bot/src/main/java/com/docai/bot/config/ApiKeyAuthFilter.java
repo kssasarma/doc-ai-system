@@ -63,7 +63,7 @@ public class ApiKeyAuthFilter extends OncePerRequestFilter {
     }
 
     private void setPrincipal(HttpServletRequest request, ApiKey apiKey, User user) {
-        UserPrincipal principal = new UserPrincipal(user.getId(), user.getUsername(), user.getRole().name());
+        UserPrincipal principal = new UserPrincipal(user.getId(), user.getUsername(), user.getRole().name(), user.getTenantId());
         List<SimpleGrantedAuthority> authorities = List.of(new SimpleGrantedAuthority("ROLE_" + user.getRole().name()));
 
         UsernamePasswordAuthenticationToken auth =

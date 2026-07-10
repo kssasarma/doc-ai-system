@@ -104,7 +104,7 @@ class ChatControllerTest {
     // ── helpers ───────────────────────────────────────────────────────────────
 
     private static UsernamePasswordAuthenticationToken userAuth(String username, String role) {
-        UserPrincipal principal = new UserPrincipal(UUID.randomUUID(), username, role);
+        UserPrincipal principal = new UserPrincipal(UUID.randomUUID(), username, role, UUID.randomUUID());
         return new UsernamePasswordAuthenticationToken(
             principal, null, List.of(new SimpleGrantedAuthority("ROLE_" + role)));
     }

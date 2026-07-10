@@ -59,6 +59,12 @@ public class JwtService {
         return extractAllClaims(token).get("username", String.class);
     }
 
+    /** Null for SUPER_ADMIN, whose accounts are not scoped to any tenant. */
+    public UUID extractTenantId(String token) {
+        String claim = extractAllClaims(token).get("tenantId", String.class);
+        return claim != null ? UUID.fromString(claim) : null;
+    }
+
     public boolean isTokenValid(String token) {
         try {
             extractAllClaims(token);

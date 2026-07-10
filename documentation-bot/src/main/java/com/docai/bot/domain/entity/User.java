@@ -44,10 +44,11 @@ public class User {
     private String passwordHash;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 10)
+    @Column(nullable = false, length = 20)
     private Role role;
 
-    @Column(name = "tenant_id", nullable = false)
+    /** Null only for SUPER_ADMIN — every tenant-scoped role must have one. */
+    @Column(name = "tenant_id")
     private UUID tenantId;
 
     // SSO / OIDC fields — null for password-auth users
@@ -68,6 +69,10 @@ public class User {
     private LocalDateTime createdAt;
 
     public enum Role {
-        ADMIN, USER
+        /** System-level. Creates tenants and each tenant's first ADMIN. Not scoped to any tenant. */
+        SUPER_ADMIN,
+        /** Tenant-scoped admin. Configures LLMs, uploads documents, grants document access, invites USERs. */
+        ADMIN,
+        USER
     }
 }

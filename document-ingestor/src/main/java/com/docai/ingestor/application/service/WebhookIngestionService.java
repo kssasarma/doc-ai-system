@@ -20,6 +20,7 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.docai.ingestor.config.TenantContext;
 import com.docai.ingestor.domain.entity.Document;
 import com.docai.ingestor.domain.entity.Document.IngestionStatus;
 import com.docai.ingestor.domain.entity.WebhookEvent;
@@ -57,6 +58,7 @@ public class WebhookIngestionService {
             .status(WebhookEvent.Status.PENDING)
             .retryCount(0)
             .requestedBy(requestedBy)
+            .tenantId(TenantContext.get())
             .build();
         return webhookEventRepository.save(event);
     }
@@ -74,8 +76,8 @@ public class WebhookIngestionService {
             File downloaded = downloadFile(event.getDownloadUrl(), event.getProduct(), event.getVersion());
             String fileHash = ingestionService.calculateFileHash(downloaded);
 
-            // Skip if already ingested
-            if (documentRepository.existsByFileHashAndStatus(fileHash, IngestionStatus.COMPLETED)) {
+            // Skip if already ingested — scoped to this event's tenant
+            if (documentRepository.existsByFileHashAndTenantIdAndStatus(fileHash, event.getTenantId(), IngestionStatus.COMPLETED)) {
                 log.info("Webhook: document already ingested (hash match). Skipping.");
                 downloaded.delete();
                 event.setStatus(WebhookEvent.Status.COMPLETED);
@@ -84,7 +86,7 @@ public class WebhookIngestionService {
                 return;
             }
 
-            Optional<Document> existing = documentRepository.findByFileHash(fileHash);
+            Optional<Document> existing = documentRepository.findByFileHashAndTenantId(fileHash, event.getTenantId());
             Document document;
             if (existing.isPresent()) {
                 document = existing.get();
@@ -99,7 +101,7 @@ public class WebhookIngestionService {
                 String extension = getExtension(downloaded.getName());
 
                 document = documentRepository.save(Document.builder()
-                    .tenantId(Document.DEFAULT_TENANT_ID)
+                    .tenantId(event.getTenantId())
                     .product(event.getProduct())
                     .version(event.getVersion())
                     .documentName(docName)

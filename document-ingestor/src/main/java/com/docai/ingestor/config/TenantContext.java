@@ -1,10 +1,11 @@
-package com.docai.bot.config;
+package com.docai.ingestor.config;
 
 import java.util.UUID;
 
 /**
  * Thread-local holder for the current request's tenant identity.
- * Populated by TenantResolutionFilter at the start of every request and cleared at the end.
+ * Populated by JwtTokenFilter from the JWT "tenantId" claim and cleared at the end of the request.
+ * There is no default/fallback tenant — {@link #get()} fails closed.
  */
 public final class TenantContext {
 
@@ -25,7 +26,6 @@ public final class TenantContext {
         return id;
     }
 
-    /** For the rare legitimate case where an unresolved tenant is not an error (e.g. public branding lookup). */
     public static UUID getOrNull() {
         return CURRENT.get();
     }

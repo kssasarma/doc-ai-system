@@ -34,6 +34,9 @@ public class IntegrationToken {
     @Column(name = "user_id", nullable = false)
     private UUID userId;
 
+    @Column(name = "tenant_id")
+    private UUID tenantId;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
     private Provider provider;

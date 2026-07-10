@@ -21,6 +21,7 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.docai.ingestor.config.TenantContext;
 import com.docai.ingestor.domain.entity.ConnectorSyncPage;
 import com.docai.ingestor.domain.entity.Document;
 import com.docai.ingestor.domain.entity.Document.IngestionStatus;
@@ -64,6 +65,7 @@ public class NotionConnectorService {
             .findByUserIdAndProvider(userId, IntegrationToken.Provider.notion)
             .orElse(IntegrationToken.builder()
                 .userId(userId)
+                .tenantId(TenantContext.get())
                 .provider(IntegrationToken.Provider.notion)
                 .build());
         token.setAccessToken(accessToken);
@@ -150,7 +152,7 @@ public class NotionConnectorService {
             Files.writeString(mdFile, content, StandardCharsets.UTF_8);
 
             Document doc = documentRepository.save(Document.builder()
-                .tenantId(Document.DEFAULT_TENANT_ID)
+                .tenantId(token.getTenantId())
                 .product(product)
                 .version(version)
                 .documentName("Notion: " + title)
