@@ -3,13 +3,15 @@ import { AuthResponse } from '../types';
 const BOT_URL = `${import.meta.env.VITE_BACKEND_URL || 'http://localhost:8082'}`;
 const AUTH_URL = `${BOT_URL}/api/auth`;
 
-export async function register(username: string, email: string, password: string): Promise<AuthResponse> {
-  const res = await fetch(`${AUTH_URL}/register`, {
+export async function bootstrap(username: string, email: string, password: string): Promise<AuthResponse> {
+  const res = await fetch(`${AUTH_URL}/bootstrap`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username, email, password }),
   });
-  return res.json();
+  const data = await res.json();
+  if (!res.ok) return { error: data.error || `Bootstrap failed: ${res.status}` };
+  return data;
 }
 
 export async function login(username: string, password: string): Promise<AuthResponse> {

@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { DocumentInfo, IngestionStatus } from '../../types';
+import { DocumentInfo, IngestionStatus, TenantUser } from '../../types';
 import { fetchDocuments, fetchIngestionStatus, uploadDocument, retriggerDocument } from '../../services/adminService';
-import { Upload, RefreshCw, AlertCircle, CheckCircle, Clock, XCircle } from 'lucide-react';
+import { getTenantUsers } from '../../services/tenantService';
+import DocumentAccessManager from './DocumentAccessManager';
+import { Upload, RefreshCw, AlertCircle, CheckCircle, Clock, XCircle, Lock, X } from 'lucide-react';
 
 const STATUS_ICONS: Record<string, React.ReactNode> = {
   COMPLETED: <CheckCircle className="w-4 h-4 text-green-600" />,
@@ -18,8 +20,24 @@ const STATUS_LABELS: Record<string, string> = {
   FAILED: 'text-red-700 bg-red-50',
 };
 
+function AccessModal({ documentName, onClose, children }: { documentName: string; onClose: () => void; children: React.ReactNode }) {
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50" onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+          <h3 className="text-sm font-semibold text-gray-800 flex items-center gap-2">
+            <Lock size={15} className="text-blue-600" /> Access — {documentName}
+          </h3>
+          <button onClick={onClose} className="p-1 text-gray-400 hover:text-gray-600"><X size={16} /></button>
+        </div>
+        <div className="p-5">{children}</div>
+      </div>
+    </div>
+  );
+}
+
 export default function DocumentsTab() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const [documents, setDocuments] = useState<DocumentInfo[]>([]);
   const [status, setStatus] = useState<IngestionStatus | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -30,8 +48,11 @@ export default function DocumentsTab() {
   const [docName, setDocName] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
-  const [uploadSuccess, setUploadSuccess] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [tenantUsers, setTenantUsers] = useState<TenantUser[]>([]);
+  const [justUploaded, setJustUploaded] = useState<DocumentInfo | null>(null);
+  const [managingDoc, setManagingDoc] = useState<DocumentInfo | null>(null);
 
   const loadData = useCallback(async () => {
     if (!token) return;
@@ -53,15 +74,19 @@ export default function DocumentsTab() {
     return () => clearInterval(interval);
   }, [loadData]);
 
+  useEffect(() => {
+    if (!token || !user?.tenantId) return;
+    getTenantUsers(token, user.tenantId).then(setTenantUsers).catch(() => {});
+  }, [token, user?.tenantId]);
+
   const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!uploadFile || !token) return;
     setIsUploading(true);
     setUploadError('');
-    setUploadSuccess('');
     try {
-      await uploadDocument(token, uploadFile, product, version, docName || undefined);
-      setUploadSuccess(`"${uploadFile.name}" uploaded and processing started`);
+      const created = await uploadDocument(token, uploadFile, product, version, docName || undefined);
+      setJustUploaded(created);
       setUploadFile(null);
       setProduct(''); setVersion(''); setDocName('');
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -129,13 +154,25 @@ export default function DocumentsTab() {
             </div>
           </div>
           {uploadError && <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2"><AlertCircle className="w-4 h-4 flex-shrink-0" />{uploadError}</div>}
-          {uploadSuccess && <div className="flex items-center gap-2 text-sm text-green-700 bg-green-50 rounded-lg px-3 py-2"><CheckCircle className="w-4 h-4 flex-shrink-0" />{uploadSuccess}</div>}
           <button type="submit" disabled={isUploading || !uploadFile}
             className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors">
             <Upload className="w-4 h-4" />
             {isUploading ? 'Uploading…' : 'Upload & Process'}
           </button>
         </form>
+
+        {justUploaded && (
+          <div className="mt-5 pt-5 border-t border-gray-100">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2 text-sm text-green-700">
+                <CheckCircle className="w-4 h-4 flex-shrink-0" />
+                "{justUploaded.documentName}" uploaded and processing started. Grant access now, or later from the table below.
+              </div>
+              <button onClick={() => setJustUploaded(null)} className="p-1 text-gray-400 hover:text-gray-600 flex-shrink-0"><X size={15} /></button>
+            </div>
+            <DocumentAccessManager token={token!} documentId={justUploaded.id} tenantUsers={tenantUsers} />
+          </div>
+        )}
       </div>
 
       {/* Document list */}
@@ -180,13 +217,19 @@ export default function DocumentsTab() {
                     </td>
                     <td className="px-6 py-4 text-right text-gray-600">{doc.chunkCount ?? '—'}</td>
                     <td className="px-6 py-4 text-gray-500 text-xs">{doc.createdAt ? new Date(doc.createdAt).toLocaleString() : '—'}</td>
-                    <td className="px-6 py-4 text-center">
-                      {(doc.status === 'FAILED' || doc.status === 'PENDING') && (
-                        <button onClick={() => handleRetrigger(doc)} title="Retrigger processing"
-                          className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-orange-700 bg-orange-50 rounded-lg hover:bg-orange-100 transition-colors">
-                          <RefreshCw className="w-3.5 h-3.5" />Retry
+                    <td className="px-6 py-4">
+                      <div className="flex items-center justify-center gap-2">
+                        <button onClick={() => setManagingDoc(doc)} title="Manage access"
+                          className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors">
+                          <Lock className="w-3.5 h-3.5" />Access
                         </button>
-                      )}
+                        {(doc.status === 'FAILED' || doc.status === 'PENDING') && (
+                          <button onClick={() => handleRetrigger(doc)} title="Retrigger processing"
+                            className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-orange-700 bg-orange-50 rounded-lg hover:bg-orange-100 transition-colors">
+                            <RefreshCw className="w-3.5 h-3.5" />Retry
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -195,6 +238,12 @@ export default function DocumentsTab() {
           </div>
         )}
       </div>
+
+      {managingDoc && (
+        <AccessModal documentName={managingDoc.documentName} onClose={() => setManagingDoc(null)}>
+          <DocumentAccessManager token={token!} documentId={managingDoc.id} tenantUsers={tenantUsers} />
+        </AccessModal>
+      )}
     </div>
   );
 }

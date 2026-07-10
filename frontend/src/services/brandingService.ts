@@ -18,6 +18,14 @@ export async function fetchBranding(): Promise<TenantBranding> {
   return data;
 }
 
+export async function getTenantBranding(token: string, tenantId: string): Promise<TenantBranding> {
+  const { data } = await axios.get<TenantBranding>(
+    `${BOT_URL}/api/admin/tenants/${tenantId}/branding`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  return data;
+}
+
 export async function updateBranding(
   tenantId: string,
   branding: Partial<TenantBranding>,

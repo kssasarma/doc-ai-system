@@ -32,7 +32,7 @@ Was: single seeded tenant (`00000000-...0001`), `TenantResolutionFilter` in `doc
   - [x] `InvitationService` sends the invite email via the existing `spring-boot-starter-mail`/`JavaMailSender` setup (reused `DigestProperties` for from-address/app-url). Email failure doesn't fail invite creation (token still exists, logged for manual resend).
   - [x] `POST /api/auth/accept-invite` — token + username + password → activates the account with the invitation's role/tenant. Single-use (marks `acceptedAt`), rejects expired/reused tokens (410 Gone).
   - [x] `TenantController.create` now also invites the new tenant's first admin by email in the same call.
-  - [ ] **Frontend still needed**: an "Accept Invite" page (`/accept-invite?token=...`) and removal of the public signup form — deferred to Phase 4 (frontend rework), backend is ready for it now.
+  - [x] **Frontend**: "Accept Invite" page (`/accept-invite?token=...`) and removal of the public signup form — built in Phase 4 (`AcceptInvitePage.tsx`, `LoginPage.tsx`).
 - [x] `TenantContext.get()` now fails closed (`TenantNotResolvedException` → 400) instead of defaulting; `TenantContext.getOrNull()` added for the one legitimately tenant-optional endpoint (public branding lookup).
 - [x] `TenantController` authorization split: tenant CRUD (list/create/update-plan) is `SUPER_ADMIN`-only; per-tenant config (branding/LLM/retention) is self-service — a tenant's own `ADMIN` may access only their own tenant's config, `SUPER_ADMIN` may access any (support case).
 - [x] Gave `document-ingestor` its own tenant resolution: `TenantContext`/`TenantNotResolvedException` mirrored from the bot; `JwtTokenFilter` now extracts the `tenantId` JWT claim and populates it per-request.
@@ -102,17 +102,24 @@ Was: `ingestor.storage.type` defaulted to `local` (`LocalDocumentStorageService`
 
 ---
 
-## Phase 4 — Production-quality tenant admin frontend
+## Phase 4 — Production-quality tenant admin frontend (done)
 
-Today: `frontend/src/components/Admin/` is a flat 12-tab client-state switcher (no nested routes), React + TypeScript + Vite + Tailwind. Tabs are substantive (100-270 lines, live API calls) but every tab is **globally scoped** — `TenantManagementTab` lists all tenants, `UserAccessTab` lists all users — there is no tenant-admin-vs-super-admin split at all.
+Was: `frontend/src/components/Admin/` was a flat 12-tab client-state switcher (`AdminPanel.tsx`, no nested routes) — every tab was **globally scoped** (`TenantManagementTab` listed *all* tenants, `UserAccessTab` listed *all* users system-wide via a deprecated product/version grant API), with no tenant-admin-vs-super-admin split at all. `LoginPage` still had a dead `/register` form (backend endpoint removed in Phase 1). No bootstrap or accept-invite UI existed. No UI called `DocumentAccessController`, `InvitationController`, or the tenant-scoped `GET /api/admin/tenants/{id}/users` — all three were backend-ready but wired to nothing.
 
-- [ ] Split into two consoles:
-  - **Super-admin console**: tenant list/create + (later, optional) system metrics/audit. Nothing else.
-  - **Tenant admin console**: everything scoped to the admin's own tenant — LLM config, document upload + per-user access grants, tenant's own user list, FAQ/gap/coverage/cost/escalation tooling that already exists.
-- [ ] Real routing (`react-router` nested routes under `/admin/*`, not tab-index client state) so pages are linkable/refreshable.
-- [ ] Document upload flow gets a real access-grant step (multi-select tenant users, not just an upload form).
-- [ ] Proper loading/error/empty states, form validation, and responsive layout across the reworked pages — this is the "not a dumb chip here and there" bar the user asked for; budget real design/UX time here, not a mechanical port of the existing tabs.
-- [ ] End-user chat UI: remove manual product/version selection: the underlying question just searches everything the logged-in user has access to (depends on Phase 2's retrieval rework).
+- [x] Split into two consoles, both driven by real `react-router` nested routes under `/admin/*` (`AdminEntry.tsx` picks by role; `AdminLayout.tsx` provides a shared sidebar/`Outlet` shell — desktop sidebar + horizontal tab strip on mobile, not the old tab-index `useState`):
+  - **Super-admin console** (`SuperAdminConsole.tsx`): `/admin/tenants` only — tenant list/create (now collecting the required `adminEmail` the backend needs to fire the invite, which the old form silently omitted), activate/deactivate, per-tenant LLM config + retention (`TenantsPage.tsx`, rebuilt from the old `TenantManagementTab` — also fixed a pre-existing dead `input-sm` CSS class that was never defined anywhere, silently unstyled).
+  - **Tenant admin console** (`TenantAdminConsole.tsx`): Overview/Documents/Coverage/Query Intel/FAQ/Gap Reports/Cost/Users/Audit Log/Escalations/GDPR/Settings, all scoped to the admin's own tenant.
+- [x] New **Users** page (`UsersPage.tsx`) replaces the old global product/version `UserAccessTab`: tenant-scoped user list via `GET /api/admin/tenants/{id}/users`, plus an invite-a-user form wired to `POST /api/admin/invitations`.
+- [x] New **Settings** page (`SettingsPage.tsx`): self-service LLM config + data retention + branding for the admin's own tenant (previously only reachable by a `SUPER_ADMIN` through the old global tenant tab).
+- [x] Document upload flow gets a real access-grant step: `DocumentAccessManager.tsx` (new, shared component) shows immediately after a successful upload and is also reachable per-row via an "Access" action opening a modal — both drive the previously-unwired `DocumentAccessController` (`GET/POST/DELETE /api/documents/{id}/access`).
+- [x] Auth rework: `POST /api/auth/register` UI removed entirely; added `BootstrapPage.tsx` (`/bootstrap`, first-`SUPER_ADMIN` setup, gracefully handles the "already initialized" `409`) and `AcceptInvitePage.tsx` (`/accept-invite?token=...`, handles expired/used-token `410` responses).
+- [x] `AuthUser`/`AuthContext` extended for the 3-role/tenant model (`SUPER_ADMIN | ADMIN | USER`, nullable `tenantId`, `isSuperAdmin`).
+- [x] End-user chat UI: verified manual product/version selection was **already removed** from the query flow during Phase 2 (no dropdowns, no params sent) — nothing left to do here.
+- [x] Removed dead code enabled by the rework: `AdminPanel.tsx`, `TenantManagementTab.tsx`, `UserAccessTab.tsx`, `productAccessService.ts` (the last of these turned out to already be broken — it imported a nonexistent `ApiResult` type from `types/index.ts`, a pre-existing bug nobody had hit because nothing exercised that import path at build time; deleting it was a strict improvement, not just cleanup).
+- [x] **Verified live end-to-end** with a headless-Chromium (Playwright) run against the real running stack, not just `vite build` — screenshotted every new page (login, bootstrap incl. already-initialized state, accept-invite incl. missing-token state, super-admin tenants, tenant-admin overview/documents/users/settings) and drove the document-access grant → revoke cycle against real data. This surfaced and fixed two real bugs that a build-only check would have missed:
+  - **Relative `NavLink` accumulation**: sidebar nav items used relative `to="documents"` etc., which React Router resolves relative to the *currently matched route* rather than a fixed base — clicking between tabs accumulated path segments (`/admin/overview/documents/overview/…`) instead of navigating cleanly. Fixed by making every nav target and fallback `<Navigate>` an absolute `/admin/...` path.
+  - **`tenantId` never populated**: `AuthContext` assumed the backend's `AuthResponse` (from `/login`, `/me`, bootstrap, accept-invite) included a `tenantId` field: it doesn't, on any of those endpoints, even though the JWT itself carries `tenantId` as a claim. Every tenant-scoped fetch (`Users`, `Settings`, the Documents tab's user picker) was silently short-circuiting on an empty tenant ID. Fixed by decoding `tenantId` client-side from the JWT payload instead of trusting the response body.
+- [x] Confirmed no regressions: `npm run build` (the project's actual build gate — there's no `tsc -b` step) is clean; pre-existing unrelated issues noted but left alone as out of scope — a repo-wide `noUnusedLocals` violation pattern (bare `import React` with the automatic JSX runtime) predating this work, and an unrelated `/ask/api/notifications/unread-count` 404 from `NotificationPanel` hitting a malformed relative URL.
 
 ---
 
@@ -121,7 +128,7 @@ Today: `frontend/src/components/Admin/` is a flat 12-tab client-state switcher (
 1. ~~**Phase 1** (tenant model + roles)~~ — done.
 2. ~~**Phase 2** (document ACL + retrieval rewrite)~~ — done.
 3. ~~**Phase 3** (storage)~~ — done.
-4. **Phase 4** (frontend) — next up; the only remaining phase. Depends on the APIs from 1-3, all now stable: the Accept-Invite page (Phase 1), the document-upload access-grant step against `DocumentAccessController` (Phase 2), and uploads already going to the final storage backend (Phase 3) so the upload UI is being built against what production will actually run.
+4. ~~**Phase 4** (frontend)~~ — done. All four phases complete.
 
 ## Decisions (resolved)
 

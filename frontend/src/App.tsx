@@ -6,10 +6,12 @@ import { createMessage } from './utils/chatUtils';
 import { sendChatMessage } from './services/chatService';
 import appConfig from './config/app.json';
 import LoginPage from './components/Auth/LoginPage';
+import BootstrapPage from './components/Auth/BootstrapPage';
+import AcceptInvitePage from './components/Auth/AcceptInvitePage';
 
 const Sidebar = lazy(() => import('./components/Sidebar/Sidebar'));
 const ChatArea = lazy(() => import('./components/Chat/ChatArea'));
-const AdminPanel = lazy(() => import('./components/Admin/AdminPanel'));
+const AdminEntry = lazy(() => import('./components/Admin/AdminEntry'));
 const BookmarksPage = lazy(() => import('./components/Bookmarks/BookmarksPage'));
 const CollectionsPage = lazy(() => import('./components/Collections/CollectionsPage'));
 const SharedChatView = lazy(() => import('./components/Chat/SharedChatView'));
@@ -179,10 +181,12 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
 function App() {
   return (
     <Routes>
-      <Route path="/admin" element={
+      <Route path="/bootstrap" element={<BootstrapPage />} />
+      <Route path="/accept-invite" element={<AcceptInvitePage />} />
+      <Route path="/admin/*" element={
         <AdminRoute>
           <Suspense fallback={<LoadingSpinner />}>
-            <AdminPanel />
+            <AdminEntry />
           </Suspense>
         </AdminRoute>
       } />

@@ -1,21 +1,44 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
-import { AuthUser } from '../types';
-import { login as apiLogin, register as apiRegister, getMe } from '../services/authService';
+import { AuthUser, AuthResponse } from '../types';
+import { login as apiLogin, getMe } from '../services/authService';
 
 interface AuthContextValue {
   user: AuthUser | null;
   token: string | null;
   isLoading: boolean;
   isAuthenticated: boolean;
+  isSuperAdmin: boolean;
   isAdmin: boolean;
   login: (username: string, password: string) => Promise<void>;
-  register: (username: string, email: string, password: string) => Promise<void>;
+  applySession: (data: AuthResponse) => void;
   logout: () => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 const TOKEN_KEY = 'docai_token';
+
+// AuthResponse (login/me/bootstrap/accept-invite) never carries tenantId — only the
+// JWT payload does. Decode it client-side rather than relying on the response body.
+function decodeTenantIdFromToken(token: string): string | null {
+  try {
+    const payload = token.split('.')[1];
+    const json = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/')));
+    return json.tenantId ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function toAuthUser(data: AuthResponse, token: string): AuthUser {
+  return {
+    userId: data.userId!,
+    username: data.username!,
+    email: data.email!,
+    role: data.role as AuthUser['role'],
+    tenantId: decodeTenantIdFromToken(token),
+  };
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -32,12 +55,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     getMe(storedToken)
       .then(data => {
         if (data.userId && data.role) {
-          setUser({
-            userId: data.userId,
-            username: data.username!,
-            email: data.email!,
-            role: data.role as 'ADMIN' | 'USER',
-          });
+          setUser(toAuthUser(data, storedToken));
           setToken(storedToken);
         } else {
           localStorage.removeItem(TOKEN_KEY);
@@ -58,27 +76,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     localStorage.setItem(TOKEN_KEY, data.token);
     setToken(data.token);
-    setUser({
-      userId: data.userId!,
-      username: data.username!,
-      email: data.email!,
-      role: data.role as 'ADMIN' | 'USER',
-    });
+    setUser(toAuthUser(data, data.token));
   }, []);
 
-  const register = useCallback(async (username: string, email: string, password: string) => {
-    const data = await apiRegister(username, email, password);
-    if (data.error || !data.token) {
-      throw new Error(data.error || 'Registration failed');
-    }
+  // Used by bootstrap / accept-invite flows, which return the same AuthResponse shape as login.
+  const applySession = useCallback((data: AuthResponse) => {
+    if (!data.token) return;
     localStorage.setItem(TOKEN_KEY, data.token);
     setToken(data.token);
-    setUser({
-      userId: data.userId!,
-      username: data.username!,
-      email: data.email!,
-      role: data.role as 'ADMIN' | 'USER',
-    });
+    setUser(toAuthUser(data, data.token));
   }, []);
 
   const logout = useCallback(() => {
@@ -93,9 +99,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       token,
       isLoading,
       isAuthenticated: !!user,
-      isAdmin: user?.role === 'ADMIN',
+      isSuperAdmin: user?.role === 'SUPER_ADMIN',
+      isAdmin: user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN',
       login,
-      register,
+      applySession,
       logout,
     }}>
       {children}

@@ -142,11 +142,14 @@ export interface ChatHistoryAPIResponse {
 }
 
 // Auth types
+export type Role = 'SUPER_ADMIN' | 'ADMIN' | 'USER';
+
 export interface AuthUser {
   userId: string;
   username: string;
   email: string;
-  role: 'ADMIN' | 'USER';
+  role: Role;
+  tenantId: string | null;
 }
 
 export interface AuthResponse {
@@ -156,6 +159,45 @@ export interface AuthResponse {
   email?: string;
   role?: string;
   error?: string;
+}
+
+// Tenant types
+export interface Tenant {
+  id: string;
+  name: string;
+  slug: string;
+  plan: string;
+  active: boolean;
+  maxUsers: number;
+  maxDocuments: number;
+  oidcEnabled: boolean;
+  oidcProvider: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TenantUser {
+  userId: string;
+  username: string;
+  email: string;
+  role: Role;
+}
+
+// Invitation types
+export interface Invitation {
+  id: string;
+  email: string;
+  role: string;
+  expiresAt: string;
+}
+
+// Per-document access grant types
+export interface DocumentGrantee {
+  grantId: string;
+  userId: string;
+  username: string;
+  grantedBy: string;
+  grantedAt: string;
 }
 
 // Admin / Document types

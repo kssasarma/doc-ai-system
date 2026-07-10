@@ -1,19 +1,9 @@
 import axios from 'axios';
+import type { Tenant, TenantUser } from '../types';
 
 const BOT_URL = import.meta.env.VITE_BOT_API_URL ?? 'http://localhost:8082';
 
-export interface Tenant {
-  id: string;
-  name: string;
-  slug: string;
-  plan: string;
-  active: boolean;
-  maxUsers: number;
-  maxDocuments: number;
-  oidcEnabled: boolean;
-  oidcProvider: string | null;
-  createdAt: string;
-}
+export type { Tenant };
 
 export interface TenantLLMConfig {
   id: string;
@@ -46,9 +36,14 @@ export async function listTenants(token: string): Promise<Tenant[]> {
 
 export async function createTenant(
   token: string,
-  payload: { name: string; slug: string; plan: string; maxUsers: number; maxDocuments: number },
+  payload: { name: string; slug: string; plan: string; maxUsers: number; maxDocuments: number; adminEmail: string },
 ): Promise<Tenant> {
   const { data } = await axios.post<Tenant>(`${BOT_URL}/api/admin/tenants`, payload, { headers: headers(token) });
+  return data;
+}
+
+export async function getTenantUsers(token: string, id: string): Promise<TenantUser[]> {
+  const { data } = await axios.get<TenantUser[]>(`${BOT_URL}/api/admin/tenants/${id}/users`, { headers: headers(token) });
   return data;
 }
 

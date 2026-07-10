@@ -1,13 +1,10 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 
-type Mode = 'login' | 'register';
-
 export default function LoginPage() {
-  const { login, register } = useAuth();
-  const [mode, setMode] = useState<Mode>('login');
+  const { login } = useAuth();
   const [username, setUsername] = useState('');
-  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -17,11 +14,7 @@ export default function LoginPage() {
     setError('');
     setIsSubmitting(true);
     try {
-      if (mode === 'login') {
-        await login(username, password);
-      } else {
-        await register(username, email, password);
-      }
+      await login(username, password);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong');
     } finally {
@@ -30,33 +23,12 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100">
+    <div className="min-h-screen flex items-center justify-center bg-gray-100 px-4">
       <div className="bg-white rounded-2xl shadow-lg p-8 w-full max-w-sm">
         <div className="text-center mb-8">
           <div className="text-4xl mb-3">📚</div>
           <h1 className="text-2xl font-bold text-gray-900">Docs-inator</h1>
           <p className="text-sm text-gray-500 mt-1">AI Documentation Assistant</p>
-        </div>
-
-        <div className="flex rounded-lg bg-gray-100 p-1 mb-6">
-          <button
-            type="button"
-            onClick={() => setMode('login')}
-            className={`flex-1 py-2 text-sm font-medium rounded-md transition-colors ${
-              mode === 'login' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            Sign In
-          </button>
-          <button
-            type="button"
-            onClick={() => setMode('register')}
-            className={`flex-1 py-2 text-sm font-medium rounded-md transition-colors ${
-              mode === 'register' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            Register
-          </button>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -68,24 +40,11 @@ export default function LoginPage() {
               onChange={e => setUsername(e.target.value)}
               required
               minLength={3}
+              autoFocus
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="Enter username"
             />
           </div>
-
-          {mode === 'register' && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-              <input
-                type="email"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                required
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Enter email"
-              />
-            </div>
-          )}
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
@@ -111,15 +70,16 @@ export default function LoginPage() {
             disabled={isSubmitting}
             className="w-full py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
           >
-            {isSubmitting ? 'Please wait...' : mode === 'login' ? 'Sign In' : 'Create Account'}
+            {isSubmitting ? 'Please wait…' : 'Sign In'}
           </button>
         </form>
 
-        {mode === 'register' && (
-          <p className="text-xs text-gray-500 text-center mt-4">
-            The first account created automatically gets Admin privileges.
-          </p>
-        )}
+        <p className="text-xs text-gray-400 text-center mt-6">
+          Accounts are provisioned by invitation only.{' '}
+          <Link to="/bootstrap" className="text-blue-500 hover:text-blue-700 hover:underline">
+            Setting up for the first time?
+          </Link>
+        </p>
       </div>
     </div>
   );
