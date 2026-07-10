@@ -341,6 +341,7 @@ public class ChatService {
     private ChatSession createNewSession(String product, String version, UUID userId) {
         ChatSession session = ChatSession.builder()
             .userId(userId)
+            .tenantId(TenantContext.get())
             .product(product)
             .version(version)
             .messageCount(0)

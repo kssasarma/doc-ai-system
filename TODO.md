@@ -7,6 +7,10 @@ Captures the gap between what exists today and the target model:
 - Files are never stored on the application server's local disk.
 - The tenant admin console must be a real, production-quality frontend — not a bare-bones placeholder.
 - End users log in, ask questions, and get answers pulled from every document they personally have access to (no manual product/version picking).
+- Retrieval must be reliably good: hybrid (dense + lexical) search, re-ranking, and honest confidence — a real, uploaded CHM manual failing to answer "what application servers are supported" is not acceptable.
+- Answers must ground every claim in a citation, preserve code blocks and tables verbatim, and be explicit when documented behavior differs across versions rather than silently picking one.
+- Shared chats must respect the sharing owner's stated intent (public vs. team-only) — not just record it.
+- The frontend should need no explanation: one obvious primary action per screen, real feedback for every state (loading/empty/error), nothing left to guess.
 
 Status legend: `[x]` done, `[ ]` not started, `[~]` in progress.
 
@@ -123,15 +127,120 @@ Was: `frontend/src/components/Admin/` was a flat 12-tab client-state switcher (`
 
 ---
 
+## Phase 5 — Immediate bug: chat-sharing access toggle not enforced (security) (done)
+
+Was: `ShareModal.tsx` offers a "Team only" vs "Public" toggle when sharing a chat, persisted as `SharedChatLink.publicAccess`. `SharedChatService.getSharedChat()` — the handler behind the fully unauthenticated `GET /api/share/{token}` — checked `expiresAt` but never read `publicAccess` at all: every link, regardless of which option the owner picked, was served identically to any anonymous visitor holding the token. `SharedChatLink`/`ChatSession` also had no `tenantId` mapped on the JPA entity (the DB column already existed on `chat_sessions` from a Phase-1-era migration, but the entity never mapped it), so there was no mechanism to even check tenant at read time. Two related bugs surfaced while fixing this: `createShareLink` never checked that the caller owned the session being shared (any authenticated user, from any tenant, could create/replace a share link for *any* `chatId` if they knew or guessed it), and `/api/share/**` was a blanket public-path wildcard that also covered `POST /api/share/{token}/fork` — meaning "fork" only "worked" as authenticated by accident (an anonymous caller would hit an `@AuthenticationPrincipal` resolution failure rather than a clean 401).
+
+- [x] `SharedChatService.getSharedChat(token, viewer)` / `forkSharedChat(token, viewer)`: both now run through a shared `verifyViewAccess(link, viewer)` — a non-public link requires the viewer be authenticated **and** (the link's creator, a `SUPER_ADMIN`, or a member of the same tenant as the chat's owner); anonymous or cross-tenant requests get 403, not the transcript. A null `link.tenantId` (legacy/pre-migration data) denies rather than wildcards.
+- [x] Mapped `tenantId` onto the `ChatSession` entity (pure ORM fix — the DB column already existed) and added `tenantId` to `SharedChatLink` (`V15__share_link_tenant_scoping.sql`, backfilled from the owning session, indexed). New chat sessions and share links populate it going forward (`ChatService.createNewSession`, `SharedChatService.createShareLink`/`forkSharedChat`).
+- [x] **Fixed `createShareLink`'s missing ownership check** (found while implementing the above, same feature area): it now loads the `ChatSession` and rejects (403) if the caller isn't its owner, before creating or replacing a link.
+- [x] **Narrowed the public-path pattern** from `/api/share/**` to exactly `/api/share/{token}` (`SecurityConfig.PUBLIC_PATHS`) — the view endpoint stays genuinely public (optionally-authenticated via `@AuthenticationPrincipal(errorOnInvalidType = false)`, since anonymous visitors of a public link must still work), while `/api/share/{token}/fork` now requires real authentication at the security-filter layer and returns a clean 401 instead of failing by accident.
+- [x] Cascade: `TenantService.update()` now revokes (deletes) all of a tenant's `SharedChatLink` rows the moment `active` transitions `true → false`.
+- [x] GDPR-delete cascade **not built**: there is currently no working user-deletion code path to hook into at all — `POST /api/user/gdpr/me` only ever creates a `PENDING` `GdprDeletionRequest` row; grepping the codebase confirms nothing ever processes it (no scheduled job, no consumer). That's a separate, pre-existing gap (the admin UI's "delete user" button also calls a `DELETE /api/admin/users/{userId}` endpoint that doesn't exist in the backend at all) — out of scope for a sharing-enforcement fix, noted below as deferred.
+- [x] No change to the sharing *model* itself — binary public/team-only is the right level of complexity (same pattern as Google Docs/Notion link sharing); the bug was purely that "team only" wasn't enforced, not that the feature needed redesigning. Per-named-recipient sharing (invite specific people to one chat) is a bigger feature nobody has asked for yet — noted as a future option, not built now.
+- [x] Frontend: no changes needed to `ShareModal.tsx`/`SharedChatView.tsx` — the UI already communicated the right thing to the sharer; it was the backend that didn't honor it.
+- [x] `SharedChatServiceTest` (new, 11 cases): ownership-on-create, public/non-public/expired/owner/same-tenant/cross-tenant/super-admin/null-tenant permutations for view, and the same enforcement on fork.
+- [x] **Verified live end-to-end** against the real running stack (not just unit tests): rebuilt and restarted `documentation-bot`, confirmed `V15` applied cleanly on top of the live DB. With two tenants and cross-tenant test users: a team-only link correctly 403'd for both an anonymous caller and a different-tenant user, and correctly 200'd for the same-tenant user and the owner; a public link still worked anonymously; a non-owner attempting to create a share link for someone else's chat got 403; forking with no auth token returned a clean 401; deactivating a tenant immediately made its share link 400 "not found" (deleted, not just access-denied). All fixtures cleaned up afterward.
+
+### Deferred (separate follow-up work, not Phase 5)
+
+- GDPR deletion is a dead pipeline end-to-end (see above) — building an actual deletion processor (and the missing `DELETE /api/admin/users/{userId}` endpoint the admin UI already calls) is real, separate work.
+
+---
+
+## Phase 6 — RAG quality overhaul (chunking, hybrid retrieval, re-ranking, grounded citations)
+
+Diagnosed directly from a reported failure: uploaded a whole "Help" CHM for case360 14.2.0, asked "what are the supported application servers," got the canned "I couldn't find reliable documentation" fallback despite the answer being in the file.
+
+- **Chunking silently degrades to one giant paragraph blob for every real upload.** `SemanticChunker`'s heading/code detection only fires on literal Markdown syntax (`#` headings, fenced ``` code blocks) — but `ChmParser`/`PdfParser`/`HtmlParser` all feed it Tika's flattened plain text (`BodyContentHandler`), which never contains Markdown. Every CHM/PDF/HTML document today gets treated as **one section**, split only by blank lines and a token cap — no heading boundaries, no table detection (`TABLE`/`HEADER` chunk types are declared in the schema and dead-coded), and the `chunk-overlap: 100` config value is a dead field, never applied. A support-matrix table (exactly what "supported application servers" would live in) gets flattened into a large, generic paragraph chunk whose embedding dilutes the one sentence that actually answers the question.
+- **A single global hardcoded similarity floor (0.55) gates whether the LLM is even called** (`AnswerGenerationService`, `bot.min-similarity-threshold`). Retrieval (`VectorSearchService`) always returns its top 7 by cosine distance with no score filter; if the *best* of those 7 scores under 0.55, the canned fallback fires and the LLM never sees the chunks at all. There's no lexical/keyword fallback (no BM25/full-text search anywhere) to catch a short, specific factual query like this when dense similarity alone comes up weak — exactly the query shape here (a specific noun-phrase, not a full sentence).
+- **No re-ranking exists anywhere** — pure `ORDER BY cosine_distance LIMIT 7` straight into the prompt: no cross-encoder, no MMR/diversity, no chunk-type boosting.
+- **Citations are truncated blind** (200-char plain-text substring, `ChatService.buildSources()`), with no awareness of table/code boundaries, and there's no automated groundedness check — the LLM is only told via prompt instruction to stick to the docs, with nothing verifying it did.
+- **Frontend can't render what a better backend would produce**: no `remark-gfm` (a correct answer with a Markdown table renders as a text blob, not a table), no syntax highlighting, and only a whole-message copy button — no per-code-block copy.
+
+Fixes, in dependency order:
+
+- [ ] **Structure-preserving parsing** (the highest-leverage fix): change `ChmParser`/`PdfParser`/`HtmlParser` to emit lightweight Markdown instead of flattened plain text — use Tika's HTML/XHTML output and convert `<h1-6>` → `#`/`##` headings, `<table>` → Markdown pipe tables, `<pre>`/`<code>` → fenced code blocks, before handing text to `SemanticChunker`. This makes `SemanticChunker`'s existing heading/code detection actually fire on real documents — no chunker rewrite needed, just feeding it what it already expects.
+- [ ] Add real **table detection** to `SemanticChunker` (now that tables arrive as Markdown pipe syntax) and actually produce `TABLE`/`HEADER` chunk types instead of leaving them dead in the enum.
+- [ ] **Fix the dead `overlap` field** — apply a real sliding-window overlap between adjacent chunks so a fact split across a section boundary isn't orphaned with no context in either resulting chunk.
+- [ ] **Hybrid retrieval**: add a Postgres full-text (`tsvector`/GIN) index alongside the existing pgvector column on `document_chunks`, run both a dense (cosine) and lexical (keyword) query per search, and fuse results with Reciprocal Rank Fusion before re-ranking. This directly targets the reported bug — a specific noun-phrase query like "application servers" is exactly what lexical search catches and dense embedding similarity can under-rank.
+- [ ] **Re-ranking stage**: widen initial retrieval (top ~20-30 candidates from the hybrid fusion) and re-rank down to the final top-K before prompting — start with MMR (cheap, no extra model call, improves diversity) and add an LLM-based relevance re-rank as a configurable second pass (reuses the existing chat LLM to score/reorder candidates, no new infra) rather than standing up a separate cross-encoder service.
+- [ ] **Replace the hard threshold gate with graceful degradation**: instead of refusing to call the LLM below `min-similarity-threshold`, always call it with the best available (re-ranked) chunks, but adjust the prompt instruction based on confidence — below-threshold answers get an explicit "based on limited matching documentation" framing instead of a canned refusal. Keep the empty-state message only for the genuine zero-candidate case (no chunks at all, e.g. an empty `SearchScope`).
+- [ ] **Format-aware citations**: build excerpts from paragraph/sentence/table-row boundaries instead of a blind character-count cut; preserve fenced code blocks and table rows intact in the excerpt.
+- [ ] Frontend: add `remark-gfm` (table rendering), syntax highlighting (e.g. `rehype-highlight`) for fenced code blocks, and a per-code-block copy-to-clipboard button (not just the whole-message copy that exists today).
+- [ ] Re-ingest existing documents after the chunking fix ships (a migration/backfill job, not just applied to new uploads) — otherwise every already-uploaded document, including the one from the bug report, keeps its old low-quality chunks until manually retriggered.
+- [ ] Verify against the exact reported case as the acceptance test: re-upload (or retrigger) a CHM covering "supported application servers," confirm the answer surfaces the actual list with a citation, before/after comparison captured.
+
+---
+
+## Phase 7 — Version-aware retrieval, optional scope picker, and version-diff UI
+
+Answers two related open questions: whether product/version selection belongs in the UI, and what to show when documented behavior differs across versions. Today, `SearchScope` (Phase 2's retrieval gate) is purely access-grant based — product/version are stored per-document and shown on citations, but **never narrow what's retrieved and are never injected into the single-hop answer-generation prompt** (only the multi-hop decomposition prompt sees them, and even then only as loose context, not a hard filter). `UserPreference.defaultProduct/defaultVersion` is fully dead — written by `PreferencesModal`, never read anywhere in the query path. Version "ordering" is a lexicographic string sort (`"14.10"` sorts before `"14.9"`) with no numeric awareness. Separately: `VersionDiffService`/`AnswerEvolutionService` — a **complete, already-built backend feature** for exactly the "how did this change between versions" question — has zero frontend UI calling it, and internally still uses the pre-Phase-2, non-tenant-scoped deprecated search path.
+
+**Decision**: keep Phase 2's "no manual product/version picking blocks a query" principle for the common case, but add an **optional, unobtrusive scope chip** in the chat UI — not a mandatory pre-query gate. Default is "everything I have access to"; a user (support agent especially) can pin a specific product+version for a session when they know exactly what they're troubleshooting, and the system uses that pin to both narrow retrieval and to explicitly flag version-specific answers ("in 14.2, X — this changed in 14.7") when it detects retrieved chunks span multiple versions for the same topic. This serves the "customer support asking about a specific version" case directly without reintroducing the friction Phase 2 removed for the common "just ask a question" case.
+
+- [ ] New tenant/access-scoped endpoint (e.g. `GET /api/products`) — distinct product+version pairs, filtered through the caller's resolved `SearchScope.documentIds()` (the existing `DocumentRepository.findDistinctProducts()`/`findVersionsByProduct()` queries are not currently access- or tenant-scoped; wrap them through `DocumentAccessPolicy.resolveScope` first).
+- [ ] Frontend: optional scope chip in `ChatArea`/`MessageInput`, populated from the new endpoint, defaulting to unset ("all access"); persists per chat session, not globally.
+- [ ] When a scope is pinned, `SearchScope` gains an optional product/version narrow (in addition to, not instead of, the access-grant `documentIds` filter — access always wins).
+- [ ] Inject product/version metadata into the **single-hop** answer-generation prompt (today only multi-hop sees it), and add an explicit instruction: when retrieved chunks span more than one version of the same product for the same topic, say so rather than silently answering from whichever chunk scored highest.
+- [ ] Fix version ordering: replace the lexicographic `ORDER BY d.version` (`DocumentRepository`) and `QueryAnalyzerService.getLatestVersion()` with a real version-aware comparator (dotted-numeric segments — not full semver parsing, just enough to fix the `"14.10" < "14.9"` bug).
+- [ ] Wire up the already-built `VersionDiffService`/`AnswerEvolutionService` into the frontend (a new "Compare versions" view, reachable from the scope chip or a document's citation) — and while doing so, move it off the deprecated non-tenant-scoped `VectorSearchService.search(query, product, version)` overload onto the tenant/access-scoped path, closing a real (if narrow — admin/intelligence-only today) access-control gap.
+- [ ] Remove `UserPreference.defaultProduct`/`defaultVersion` (dead code, superseded by the per-session scope chip) rather than wiring it up — the scope chip is the better UX (visible, per-conversation) than an invisible background preference nobody remembers they set.
+
+---
+
+## Phase 8 — Access model extensions: groups, and multi-tenant user membership (proposed)
+
+Two separate questions bundled here because they both extend the *access* side of the system, at very different cost.
+
+**Groups — straightforward, build this.** `DocumentAccessPolicy` (the interface introduced in Phase 2 specifically so future access models wouldn't require touching `VectorSearchService`/`ChatService`) is confirmed generic enough: a group-aware policy can compute the same `SearchScope(tenantId, documentIds)` as the union of a user's individual grants and any group grants, with zero changes to either consumer.
+
+- [ ] `Group` entity (tenant-scoped: `id, tenantId, name`) + `GroupMembership` (`groupId, userId`) + `GroupDocumentAccess` (`groupId, documentId, grantedBy, grantedAt` — same shape as the existing `DocumentAccess` table, just keyed by group instead of user).
+- [ ] Extend `GrantBasedDocumentAccessPolicy` (or add a decorating implementation) to union individual + group-derived document IDs when resolving `SearchScope` — no interface change needed.
+- [ ] Admin UI: a "Groups" page (tenant admin console) for creating groups, managing membership, and granting a group access to a document in one action from the existing `DocumentAccessManager` (add a group picker alongside the existing per-user picker).
+
+**Multi-tenant user membership — feasible, but the real cost is one specific constraint, not the tenant/JWT plumbing.** Confirmed: `TenantContext`/`UserPrincipal`/`AdminPrincipal` are single-tenant-per-request everywhere (~17 call sites), but that's mechanical to keep as-is under a **Slack/GitHub-style "active workspace" model** — a user's token still carries exactly one `tenantId`/`role` (the *currently active* one), and switching tenants means calling a new endpoint that reissues a token for a different membership, not decoding multiple tenants out of one token. That requires zero changes to `TenantContext`, the resolution filters, or any existing controller. The genuinely expensive part is `users.email` being `UNIQUE` at three independent layers (raw SQL, JPA index, and an explicit `InvitationService.invite()` guard that rejects any email that already exists at all, regardless of tenant) — today it is **structurally impossible** for the same person to be invited into a second tenant. Fixing that means separating *identity* (one `User` row: email/username/password) from *tenant membership* (a new join table carrying `user_id, tenant_id, role`), moving `role` and `tenant_id` off the `users` row entirely.
+
+- [ ] **Recommendation: scope this as its own migration project, not a quick add-on** — it touches the core identity model (`User` entity, login, JWT issuance, `InvitationService`, every existing `role`/`tenantId`-on-`User` assumption) and is meaningfully larger than everything else in this list. Worth confirming real demand (how often would the same person actually need two tenants?) before committing — flagged as **proposed**, not committed, pending that call.
+- [ ] If greenlit: new `tenant_memberships` table (`user_id, tenant_id, role, joined_at`), migrate existing `users.tenant_id`/`users.role` data into it, then drop those columns from `users` (or keep them as a denormalized "last active" convenience synced from the membership table — decide at implementation time based on how much existing code reads them directly vs. through `TenantContext`).
+- [ ] `InvitationService.invite()`: change the `existsByEmail` hard-reject into "does this email already have a membership in *this* tenant" — a genuinely new invite into a tenant the person isn't already part of should succeed even if the email exists globally.
+- [ ] New "list my tenants" (`GET /api/auth/my-tenants`) + "switch active tenant" (`POST /api/auth/switch-tenant/{tenantId}`, reissues a token) endpoints; frontend tenant switcher (top of the sidebar, Slack-workspace-style) for users with more than one membership.
+- [ ] Audit `OidcJitProvisioningService` (the other user-creation path) for the same assumption — it doesn't call `existsByEmail` today but would hit the same unique-index violation as a raw uncaught 500 if the same IdP identity ever mapped to a second tenant.
+
+---
+
+## Phase 9 — Frontend design system & UX overhaul
+
+The ask ("best possible frontend," "idiot-proof," "one primary action wherever possible") is a direction, not a checklist — translated into concrete, buildable increments rather than an unbounded aspiration:
+
+- [ ] **Design system foundation**: introduce actual design tokens (color/spacing/typography scale in `tailwind.config.js` — today it has zero `theme.extend`, every component hand-rolls its own Tailwind utility soup) and a small set of shared primitives (`Button`, `Modal`, `Select`, `Input` with consistent variants) built on `@headlessui/react` for accessible behavior (focus trap, keyboard nav) — replacing the ~6 bespoke modal implementations (`PreferencesModal`, `EscalationModal`, `ShareModal`, `AddToCollectionModal`, Phase 4's `AccessModal`) that each reimplement the same patterns slightly differently today.
+- [ ] **One primary action per screen, audited**: pass over every page and demote secondary actions visually (outline/ghost buttons) so there's exactly one filled/primary button competing for attention at a time — concretely: the chat composer's send button, one create/save button per admin form, one primary CTA on empty states.
+- [ ] **Real empty/loading/error states everywhere**, not just spinners — skeleton loaders that match the final layout shape (reduces perceived latency), and empty states that explain what to do next (a pattern already used well in some Phase 4 pages — extend it to the older tabs like `CoverageTab`/`GapReportTab` that predate that bar).
+- [ ] **Onboarding**: a first-run experience for a brand-new tenant admin (post-invite-acceptance) — "upload your first document → grant access → done," not a blank dashboard.
+- [ ] Ties back to Phase 6/7 findings: render Markdown tables (`remark-gfm`) and code blocks properly (syntax highlighting + per-block copy), and surface the version-scope chip (Phase 7) as a lightweight, dismissible affordance rather than a blocking form field.
+- [ ] Command palette (`Cmd/Ctrl+K`) for power users (support agents living in this tool all day) — jump to a chat, switch tenant (if Phase 8's multi-tenant membership ships), open a document's access modal, without hunting through nav.
+- [ ] Accessibility pass: focus states, ARIA labels on icon-only buttons (several exist today with no accessible name), color-contrast check on the Tailwind gray-on-white text used throughout.
+
+---
+
 ## Suggested build order
 
 1. ~~**Phase 1** (tenant model + roles)~~ — done.
 2. ~~**Phase 2** (document ACL + retrieval rewrite)~~ — done.
 3. ~~**Phase 3** (storage)~~ — done.
-4. ~~**Phase 4** (frontend)~~ — done. All four phases complete.
+4. ~~**Phase 4** (frontend)~~ — done.
+5. ~~**Phase 5** (sharing security fix)~~ — done.
+6. **Phase 6** (RAG quality) — next up; the highest-impact, most evidence-backed fix; do before Phase 7 since Phase 7's prompt-injection work builds on Phase 6's prompt-construction changes.
+7. **Phase 7** (product/version UX + version-diff UI) — depends on Phase 6's prompt changes landing first.
+8. **Phase 8** (groups — build; multi-tenant membership — confirm appetite first, it's the largest single item here).
+9. **Phase 9** (frontend design system) — mostly independent and can run partially in parallel with 6-8, but its ties to table/code rendering and the scope chip depend on 6/7 shipping first.
 
 ## Decisions (resolved)
 
 1. **Provisioning**: fully admin-provisioned, invite-by-email. No public self-registration.
 2. **Retrieval**: pure access-grant based. No manual product/version picking in chat.
 3. **Storage**: MinIO (off the app server, no cloud account needed), files retained to support the existing retrigger/reprocess feature.
+4. **Product/version in the UI**: yes, but optional and per-session (a scope chip), not a mandatory pre-query gate — preserves decision #2 for the common case while serving the support-agent "I need exactly this version" case.
+5. **Version conflicts**: the answer should say so explicitly (cite both, note what changed) rather than silently pick one — enabled by injecting product/version into the single-hop prompt and detecting cross-version chunk spread (Phase 7).
+6. **Chat sharing**: keep the existing public/team-only binary model — it's the right level of complexity; the actual bug (Phase 5) was non-enforcement, not the design.
+7. **Multi-tenant user membership**: architecturally feasible via a "switch active workspace" pattern (not a multi-tenant JWT) with low blast radius on existing tenant-context code — but the `users.email` uniqueness rework is a real migration, scoped as its own proposed phase (8) pending confirmed demand, not bundled in for free.

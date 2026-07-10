@@ -37,6 +37,9 @@ public class ChatSession {
     @Column(name = "user_id")
     private UUID userId;
 
+    @Column(name = "tenant_id")
+    private UUID tenantId;
+
     @Column(name = "product", length = 100)
     private String product;
 

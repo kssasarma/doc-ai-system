@@ -11,12 +11,15 @@ import com.docai.bot.domain.entity.Tenant;
 import com.docai.bot.domain.entity.TenantBranding;
 import com.docai.bot.domain.entity.TenantLLMConfig;
 import com.docai.bot.domain.repository.DataRetentionPolicyRepository;
+import com.docai.bot.domain.repository.SharedChatLinkRepository;
 import com.docai.bot.domain.repository.TenantBrandingRepository;
 import com.docai.bot.domain.repository.TenantLLMConfigRepository;
 import com.docai.bot.domain.repository.TenantRepository;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class TenantService {
@@ -25,6 +28,7 @@ public class TenantService {
     private final TenantBrandingRepository brandingRepository;
     private final TenantLLMConfigRepository llmConfigRepository;
     private final DataRetentionPolicyRepository retentionRepository;
+    private final SharedChatLinkRepository sharedChatLinkRepository;
 
     public List<Tenant> listAll() {
         return tenantRepository.findAll();
@@ -56,12 +60,21 @@ public class TenantService {
     @Transactional
     public Tenant update(UUID id, String name, String plan, boolean active, int maxUsers, int maxDocuments) {
         Tenant tenant = getById(id);
+        boolean isDeactivating = tenant.isActive() && !active;
+
         tenant.setName(name);
         tenant.setPlan(plan);
         tenant.setActive(active);
         tenant.setMaxUsers(maxUsers);
         tenant.setMaxDocuments(maxDocuments);
-        return tenantRepository.save(tenant);
+        Tenant saved = tenantRepository.save(tenant);
+
+        if (isDeactivating) {
+            sharedChatLinkRepository.deleteByTenantId(id);
+            log.info("Tenant {} deactivated — revoked all of its chat-share links", id);
+        }
+
+        return saved;
     }
 
     public TenantBranding getBranding(UUID tenantId) {

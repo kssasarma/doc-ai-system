@@ -36,7 +36,9 @@ public class SecurityConfig {
     private static final String[] PUBLIC_PATHS = {
         "/api/auth/**",
         "/api/auth/oidc/**",  // Phase 7 — OIDC callback + config
-        "/api/share/**",
+        "/api/share/{token}", // GET only — must work for anonymous visitors of a public link.
+                               // Deliberately NOT "/api/share/**": that would also cover
+                               // POST /api/share/{token}/fork, which must stay authenticated.
         "/api/v1/**",
         "/api/faq",           // Phase 6 — public FAQ browsing
         "/api/faq/{id}",

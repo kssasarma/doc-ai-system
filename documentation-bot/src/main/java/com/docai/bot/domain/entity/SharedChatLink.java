@@ -37,6 +37,15 @@ public class SharedChatLink {
     @Column(name = "created_by", nullable = false)
     private UUID createdBy;
 
+    /**
+     * Copied from the owning ChatSession's tenant at share-creation time. Nullable only for
+     * links created before this column existed and whose session's own tenant was unresolvable
+     * at backfill time — {@link com.docai.bot.application.service.SharedChatService} treats a
+     * null tenantId on a non-public link as "deny unless owner/SUPER_ADMIN", never as a wildcard.
+     */
+    @Column(name = "tenant_id")
+    private UUID tenantId;
+
     @Column(name = "public_access", nullable = false)
     @Builder.Default
     private boolean publicAccess = false;

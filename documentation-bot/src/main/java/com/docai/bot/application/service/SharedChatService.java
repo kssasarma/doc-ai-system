@@ -5,9 +5,11 @@ import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.docai.bot.config.UserPrincipal;
 import com.docai.bot.domain.entity.ChatMessage;
 import com.docai.bot.domain.entity.ChatSession;
 import com.docai.bot.domain.entity.SharedChatLink;
@@ -31,7 +33,13 @@ public class SharedChatService {
     private final UserRepository userRepository;
 
     @Transactional
-    public ShareLinkDTO createShareLink(UUID chatId, UUID userId, boolean publicAccess, Integer expireDays) {
+    public ShareLinkDTO createShareLink(UUID chatId, UserPrincipal creator, boolean publicAccess, Integer expireDays) {
+        ChatSession session = sessionRepository.findById(chatId)
+            .orElseThrow(() -> new IllegalArgumentException("Session not found"));
+        if (!session.getUserId().equals(creator.userId())) {
+            throw new AccessDeniedException("You do not own this chat session");
+        }
+
         // Upsert: replace any existing link for this session
         linkRepository.findByChatId(chatId).ifPresent(existing -> linkRepository.delete(existing));
 
@@ -42,7 +50,8 @@ public class SharedChatService {
         SharedChatLink link = SharedChatLink.builder()
             .chatId(chatId)
             .token(UUID.randomUUID().toString())
-            .createdBy(userId)
+            .createdBy(creator.userId())
+            .tenantId(session.getTenantId())
             .publicAccess(publicAccess)
             .expiresAt(expiresAt)
             .build();
@@ -70,13 +79,15 @@ public class SharedChatService {
     }
 
     @Transactional(readOnly = true)
-    public SharedChatViewDTO getSharedChat(String token) {
+    public SharedChatViewDTO getSharedChat(String token, UserPrincipal viewer) {
         SharedChatLink link = linkRepository.findByToken(token)
             .orElseThrow(() -> new IllegalArgumentException("Share link not found"));
 
         if (link.getExpiresAt() != null && link.getExpiresAt().isBefore(LocalDateTime.now())) {
             throw new IllegalStateException("Share link has expired");
         }
+
+        verifyViewAccess(link, viewer);
 
         ChatSession session = sessionRepository.findById(link.getChatId())
             .orElseThrow(() -> new IllegalArgumentException("Session not found"));
@@ -103,7 +114,7 @@ public class SharedChatService {
     }
 
     @Transactional
-    public String forkSharedChat(String token, UUID targetUserId) {
+    public String forkSharedChat(String token, UserPrincipal forker) {
         SharedChatLink link = linkRepository.findByToken(token)
             .orElseThrow(() -> new IllegalArgumentException("Share link not found"));
 
@@ -111,11 +122,14 @@ public class SharedChatService {
             throw new IllegalStateException("Share link has expired");
         }
 
+        verifyViewAccess(link, forker);
+
         ChatSession original = sessionRepository.findById(link.getChatId())
             .orElseThrow(() -> new IllegalArgumentException("Session not found"));
 
         ChatSession forked = ChatSession.builder()
-            .userId(targetUserId)
+            .userId(forker.userId())
+            .tenantId(forker.tenantId())
             .product(original.getProduct())
             .version(original.getVersion())
             .title((original.getTitle() != null ? original.getTitle() : "Forked chat"))
@@ -133,6 +147,27 @@ public class SharedChatService {
 
         log.info("Forked shared chat {} into new session {}", token, forkedId);
         return forkedId.toString();
+    }
+
+    /**
+     * A public link is viewable by anyone. A non-public ("team only") link is viewable only by
+     * its creator, a SUPER_ADMIN, or a signed-in member of the same tenant as the chat's owner —
+     * never by an anonymous caller. A null {@code link.tenantId} (pre-migration data whose owning
+     * session's own tenant was unresolvable) denies rather than wildcards: it falls through to
+     * "owner or SUPER_ADMIN only", the safe default for this codebase's fail-closed tenant model.
+     */
+    private void verifyViewAccess(SharedChatLink link, UserPrincipal viewer) {
+        if (link.isPublicAccess()) {
+            return;
+        }
+        if (viewer == null) {
+            throw new AccessDeniedException("Sign in to view this shared chat");
+        }
+        boolean isOwner = viewer.userId().equals(link.getCreatedBy());
+        boolean sameTenant = link.getTenantId() != null && link.getTenantId().equals(viewer.tenantId());
+        if (!isOwner && !viewer.isSuperAdmin() && !sameTenant) {
+            throw new AccessDeniedException("You do not have access to this shared chat");
+        }
     }
 
     private ShareLinkDTO toDTO(SharedChatLink link) {

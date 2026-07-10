@@ -14,4 +14,5 @@ public interface SharedChatLinkRepository extends JpaRepository<SharedChatLink, 
     Optional<SharedChatLink> findByChatId(UUID chatId);
     boolean existsByChatId(UUID chatId);
     void deleteByChatId(UUID chatId);
+    void deleteByTenantId(UUID tenantId);
 }

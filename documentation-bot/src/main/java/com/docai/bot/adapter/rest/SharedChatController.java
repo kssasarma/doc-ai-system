@@ -36,7 +36,7 @@ public class SharedChatController {
         Integer expireDays = request != null ? request.getExpireDays() : null;
 
         return ResponseEntity.ok(sharedChatService.createShareLink(
-            UUID.fromString(chatId), principal.userId(), publicAccess, expireDays));
+            UUID.fromString(chatId), principal, publicAccess, expireDays));
     }
 
     // Authenticated: get current share link for a session
@@ -59,10 +59,14 @@ public class SharedChatController {
         return ResponseEntity.noContent().build();
     }
 
-    // Public: view a shared chat (no auth required — access controlled by publicAccess flag in SecurityConfig)
+    // Optionally authenticated: JWT is not required (public links must work for anonymous
+    // visitors), but if one is present it's resolved so non-public ("team only") links can
+    // check the viewer's identity/tenant — see SharedChatService.verifyViewAccess.
     @GetMapping("/api/share/{token}")
-    public ResponseEntity<SharedChatViewDTO> getSharedChat(@PathVariable String token) {
-        return ResponseEntity.ok(sharedChatService.getSharedChat(token));
+    public ResponseEntity<SharedChatViewDTO> getSharedChat(
+            @PathVariable String token,
+            @AuthenticationPrincipal(errorOnInvalidType = false) UserPrincipal principal) {
+        return ResponseEntity.ok(sharedChatService.getSharedChat(token, principal));
     }
 
     // Authenticated: fork a shared chat into caller's account
@@ -71,7 +75,7 @@ public class SharedChatController {
             @PathVariable String token,
             @AuthenticationPrincipal UserPrincipal principal) {
 
-        String newChatId = sharedChatService.forkSharedChat(token, principal.userId());
+        String newChatId = sharedChatService.forkSharedChat(token, principal);
         return ResponseEntity.ok(new ForkResponse(newChatId));
     }
 
