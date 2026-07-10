@@ -161,6 +161,15 @@ export interface AuthResponse {
   error?: string;
 }
 
+// Multi-tenant membership — one identity can belong to more than one tenant; exactly one is
+// "active" at a time (the tenant/role carried in the current JWT).
+export interface TenantMembership {
+  tenantId: string;
+  tenantName: string;
+  role: Role;
+  joinedAt: string;
+}
+
 // Tenant types
 export interface Tenant {
   id: string;
@@ -196,6 +205,28 @@ export interface DocumentGrantee {
   grantId: string;
   userId: string;
   username: string;
+  grantedBy: string;
+  grantedAt: string;
+}
+
+// Group types (Phase 8 — bulk access grants)
+export interface Group {
+  id: string;
+  name: string;
+  memberCount: number;
+  createdAt: string;
+}
+
+export interface GroupMember {
+  userId: string;
+  username: string;
+  email: string;
+}
+
+export interface DocumentGroupGrantee {
+  grantId: string;
+  groupId: string;
+  groupName: string;
   grantedBy: string;
   grantedAt: string;
 }

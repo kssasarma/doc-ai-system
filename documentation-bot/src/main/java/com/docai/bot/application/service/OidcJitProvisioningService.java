@@ -8,6 +8,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.docai.bot.config.TenantContext;
 import com.docai.bot.domain.entity.User;
+import com.docai.bot.domain.repository.TenantMembershipRepository;
 import com.docai.bot.domain.repository.UserRepository;
 
 import lombok.RequiredArgsConstructor;
@@ -16,6 +17,12 @@ import lombok.extern.slf4j.Slf4j;
 /**
  * Just-in-Time (JIT) provisioning: creates a local User row the first time an OIDC user logs in.
  * Subsequent logins update the display name / avatar from the IdP claims.
+ *
+ * <p>An OIDC identity (same {@code sub}+{@code provider}) can be JIT-provisioned into more than
+ * one tenant — each has its own OIDC config, so logging in via tenant B's IdP after already
+ * having an account from tenant A means "this identity also belongs to tenant B now," not "reuse
+ * the stale tenant-A row unchanged." Each such login also makes the tenant just logged into the
+ * active one, mirroring the fact that OIDC login is inherently tenant-specific.
  */
 @Slf4j
 @Service
@@ -23,6 +30,8 @@ import lombok.extern.slf4j.Slf4j;
 public class OidcJitProvisioningService {
 
     private final UserRepository userRepository;
+    private final TenantMembershipRepository membershipRepository;
+    private final TenantMembershipService membershipService;
     private final JwtService jwtService;
 
     /**
@@ -59,6 +68,17 @@ public class OidcJitProvisioningService {
                     .avatarUrl(avatarUrl)
                     .build());
             });
+
+        // This login's tenant becomes the active one — a new USER membership if this identity
+        // hasn't been seen in this tenant before (ensureMembership is idempotent so this is a
+        // no-op on repeat logins), otherwise whatever role they actually hold there today (an
+        // admin who was promoted after their first JIT login must not be silently reset to USER).
+        membershipService.ensureMembership(user.getId(), tenantId, User.Role.USER);
+        User.Role activeRole = membershipRepository.findByUserIdAndTenantId(user.getId(), tenantId)
+            .map(m -> m.getRole())
+            .orElse(User.Role.USER);
+        user.setTenantId(tenantId);
+        user.setRole(activeRole);
 
         // Refresh mutable fields on every login
         if (displayName != null) user.setDisplayName(displayName);

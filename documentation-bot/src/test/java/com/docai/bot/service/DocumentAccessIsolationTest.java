@@ -22,6 +22,8 @@ import org.springframework.transaction.annotation.Transactional;
 import com.docai.bot.PostgresTestContainerBase;
 import com.docai.bot.application.service.DocumentAccessPolicy;
 import com.docai.bot.application.service.DocumentAccessService;
+import com.docai.bot.application.service.GroupDocumentAccessService;
+import com.docai.bot.application.service.GroupService;
 import com.docai.bot.application.service.VectorSearchService;
 import com.docai.bot.domain.entity.Document;
 import com.docai.bot.domain.entity.DocumentChunk;
@@ -46,6 +48,8 @@ class DocumentAccessIsolationTest extends PostgresTestContainerBase {
 
     @Autowired DocumentAccessPolicy documentAccessPolicy;
     @Autowired DocumentAccessService documentAccessService;
+    @Autowired GroupService groupService;
+    @Autowired GroupDocumentAccessService groupDocumentAccessService;
     @Autowired VectorSearchService vectorSearchService;
     @Autowired DocumentRepository documentRepository;
     @Autowired DocumentChunkRepository chunkRepository;
@@ -125,6 +129,73 @@ class DocumentAccessIsolationTest extends PostgresTestContainerBase {
 
         List<RetrievedChunk> results = vectorSearchService.search("recipe", corruptedScope);
         assertThat(results).isEmpty();
+    }
+
+    @Test
+    void userWithGroupGrant_seesOnlyTheGroupGrantedDocument() {
+        Tenant tenantA = persistTenant("tenant-a-group-grant");
+        User admin = persistUser(tenantA, User.Role.ADMIN);
+        User user = persistUser(tenantA, User.Role.USER);
+
+        Document granted = persistDocument(tenantA, "product-x", "1.0", "Group Granted Doc");
+        Document ungranted = persistDocument(tenantA, "product-x", "1.0", "Group Ungranted Doc");
+        persistChunk(granted.getId(), "apple pie recipe", unitVector());
+        persistChunk(ungranted.getId(), "banana bread recipe", unitVector());
+
+        GroupService.GroupDTO group = groupService.create("Support Team", tenantA.getId(), admin.getId());
+        groupService.addMember(UUID.fromString(group.id()), user.getId(), tenantA.getId());
+        groupDocumentAccessService.grant(granted.getId(), UUID.fromString(group.id()), tenantA.getId(), admin.getId());
+        stubEmbedding(unitVector());
+
+        SearchScope scope = documentAccessPolicy.resolveScope(user.getId(), tenantA.getId());
+        assertThat(scope.documentIds()).containsExactly(granted.getId());
+
+        List<RetrievedChunk> results = vectorSearchService.search("recipe", scope);
+        assertThat(results).hasSize(1);
+        assertThat(results.get(0).getDocumentName()).isEqualTo("Group Granted Doc");
+    }
+
+    @Test
+    void directGrantAndGroupGrant_areUnioned_notDuplicated() {
+        Tenant tenantA = persistTenant("tenant-a-union");
+        User admin = persistUser(tenantA, User.Role.ADMIN);
+        User user = persistUser(tenantA, User.Role.USER);
+
+        Document viaDirectGrant = persistDocument(tenantA, "product-x", "1.0", "Direct Grant Doc");
+        Document viaGroupGrant = persistDocument(tenantA, "product-x", "1.0", "Group Grant Doc");
+        Document viaBoth = persistDocument(tenantA, "product-x", "1.0", "Both Doc");
+
+        documentAccessService.grant(viaDirectGrant.getId(), user.getId(), tenantA.getId(), admin.getId());
+        documentAccessService.grant(viaBoth.getId(), user.getId(), tenantA.getId(), admin.getId());
+
+        GroupService.GroupDTO group = groupService.create("Union Team", tenantA.getId(), admin.getId());
+        groupService.addMember(UUID.fromString(group.id()), user.getId(), tenantA.getId());
+        groupDocumentAccessService.grant(viaGroupGrant.getId(), UUID.fromString(group.id()), tenantA.getId(), admin.getId());
+        groupDocumentAccessService.grant(viaBoth.getId(), UUID.fromString(group.id()), tenantA.getId(), admin.getId());
+
+        SearchScope scope = documentAccessPolicy.resolveScope(user.getId(), tenantA.getId());
+        assertThat(scope.documentIds()).containsExactlyInAnyOrder(
+            viaDirectGrant.getId(), viaGroupGrant.getId(), viaBoth.getId());
+    }
+
+    @Test
+    void removingUserFromGroup_revokesTheirAccessViaThatGroup() {
+        Tenant tenantA = persistTenant("tenant-a-group-remove");
+        User admin = persistUser(tenantA, User.Role.ADMIN);
+        User user = persistUser(tenantA, User.Role.USER);
+        Document doc = persistDocument(tenantA, "product-x", "1.0", "Doc1");
+
+        GroupService.GroupDTO group = groupService.create("Temp Team", tenantA.getId(), admin.getId());
+        UUID groupId = UUID.fromString(group.id());
+        groupService.addMember(groupId, user.getId(), tenantA.getId());
+        groupDocumentAccessService.grant(doc.getId(), groupId, tenantA.getId(), admin.getId());
+
+        assertThat(documentAccessPolicy.resolveScope(user.getId(), tenantA.getId()).documentIds())
+            .containsExactly(doc.getId());
+
+        groupService.removeMember(groupId, user.getId(), tenantA.getId());
+
+        assertThat(documentAccessPolicy.resolveScope(user.getId(), tenantA.getId()).isEmpty()).isTrue();
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────

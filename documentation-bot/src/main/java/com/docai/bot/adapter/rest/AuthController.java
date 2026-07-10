@@ -4,6 +4,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -11,10 +12,15 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.docai.bot.application.service.InvitationService;
 import com.docai.bot.application.service.JwtService;
+import com.docai.bot.application.service.TenantMembershipService;
+import com.docai.bot.application.service.TenantMembershipService.MembershipDTO;
 import com.docai.bot.application.service.UserService;
 import com.docai.bot.config.UserPrincipal;
 import com.docai.bot.domain.entity.User;
 import com.docai.bot.domain.repository.UserRepository;
+
+import java.util.List;
+import java.util.UUID;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
@@ -37,6 +43,7 @@ public class AuthController {
 
     private final UserService userService;
     private final InvitationService invitationService;
+    private final TenantMembershipService tenantMembershipService;
     private final JwtService jwtService;
     private final UserRepository userRepository;
 
@@ -80,6 +87,26 @@ public class AuthController {
         return userRepository.findById(principal.userId())
             .map(user -> ResponseEntity.ok(AuthResponse.of(user, null)))
             .orElse(ResponseEntity.notFound().build());
+    }
+
+    /** Every tenant the caller belongs to — backs a Slack-workspace-style tenant switcher. */
+    @GetMapping("/my-tenants")
+    public ResponseEntity<List<MembershipDTO>> myTenants(@AuthenticationPrincipal UserPrincipal principal) {
+        return ResponseEntity.ok(tenantMembershipService.listMyTenants(principal.userId()));
+    }
+
+    /** Flips the caller's active tenant to one they already hold a membership in and reissues a
+     * token carrying the new tenant/role — the old token remains valid (but stale) until it expires. */
+    @PostMapping("/switch-tenant/{tenantId}")
+    public ResponseEntity<AuthResponse> switchTenant(@PathVariable UUID tenantId,
+                                                       @AuthenticationPrincipal UserPrincipal principal) {
+        try {
+            User user = tenantMembershipService.switchActiveTenant(principal.userId(), tenantId);
+            String token = jwtService.generateToken(user);
+            return ResponseEntity.ok(AuthResponse.of(user, token));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(AuthResponse.error(e.getMessage()));
+        }
     }
 
     @Data

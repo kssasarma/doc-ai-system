@@ -62,13 +62,16 @@ export default function AcceptInvitePage() {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          <p className="text-xs text-gray-400 bg-gray-50 rounded-lg px-3 py-2">
+            Already have an account with this email in another workspace? Enter your existing username and password below to join this workspace too — no new account needed.
+          </p>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Username</label>
             <input
               type="text" value={username} onChange={e => setUsername(e.target.value)}
               required minLength={3} maxLength={50} autoFocus
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Choose a username"
+              placeholder="Choose a username, or your existing one"
             />
           </div>
           <div>
@@ -77,7 +80,7 @@ export default function AcceptInvitePage() {
               type="password" value={password} onChange={e => setPassword(e.target.value)}
               required minLength={6}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="At least 6 characters"
+              placeholder="At least 6 characters, or your existing password"
             />
           </div>
           <div>

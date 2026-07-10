@@ -17,6 +17,8 @@ import org.springframework.web.bind.annotation.RestController;
 import com.docai.bot.application.service.AuditLogService;
 import com.docai.bot.application.service.DocumentAccessService;
 import com.docai.bot.application.service.DocumentAccessService.GranteeDTO;
+import com.docai.bot.application.service.GroupDocumentAccessService;
+import com.docai.bot.application.service.GroupDocumentAccessService.GroupGranteeDTO;
 import com.docai.bot.config.TenantContext;
 import com.docai.bot.config.UserPrincipal;
 
@@ -26,9 +28,11 @@ import lombok.Data;
 import lombok.RequiredArgsConstructor;
 
 /**
- * Tenant-scoped, ADMIN-only management of per-document access grants. A tenant admin uploads a
- * document via document-ingestor, then grants specific tenant users access to it here — the two
- * are separate calls by design (document-ingestor owns ingestion; access control lives alongside
+ * Tenant-scoped, ADMIN-only management of document access grants — both per-user (the original
+ * grant type) and per-group (Phase 8, {@code /groups} sub-paths; a grant there gives every
+ * current and future member of the group access). A tenant admin uploads a document via
+ * document-ingestor, then grants specific tenant users or groups access to it here — the two are
+ * separate calls by design (document-ingestor owns ingestion; access control lives alongside
  * User/Tenant/retrieval here, where it's actually enforced).
  */
 @RestController
@@ -38,6 +42,7 @@ import lombok.RequiredArgsConstructor;
 public class DocumentAccessController {
 
     private final DocumentAccessService documentAccessService;
+    private final GroupDocumentAccessService groupDocumentAccessService;
     private final AuditLogService auditLogService;
 
     @GetMapping
@@ -66,9 +71,41 @@ public class DocumentAccessController {
         return ResponseEntity.noContent().build();
     }
 
+    @GetMapping("/groups")
+    public ResponseEntity<List<GroupGranteeDTO>> listGrantedGroups(@PathVariable UUID documentId) {
+        return ResponseEntity.ok(groupDocumentAccessService.listGrantedGroups(documentId, TenantContext.get()));
+    }
+
+    @PostMapping("/groups")
+    public ResponseEntity<GroupGranteeDTO> grantGroup(@PathVariable UUID documentId,
+                                                        @Valid @RequestBody GrantGroupRequest request,
+                                                        @AuthenticationPrincipal UserPrincipal principal) {
+        UUID tenantId = TenantContext.get();
+        GroupGranteeDTO grant = groupDocumentAccessService.grant(documentId, request.getGroupId(), tenantId, principal.userId());
+        auditLogService.log(principal.userId(), "DOCUMENT_ACCESS_GRANT", "DOCUMENT",
+            documentId, "group=" + request.getGroupId(), null);
+        return ResponseEntity.ok(grant);
+    }
+
+    @DeleteMapping("/groups/{groupId}")
+    public ResponseEntity<Void> revokeGroup(@PathVariable UUID documentId,
+                                             @PathVariable UUID groupId,
+                                             @AuthenticationPrincipal UserPrincipal principal) {
+        groupDocumentAccessService.revoke(documentId, groupId, TenantContext.get());
+        auditLogService.log(principal.userId(), "DOCUMENT_ACCESS_REVOKE", "DOCUMENT",
+            documentId, "group=" + groupId, null);
+        return ResponseEntity.noContent().build();
+    }
+
     @Data
     static class GrantRequest {
         @NotNull
         private UUID userId;
+    }
+
+    @Data
+    static class GrantGroupRequest {
+        @NotNull
+        private UUID groupId;
     }
 }

@@ -15,6 +15,7 @@ import com.docai.bot.config.DigestProperties;
 import com.docai.bot.domain.entity.InvitationToken;
 import com.docai.bot.domain.entity.User;
 import com.docai.bot.domain.repository.InvitationTokenRepository;
+import com.docai.bot.domain.repository.TenantMembershipRepository;
 import com.docai.bot.domain.repository.UserRepository;
 
 import jakarta.mail.internet.MimeMessage;
@@ -24,6 +25,12 @@ import lombok.extern.slf4j.Slf4j;
 /**
  * All non-bootstrap accounts are provisioned by invitation — there is no public self-registration.
  * A SUPER_ADMIN invites a tenant's first ADMIN; a tenant ADMIN invites their tenant's USERs.
+ *
+ * <p>An invited email may already belong to an existing identity elsewhere in the system (a
+ * person who's a member of one tenant being invited into a second) — {@link #invite} allows that
+ * as long as they aren't already a member of *this* tenant, and {@link #accept} detects it by
+ * looking the email back up rather than assuming every accepted invitation creates a brand new
+ * account.
  */
 @Slf4j
 @Service
@@ -35,6 +42,8 @@ public class InvitationService {
 
     private final InvitationTokenRepository invitationRepository;
     private final UserRepository userRepository;
+    private final TenantMembershipRepository membershipRepository;
+    private final TenantMembershipService membershipService;
     private final PasswordEncoder passwordEncoder;
     private final JavaMailSender mailSender;
     private final DigestProperties props;
@@ -42,12 +51,15 @@ public class InvitationService {
 
     @Transactional
     public InvitationToken invite(String email, User.Role role, UUID tenantId, UUID invitedBy) {
-        if (userRepository.existsByEmail(email)) {
-            throw new IllegalArgumentException("A user with this email already exists");
-        }
         if (role != User.Role.SUPER_ADMIN && tenantId == null) {
             throw new IllegalArgumentException("tenantId is required for role " + role);
         }
+
+        userRepository.findByEmail(email).ifPresent(existing -> {
+            if (tenantId != null && membershipRepository.existsByUserIdAndTenantId(existing.getId(), tenantId)) {
+                throw new IllegalArgumentException("This person is already a member of this tenant");
+            }
+        });
 
         byte[] bytes = new byte[TOKEN_BYTES];
         random.nextBytes(bytes);
@@ -77,6 +89,42 @@ public class InvitationService {
         if (invitation.isExpired()) {
             throw new IllegalStateException("This invitation has expired");
         }
+
+        User user = userRepository.findByEmail(invitation.getEmail())
+            .map(existing -> joinExistingIdentityToTenant(existing, username, password, invitation))
+            .orElseGet(() -> provisionNewIdentity(username, password, invitation));
+
+        invitation.setAcceptedAt(LocalDateTime.now());
+        invitationRepository.save(invitation);
+        return user;
+    }
+
+    /**
+     * The invited email already has an account (elsewhere, in another tenant) — {@code username}
+     * and {@code password} here verify that the person accepting is that account's owner, not
+     * set a new password. On success the new tenant becomes their active tenant/role, matching
+     * the "you just joined a new workspace" expectation.
+     */
+    private User joinExistingIdentityToTenant(User existing, String username, String password, InvitationToken invitation) {
+        if (!existing.getUsername().equals(username) || !passwordEncoder.matches(password, existing.getPasswordHash())) {
+            throw new IllegalArgumentException("Incorrect username or password for the existing account with this email");
+        }
+        if (invitation.getTenantId() != null
+                && membershipRepository.existsByUserIdAndTenantId(existing.getId(), invitation.getTenantId())) {
+            throw new IllegalStateException("This person is already a member of this tenant");
+        }
+
+        if (invitation.getTenantId() != null) {
+            membershipService.ensureMembership(existing.getId(), invitation.getTenantId(), invitation.getRole());
+        }
+        existing.setTenantId(invitation.getTenantId());
+        existing.setRole(invitation.getRole());
+        User saved = userRepository.save(existing);
+        log.info("Existing identity '{}' joined tenant {} with role {}", username, invitation.getTenantId(), invitation.getRole());
+        return saved;
+    }
+
+    private User provisionNewIdentity(String username, String password, InvitationToken invitation) {
         if (userRepository.existsByUsername(username)) {
             throw new IllegalArgumentException("Username already taken");
         }
@@ -89,8 +137,9 @@ public class InvitationService {
             .tenantId(invitation.getTenantId())
             .build());
 
-        invitation.setAcceptedAt(LocalDateTime.now());
-        invitationRepository.save(invitation);
+        if (invitation.getTenantId() != null) {
+            membershipService.ensureMembership(user.getId(), invitation.getTenantId(), invitation.getRole());
+        }
 
         log.info("Invitation accepted: '{}' provisioned with role {}", username, invitation.getRole());
         return user;

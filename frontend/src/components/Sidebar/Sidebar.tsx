@@ -7,6 +7,7 @@ import { fetchUnreadCount } from '../../services/notificationService';
 
 const SessionItem = lazy(() => import('./SessionItem'));
 const NotificationPanel = lazy(() => import('./NotificationPanel'));
+const TenantSwitcher = lazy(() => import('./TenantSwitcher'));
 
 interface SidebarProps {
   sessions: ChatSession[];
@@ -163,6 +164,10 @@ const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Footer */}
       <div className={`border-t border-gray-700 p-3 ${isCollapsed ? 'flex flex-col items-center gap-2' : ''}`}>
+        <Suspense fallback={null}>
+          <TenantSwitcher isCollapsed={isCollapsed} />
+        </Suspense>
+
         {!isCollapsed && user && (
           <div className="flex items-center gap-2 mb-2 px-1">
             <div className="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center text-xs font-bold flex-shrink-0">

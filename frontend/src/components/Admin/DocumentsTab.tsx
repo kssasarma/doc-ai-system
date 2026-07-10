@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { DocumentInfo, IngestionStatus, TenantUser } from '../../types';
+import { DocumentInfo, IngestionStatus, TenantUser, Group } from '../../types';
 import { fetchDocuments, fetchIngestionStatus, uploadDocument, retriggerDocument } from '../../services/adminService';
 import { getTenantUsers } from '../../services/tenantService';
+import { listGroups } from '../../services/groupService';
 import DocumentAccessManager from './DocumentAccessManager';
 import { Upload, RefreshCw, AlertCircle, CheckCircle, Clock, XCircle, Lock, X } from 'lucide-react';
 
@@ -51,6 +52,7 @@ export default function DocumentsTab() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [tenantUsers, setTenantUsers] = useState<TenantUser[]>([]);
+  const [groups, setGroups] = useState<Group[]>([]);
   const [justUploaded, setJustUploaded] = useState<DocumentInfo | null>(null);
   const [managingDoc, setManagingDoc] = useState<DocumentInfo | null>(null);
 
@@ -78,6 +80,11 @@ export default function DocumentsTab() {
     if (!token || !user?.tenantId) return;
     getTenantUsers(token, user.tenantId).then(setTenantUsers).catch(() => {});
   }, [token, user?.tenantId]);
+
+  useEffect(() => {
+    if (!token) return;
+    listGroups(token).then(setGroups).catch(() => {});
+  }, [token]);
 
   const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -170,7 +177,7 @@ export default function DocumentsTab() {
               </div>
               <button onClick={() => setJustUploaded(null)} className="p-1 text-gray-400 hover:text-gray-600 flex-shrink-0"><X size={15} /></button>
             </div>
-            <DocumentAccessManager token={token!} documentId={justUploaded.id} tenantUsers={tenantUsers} />
+            <DocumentAccessManager token={token!} documentId={justUploaded.id} tenantUsers={tenantUsers} groups={groups} />
           </div>
         )}
       </div>
@@ -241,7 +248,7 @@ export default function DocumentsTab() {
 
       {managingDoc && (
         <AccessModal documentName={managingDoc.documentName} onClose={() => setManagingDoc(null)}>
-          <DocumentAccessManager token={token!} documentId={managingDoc.id} tenantUsers={tenantUsers} />
+          <DocumentAccessManager token={token!} documentId={managingDoc.id} tenantUsers={tenantUsers} groups={groups} />
         </AccessModal>
       )}
     </div>
