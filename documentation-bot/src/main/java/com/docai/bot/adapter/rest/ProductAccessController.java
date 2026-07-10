@@ -21,6 +21,11 @@ import com.docai.bot.config.UserPrincipal;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 
+/**
+ * @deprecated Superseded by {@link com.docai.bot.application.service.DocumentAccessService}
+ * (see {@link com.docai.bot.domain.entity.UserProductAccess} for why this is retained for now).
+ */
+@Deprecated
 @RestController
 @RequestMapping("/api/admin/product-access")
 @PreAuthorize("hasRole('ADMIN')")

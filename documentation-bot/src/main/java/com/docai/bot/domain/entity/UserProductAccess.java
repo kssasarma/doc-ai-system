@@ -16,6 +16,15 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+/**
+ * @deprecated Superseded by {@link DocumentAccess} (per-document, tenant-scoped grants) —
+ * this product/version-string model was never actually consulted at retrieval time (nothing
+ * checked it before answering a chat query). Retained only so the pre-Phase-4 admin UI
+ * ("Users & Access" tab) doesn't 404; not read by any retrieval or eligibility code. Delete this
+ * entity, its repository, {@code ProductAccessService}, and {@code ProductAccessController}
+ * once the admin frontend is rebuilt against {@code DocumentAccessController}.
+ */
+@Deprecated
 @Entity
 @Table(name = "user_product_access")
 @Data

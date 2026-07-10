@@ -12,6 +12,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import com.docai.bot.domain.model.RetrievedChunk;
+import com.docai.bot.domain.model.SearchScope;
 
 import io.github.resilience4j.bulkhead.Bulkhead;
 import io.github.resilience4j.bulkhead.BulkheadFullException;
@@ -83,9 +84,11 @@ public class MultiHopReasoningService {
     }
 
     /**
-     * Decomposes the question, performs multi-pass retrieval, and synthesizes.
+     * Decomposes the question, performs multi-pass retrieval within scope, and synthesizes.
+     * product/version are descriptive only — they improve the LLM's decomposition prompt context
+     * but never narrow what's searchable; scope is the sole eligibility gate.
      */
-    public MultiHopAnswer reason(String question, String chatContext,
+    public MultiHopAnswer reason(String question, String chatContext, SearchScope scope,
                                   String product, String version,
                                   String verbosity, String answerFormat) {
 
@@ -96,7 +99,7 @@ public class MultiHopReasoningService {
         Map<String, List<RetrievedChunk>> subAnswers = new LinkedHashMap<>();
 
         for (String sub : subQuestions) {
-            List<RetrievedChunk> chunks = vectorSearchService.search(sub, product, version);
+            List<RetrievedChunk> chunks = vectorSearchService.search(sub, scope);
             double maxSim = chunks.stream().mapToDouble(RetrievedChunk::getSimilarity).max().orElse(0.0);
             hops.add(new HopResult(sub, chunks, maxSim));
             if (maxSim >= minSimilarityThreshold) {

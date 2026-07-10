@@ -10,6 +10,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import com.docai.bot.domain.model.RetrievedChunk;
+import com.docai.bot.domain.model.SearchScope;
 import com.docai.bot.domain.repository.DocumentChunkRepository;
 import com.docai.bot.domain.repository.DocumentChunkRepository.ChunkSearchResult;
 import com.pgvector.PGvector;
@@ -28,11 +29,38 @@ public class VectorSearchService {
     @Value("${bot.top-k-results:7}")
     private int topK;
 
+    /**
+     * Searches within the given scope — the sole eligibility gate (see {@link DocumentAccessPolicy}).
+     * Short-circuits without generating an embedding if the scope has no accessible documents.
+     */
+    public List<RetrievedChunk> search(String query, SearchScope scope) {
+        if (scope.isEmpty()) {
+            log.info("Search scope for tenant {} has zero accessible documents — skipping", scope.tenantId());
+            return List.of();
+        }
+
+        log.info("Searching for: {} within {} accessible document(s)", query, scope.documentIds().size());
+
+        String embeddingStr = pgVectorToString(generateEmbedding(query));
+        List<ChunkSearchResult> results = chunkRepository.findTopKSimilarAccessible(
+            scope.tenantId(), scope.documentIds(), embeddingStr, topK);
+
+        List<RetrievedChunk> chunks = toRetrievedChunks(results);
+        log.info("Found {} relevant chunks", chunks.size());
+        return chunks;
+    }
+
+    /**
+     * @deprecated Pre-dates per-document access control and does not filter by tenant or by
+     * anyone's access grants — it exists only for the handful of admin/system-facing services
+     * (corpus-wide analysis, scheduled jobs) not yet retrofitted with tenant scoping. Do not use
+     * this for any request made on behalf of a specific end user; use {@link #search(String, SearchScope)}.
+     */
+    @Deprecated
     public List<RetrievedChunk> search(String query, String product, String version) {
         log.info("Searching for: {} in product: {} version: {}", query, product, version);
 
-        PGvector queryEmbedding = generateEmbedding(query);
-        String embeddingStr = pgVectorToString(queryEmbedding);
+        String embeddingStr = pgVectorToString(generateEmbedding(query));
 
         List<ChunkSearchResult> results;
         if (product != null && version != null) {
@@ -43,6 +71,12 @@ public class VectorSearchService {
             results = chunkRepository.findTopKSimilarAll(embeddingStr, topK);
         }
 
+        List<RetrievedChunk> chunks = toRetrievedChunks(results);
+        log.info("Found {} relevant chunks", chunks.size());
+        return chunks;
+    }
+
+    private List<RetrievedChunk> toRetrievedChunks(List<ChunkSearchResult> results) {
         List<RetrievedChunk> chunks = new ArrayList<>();
         for (ChunkSearchResult row : results) {
             chunks.add(RetrievedChunk.builder()
@@ -54,8 +88,6 @@ public class VectorSearchService {
                 .version(row.getVersion())
                 .build());
         }
-
-        log.info("Found {} relevant chunks", chunks.size());
         return chunks;
     }
 

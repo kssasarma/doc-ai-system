@@ -15,8 +15,11 @@ import org.springframework.web.bind.annotation.RestController;
 import com.docai.bot.application.service.ChatService;
 import com.docai.bot.application.service.ChatService.ChatRequest;
 import com.docai.bot.application.service.ChatService.ChatResponse;
+import com.docai.bot.application.service.DocumentAccessPolicy;
 import com.docai.bot.application.service.VectorSearchService;
+import com.docai.bot.config.TenantContext;
 import com.docai.bot.config.UserPrincipal;
+import com.docai.bot.domain.model.SearchScope;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -35,6 +38,7 @@ public class ApiV1Controller {
 
     private final ChatService chatService;
     private final VectorSearchService vectorSearchService;
+    private final DocumentAccessPolicy documentAccessPolicy;
 
     // ── POST /api/v1/query ────────────────────────────────────────────────────
 
@@ -94,7 +98,10 @@ public class ApiV1Controller {
                 "UNAUTHORIZED", "A valid API key is required."));
         }
 
-        var chunks = vectorSearchService.search(q, product, version);
+        // product/version are accepted for API back-compat but no longer filter eligibility —
+        // access grants are the sole gate (see DocumentAccessPolicy).
+        SearchScope scope = documentAccessPolicy.resolveScope(principal.userId(), TenantContext.get());
+        var chunks = vectorSearchService.search(q, scope);
         var results = chunks.stream()
             .limit(limit)
             .map(c -> SearchResult.builder()

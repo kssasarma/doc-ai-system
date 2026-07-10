@@ -9,8 +9,10 @@ import static org.mockito.Mockito.when;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -25,15 +27,18 @@ import com.docai.bot.application.service.ChatService.ChatRequest;
 import com.docai.bot.application.service.ChatService.ChatResponse;
 import com.docai.bot.application.service.ChatSummaryService;
 import com.docai.bot.application.service.ContextManager;
+import com.docai.bot.application.service.DocumentAccessPolicy;
 import com.docai.bot.application.service.MultiHopReasoningService;
 import com.docai.bot.application.service.PeopleAlsoAskedService;
 import com.docai.bot.application.service.QueryAnalyzerService;
 import com.docai.bot.application.service.UserPreferenceService;
 import com.docai.bot.application.service.VectorSearchService;
+import com.docai.bot.config.TenantContext;
 import com.docai.bot.domain.entity.ChatMessage;
 import com.docai.bot.domain.entity.ChatSession;
 import com.docai.bot.domain.entity.UserPreference;
 import com.docai.bot.domain.model.RetrievedChunk;
+import com.docai.bot.domain.model.SearchScope;
 import com.docai.bot.domain.repository.AnswerUpvoteRepository;
 import com.docai.bot.domain.repository.ChatMessageRepository;
 import com.docai.bot.domain.repository.ChatSessionRepository;
@@ -47,6 +52,7 @@ class ChatServiceTest {
     @Mock ChatSummaryRepository summaryRepository;
     @Mock AnswerUpvoteRepository upvoteRepository;
     @Mock VectorSearchService vectorSearchService;
+    @Mock DocumentAccessPolicy documentAccessPolicy;
     @Mock ContextManager contextManager;
     @Mock ChatSummaryService summaryService;
     @Mock AnswerGenerationService answerService;
@@ -59,15 +65,22 @@ class ChatServiceTest {
     private ChatService chatService;
     private final UUID userId = UUID.randomUUID();
     private final UUID sessionId = UUID.randomUUID();
+    private final UUID tenantId = UUID.randomUUID();
 
     @BeforeEach
     void setUp() {
+        TenantContext.set(tenantId);
         chatService = new ChatService(
             sessionRepository, messageRepository, summaryRepository,
-            upvoteRepository, vectorSearchService, contextManager,
+            upvoteRepository, vectorSearchService, documentAccessPolicy, contextManager,
             summaryService, answerService, multiHopService,
             peopleAlsoAskedService, queryAnalyzer, preferenceService, analyticsService
         );
+    }
+
+    @AfterEach
+    void tearDown() {
+        TenantContext.clear();
     }
 
     @Test
@@ -135,7 +148,9 @@ class ChatServiceTest {
         RetrievedChunk chunk = RetrievedChunk.builder()
             .chunkId("c1").content("content").documentName("doc.pdf")
             .similarity(0.9).product("product-a").version("1.0").build();
-        when(vectorSearchService.search(anyString(), any(), any())).thenReturn(List.of(chunk));
+        when(documentAccessPolicy.resolveScope(any(), any()))
+            .thenReturn(new SearchScope(tenantId, Set.of(UUID.randomUUID())));
+        when(vectorSearchService.search(anyString(), any(SearchScope.class))).thenReturn(List.of(chunk));
         when(queryAnalyzer.analyzeQuery(anyString(), any())).thenReturn(new QueryAnalyzerService.QueryContext());
         when(preferenceService.getPreferences(any())).thenReturn(defaultPrefs());
         when(contextManager.buildContextPrompt(any())).thenReturn("");
@@ -165,11 +180,13 @@ class ChatServiceTest {
     }
 
     private void stubDependencies(String answer) {
+        when(documentAccessPolicy.resolveScope(any(), any()))
+            .thenReturn(new SearchScope(tenantId, Set.of(UUID.randomUUID())));
         when(queryAnalyzer.analyzeQuery(anyString(), any())).thenReturn(new QueryAnalyzerService.QueryContext());
         when(preferenceService.getPreferences(any())).thenReturn(defaultPrefs());
         when(contextManager.buildContextPrompt(any())).thenReturn("");
         when(multiHopService.isComplexQuery(anyString())).thenReturn(false);
-        when(vectorSearchService.search(anyString(), any(), any())).thenReturn(List.of());
+        when(vectorSearchService.search(anyString(), any(SearchScope.class))).thenReturn(List.of());
         when(answerService.generateAnswer(any(), any(), any(), any(), any()))
             .thenReturn(new AnswerGenerationService.AnswerResult(answer, List.of(), 10, 5));
         stubMessageSave();

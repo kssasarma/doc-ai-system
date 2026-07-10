@@ -23,6 +23,7 @@ import com.docai.bot.domain.entity.Tenant;
 import com.docai.bot.domain.entity.TenantBranding;
 import com.docai.bot.domain.entity.TenantLLMConfig;
 import com.docai.bot.domain.entity.User;
+import com.docai.bot.domain.repository.UserRepository;
 
 import lombok.RequiredArgsConstructor;
 
@@ -38,6 +39,7 @@ public class TenantController {
 
     private final TenantService tenantService;
     private final InvitationService invitationService;
+    private final UserRepository userRepository;
 
     @GetMapping
     @PreAuthorize("hasRole('SUPER_ADMIN')")
@@ -108,6 +110,15 @@ public class TenantController {
         return ownTenantOrSuperAdmin(id, principal, () -> tenantService.updateRetentionPolicy(id, body));
     }
 
+    /** Basic user list for this tenant — backs the document-access grant picker. */
+    @GetMapping("/{id}/users")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN')")
+    public ResponseEntity<List<TenantUserDTO>> getUsers(@PathVariable UUID id, @AuthenticationPrincipal UserPrincipal principal) {
+        return ownTenantOrSuperAdmin(id, principal, () -> userRepository.findByTenantId(id).stream()
+            .map(u -> new TenantUserDTO(u.getId(), u.getUsername(), u.getEmail(), u.getRole().name()))
+            .toList());
+    }
+
     private <T> ResponseEntity<T> ownTenantOrSuperAdmin(UUID id, UserPrincipal principal, java.util.function.Supplier<T> action) {
         if (!principal.isSuperAdmin() && !id.equals(principal.tenantId())) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
@@ -118,4 +129,6 @@ public class TenantController {
     record CreateTenantRequest(String name, String slug, String plan, int maxUsers, int maxDocuments, String adminEmail) {}
 
     record UpdateTenantRequest(String name, String plan, boolean active, int maxUsers, int maxDocuments) {}
+
+    record TenantUserDTO(UUID userId, String username, String email, String role) {}
 }

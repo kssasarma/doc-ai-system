@@ -47,16 +47,33 @@ Was: single seeded tenant (`00000000-...0001`), `TenantResolutionFilter` in `doc
 
 ---
 
-## Phase 2 — Per-document, per-user access control
+## Phase 2 — Per-document, per-user access control (done)
 
-Today: `UserProductAccess` grants access by **product + version string**, globally, with no tenant scoping (`ProductAccessService.getAllUsersWithAccess()` lists every user in the system). There is no per-document ACL anywhere, and retrieval (`DocumentChunkRepository`) filters purely by `product`/`version` — never by tenant, never by grant.
+Was: `UserProductAccess` granted access by product/version string, globally, with no tenant scoping, and was never actually checked anywhere at retrieval time — grepping the whole codebase for it turned up nothing outside its own admin CRUD stack. Retrieval (`DocumentChunkRepository`) filtered purely by `product`/`version` — never by tenant, never by any access grant. Any authenticated user could query any product/version's documents.
 
-- [ ] New `DocumentAccess` entity: `documentId`, `userId`, `tenantId`, `grantedBy`, `grantedAt`. Tenant admin grants access per document, per user, at upload time or after.
-- [ ] `DocumentUploadController`: after a tenant admin uploads a doc, let them select which of their tenant's users get access (UI + API).
-- [ ] Rewrite the retrieval queries (`DocumentChunkRepository.findTopKSimilar*`) to filter by `tenant_id = :tenantId AND document_id IN (:accessibleDocumentIds)`. **Decision: access-grant is the sole eligibility gate** — no manual product/version picking in the chat UI. `product`/`version` stay as descriptive metadata on the document (useful for the admin's own organization, coverage tooling, and citations shown with an answer) but are never required to retrieve a result.
-- [ ] Update `ChatService`/`AnswerGenerationService`/`MultiHopReasoningService` to resolve "documents this user can see" once per query and search across all of them, instead of assuming a single product/version per chat session.
-- [ ] Retire `UserProductAccess` in favor of `DocumentAccess` (a "grant everything under product X" convenience can be layered on top later as a bulk-grant UI action, not a separate access model).
-- [ ] Add tests that prove tenant/user isolation at the query level (a user from tenant A, or without a grant, must get zero chunks from tenant B's or another user's documents — this is the one that must not regress silently).
+- [x] `DocumentAccess` entity + `document_access` table (V14 migration): `documentId`, `userId`, `tenantId`, `grantedBy`, `grantedAt`. No FK to `documents(id)` — that table is document-ingestor-owned and the two services migrate independently with no startup ordering guarantee (same reason ingestor's own migrations never FK-reference bot-owned tables); enforced at the application layer instead.
+- [x] **SOLID abstraction for eligibility** (the actual point of "no pain points for future features"):
+  - `SearchScope` (record: `tenantId` + `documentIds`) — the one value every retrieval call needs.
+  - `DocumentAccessPolicy` interface + `GrantBasedDocumentAccessPolicy` — the single seam between "who can see what" and "how retrieval executes." A future access model (team-based, role-based blanket grants, etc.) is a new implementation of this interface, swapped in via Spring — it never touches `VectorSearchService`, `ChatService`, or `MultiHopReasoningService`.
+  - `GrantBasedDocumentAccessPolicy`: `USER` → exactly their granted documents; `ADMIN` → their whole tenant's corpus implicitly (they manage it — requiring a personal grant on every document they uploaded themselves would be pure friction).
+- [x] `DocumentAccessService` (grant/revoke/list) + `DocumentAccessController` (`POST/DELETE/GET /api/documents/{id}/access`, `ADMIN`-only) — validates both the document and the target user belong to the caller's own tenant before granting (an admin from tenant A can't touch tenant B's documents or users, even by guessing a UUID).
+- [x] `TenantController` gained `GET /{id}/users` (tenant-scoped user list) to back the grant-picker UI Phase 4 will build.
+- [x] `VectorSearchService.search(query, SearchScope)` — the new, sole eligibility-gated path; short-circuits (skips even generating an embedding) when the scope is empty. `DocumentChunkRepository.findTopKSimilarAccessible` filters `d.tenant_id = :tenantId AND d.id IN (:documentIds)` — the tenant_id check is defense-in-depth even against a hypothetical corrupted/leaked scope.
+- [x] `ChatService` (both the single-shot and multi-hop paths, plus `regenerateAnswer`) and `MultiHopReasoningService` now resolve `SearchScope` once per request and use it — no manual product/version picking gates anything anymore. product/version remain descriptive-only (still shown on sources, still used to enrich the multi-hop decomposition prompt).
+- [x] `ApiV1Controller`'s `/search` endpoint migrated to the same scope-based path (`/query` already covered — it delegates to `ChatService`).
+- [x] **Deliberately scoped down**: `AnswerEvolutionService`, `AutoFaqService`, `TopicSubscriptionService`, and `VersionDiffService` also call vector search but for admin/system-wide analysis, not a specific end user's question — and their own underlying entities (`QuerySessionGraph`, `TopicSubscription`, `FaqEntry`/`FaqCluster`) have **zero tenant_id columns at all**, a separate, pre-existing gap. Retrofitting those is real, separate work (add tenant_id to ~4 entities, loop per-tenant in the scheduled `AutoFaqService` job, etc.) — out of scope for "per-document access for chat." Left them on the old `VectorSearchService.search(query, product, version)` path, now explicitly marked `@Deprecated` with a javadoc naming exactly why and what not to use it for, so the gap is visible rather than silently inherited.
+- [x] `UserProductAccess`/`ProductAccessService`/`ProductAccessController`/`UserProductAccessRepository` marked `@Deprecated` with javadoc pointing at the replacement — not deleted outright, since the current admin UI ("Users & Access" tab) still calls them and Phase 4 hasn't rebuilt it yet. Never consulted by retrieval.
+- [x] Fixed a real bug surfaced during verification: `DocumentAccessService.grant()` read `@CreationTimestamp`-generated `grantedAt` immediately after `save()`, which Hibernate doesn't guarantee is populated in-memory until a flush — switched to `saveAndFlush()`.
+- [x] Fixed `PostgresTestContainerBase` (shared integration test base): it disabled nothing and ran production Flyway migrations, which don't create `documents`/`document_chunks` (ingestor-owned) — a latent gap only exposed now that Flyway actually runs and Hibernate `ddl-auto` is `none`. Tests now build their schema straight from current `@Entity` definitions (`ddl-auto: create-drop`, Flyway disabled) and the pgvector extension is created via a real Testcontainers init script instead of a stale comment claiming it already happened.
+- [x] `DocumentAccessIsolationTest` (new): no-grant → empty scope → search skipped entirely without even calling the embedding model; grant → sees only that document; `ADMIN` → sees the whole tenant corpus with zero explicit grants; a deliberately corrupted cross-tenant `SearchScope` is still blocked by the query's own tenant filter. Could not execute in this sandbox — Testcontainers' Docker client here negotiates API v1.32 against a daemon requiring 1.41+ (pre-existing environment limitation, same reason the older `VectorSearchServiceIntegrationTest` also shows as skipped, not failing).
+- [x] **Verified live end-to-end instead**, against the real running stack: bootstrap → create tenant → invite tenant admin → accept → tenant admin invites a `USER` → accept → admin uploads a document → **USER asks about it before any grant → correctly gets nothing** → admin grants access → **USER asks again → correct chunk retrieved, right content** → **ADMIN asks with zero explicit grants → also sees it** (implicit tenant-wide) → revoke → **USER asks again → back to nothing**. Every step matched the intended behavior exactly.
+- [x] Found and documented (not fixed — unrelated, pre-existing, doesn't affect the user-facing response) a separate async/transaction-timing bug: `AnalyticsService.logQuery`'s `@Async` write to `query_logs` can race the owning `@Transactional` request and fail on `query_logs_session_id_fkey` after the chat response has already been returned to the client. Worth a follow-up ticket.
+
+### Deferred (separate follow-up work, not Phase 2)
+
+- Add `tenant_id` to `QuerySessionGraph`, `TopicSubscription`, `FaqEntry`, `FaqCluster` and retrofit `AnswerEvolutionService`/`AutoFaqService`/`TopicSubscriptionService`/`VersionDiffService` onto tenant-scoped (not user-grant-scoped) search — they're admin/system tools, not end-user chat, so `SearchScope` would need a "tenant-wide, no per-user filter" variant alongside the grant-based one.
+- Fix the `AnalyticsService.logQuery` async/transaction race noted above.
+- Physically delete `UserProductAccess` and friends once Phase 4 rebuilds the admin UI against `DocumentAccessController`.
 
 ---
 
@@ -93,9 +110,9 @@ Today: `frontend/src/components/Admin/` is a flat 12-tab client-state switcher (
 ## Suggested build order
 
 1. ~~**Phase 1** (tenant model + roles)~~ — done.
-2. **Phase 2** (document ACL + retrieval rewrite) — next up; depends on Phase 1's tenant plumbing, which is now in place.
-3. **Phase 3** (storage) — independent of 2, can be done in parallel, but do it before or alongside Phase 4 so the upload UI is built once against the final storage backend.
-4. **Phase 4** (frontend) — depends on the APIs from 1-3 being stable, since it's the UI over all of them. Also needs the Accept-Invite page flagged as still-pending in Phase 1.
+2. ~~**Phase 2** (document ACL + retrieval rewrite)~~ — done.
+3. **Phase 3** (storage) — next up; independent of 1/2, can be done in parallel with Phase 4 planning, but do it before or alongside Phase 4 so the upload UI is built once against the final storage backend.
+4. **Phase 4** (frontend) — depends on the APIs from 1-3 being stable, since it's the UI over all of them. Needs: the Accept-Invite page (Phase 1), the document-upload access-grant step against `DocumentAccessController` (Phase 2), and the final storage backend (Phase 3).
 
 ## Decisions (resolved)
 

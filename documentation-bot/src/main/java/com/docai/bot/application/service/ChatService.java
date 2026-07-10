@@ -11,10 +11,12 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.docai.bot.config.TenantContext;
 import com.docai.bot.domain.entity.ChatMessage;
 import com.docai.bot.domain.entity.ChatSession;
 import com.docai.bot.domain.entity.UserPreference;
 import com.docai.bot.domain.model.RetrievedChunk;
+import com.docai.bot.domain.model.SearchScope;
 import com.docai.bot.domain.repository.AnswerUpvoteRepository;
 import com.docai.bot.domain.repository.ChatMessageRepository;
 import com.docai.bot.domain.repository.ChatSessionRepository;
@@ -33,6 +35,7 @@ public class ChatService {
     private final ChatSummaryRepository summaryRepository;
     private final AnswerUpvoteRepository upvoteRepository;
     private final VectorSearchService vectorSearchService;
+    private final DocumentAccessPolicy documentAccessPolicy;
     private final ContextManager contextManager;
     private final ChatSummaryService summaryService;
     private final AnswerGenerationService answerService;
@@ -68,6 +71,8 @@ public class ChatService {
 
         log.info("Using product: {}, version: {}", product, version);
 
+        SearchScope scope = documentAccessPolicy.resolveScope(request.getUserId(), TenantContext.get());
+
         UserPreference prefs = preferenceService.getPreferences(request.getUserId());
         String chatContext = contextManager.buildContextPrompt(session.getId());
         String enhancedQuery = enhanceQueryWithContext(request.getQuestion(), chatContext);
@@ -81,7 +86,7 @@ public class ChatService {
         if (multiHopService.isComplexQuery(request.getQuestion())) {
             log.info("Complex query detected — using multi-hop reasoning");
             MultiHopReasoningService.MultiHopAnswer multiHop = multiHopService.reason(
-                request.getQuestion(), chatContext, product, version,
+                request.getQuestion(), chatContext, scope, product, version,
                 prefs.getVerbosity(), prefs.getAnswerFormat()
             );
             finalAnswer = multiHop.answer();
@@ -92,7 +97,7 @@ public class ChatService {
             promptTokens = multiHop.promptTokens();
             completionTokens = multiHop.completionTokens();
         } else {
-            relevantChunks = vectorSearchService.search(enhancedQuery, product, version);
+            relevantChunks = vectorSearchService.search(enhancedQuery, scope);
             AnswerGenerationService.AnswerResult result = answerService.generateAnswer(
                 request.getQuestion(), chatContext, relevantChunks,
                 prefs.getVerbosity(), prefs.getAnswerFormat()
@@ -197,7 +202,8 @@ public class ChatService {
         };
         String format = "CODE_FIRST".equals(style) ? "CODE_FIRST" : "PROSE";
 
-        List<RetrievedChunk> chunks = vectorSearchService.search(question, session.getProduct(), session.getVersion());
+        SearchScope scope = documentAccessPolicy.resolveScope(userId, TenantContext.get());
+        List<RetrievedChunk> chunks = vectorSearchService.search(question, scope);
         AnswerGenerationService.AnswerResult result = answerService.generateAnswer(
             question, null, chunks, verbosity, format
         );

@@ -16,6 +16,12 @@ import com.docai.bot.domain.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+/**
+ * @deprecated Superseded by {@link DocumentAccessService}/{@link DocumentAccessPolicy}. See
+ * {@link com.docai.bot.domain.entity.UserProductAccess} for why this is retained (UI compat
+ * only) rather than deleted outright.
+ */
+@Deprecated
 @Slf4j
 @Service
 @RequiredArgsConstructor

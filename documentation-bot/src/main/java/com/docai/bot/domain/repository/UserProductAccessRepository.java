@@ -9,6 +9,8 @@ import org.springframework.stereotype.Repository;
 
 import com.docai.bot.domain.entity.UserProductAccess;
 
+/** @deprecated Superseded by {@link com.docai.bot.domain.repository.DocumentAccessRepository}. */
+@Deprecated
 @Repository
 public interface UserProductAccessRepository extends JpaRepository<UserProductAccess, UUID> {
 

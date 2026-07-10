@@ -23,6 +23,7 @@ public abstract class PostgresTestContainerBase {
         .withDatabaseName("docai_test")
         .withUsername("test")
         .withPassword("test")
+        .withInitScript("testcontainers-init.sql")
         .withReuse(true);
 
     @DynamicPropertySource
@@ -30,6 +31,12 @@ public abstract class PostgresTestContainerBase {
         registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         registry.add("spring.datasource.username", POSTGRES::getUsername);
         registry.add("spring.datasource.password", POSTGRES::getPassword);
+        // Tests build their schema straight from the current @Entity definitions rather than
+        // running Flyway: this service's migrations don't own tables like documents/document_chunks
+        // (document-ingestor's migrations do, in the shared production database) — Hibernate
+        // ddl-auto fills that gap here so every entity this service reads or writes gets a table.
+        registry.add("spring.flyway.enabled", () -> "false");
+        registry.add("spring.jpa.hibernate.ddl-auto", () -> "create-drop");
         // Disable embedding/LLM API calls — tests inject mocks for these
         registry.add("spring.ai.openai.api-key", () -> "test-key");
         registry.add("spring.ai.anthropic.api-key", () -> "");

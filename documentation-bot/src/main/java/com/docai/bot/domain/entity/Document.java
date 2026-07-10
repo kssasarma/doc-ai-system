@@ -26,6 +26,9 @@ public class Document {
     @Id
     private UUID id;
 
+    @Column(name = "tenant_id", nullable = false)
+    private UUID tenantId;
+
     @Column(nullable = false)
     private String product;
 
