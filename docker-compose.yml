@@ -85,6 +85,10 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
+      # documentation-bot's V11 migration adds users.tenant_id, which this service's own V7
+      # migration backfills from — must not run before that column exists.
+      documentation-bot:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8081/actuator/health || exit 1"]
       interval: 30s

@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useBranding } from '../../context/BrandingContext';
 import AuthLayout from './AuthLayout';
@@ -33,10 +32,7 @@ export default function LoginPage() {
       subtitle="AI Documentation Assistant"
       footer={
         <p className="text-xs text-muted-foreground text-center">
-          Accounts are provisioned by invitation only.{' '}
-          <Link to="/bootstrap" className="text-primary hover:underline">
-            Setting up for the first time?
-          </Link>
+          Accounts are provisioned by invitation only.
         </p>
       }
     >

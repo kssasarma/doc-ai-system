@@ -49,7 +49,7 @@ CREATE INDEX idx_bookmarks_tenant ON bookmarks(tenant_id);
 -- Add tenant_id to collections
 ALTER TABLE collections ADD COLUMN IF NOT EXISTS tenant_id UUID REFERENCES tenants(id);
 UPDATE collections c SET tenant_id = u.tenant_id
-    FROM users u WHERE c.owner_id = u.id;
+    FROM users u WHERE c.created_by = u.id;
 CREATE INDEX idx_collections_tenant ON collections(tenant_id);
 
 -- Add tenant_id to api_keys

@@ -5,7 +5,7 @@ import { useBranding } from '../../context/BrandingContext';
 import ThemeToggle from '../ui/ThemeToggle';
 import { scaleIn } from '../../lib/motion';
 
-/** Shared shell for the three pre-auth screens (Login, Bootstrap, Accept-invite) — a centered
+/** Shared shell for the auth screens (Login, Accept-invite, Change-password) — a centered
  * card over a subtle branded background, with the tenant's logo when one is configured. */
 export default function AuthLayout({
   title, subtitle, children, footer,

@@ -6,7 +6,7 @@ import { createMessage } from './utils/chatUtils';
 import { sendChatMessage } from './services/chatService';
 import appConfig from './config/app.json';
 import LoginPage from './components/Auth/LoginPage';
-import BootstrapPage from './components/Auth/BootstrapPage';
+import ChangePasswordPage from './components/Auth/ChangePasswordPage';
 import AcceptInvitePage from './components/Auth/AcceptInvitePage';
 import Spinner from './components/ui/Spinner';
 
@@ -160,7 +160,7 @@ function ChatPage() {
 }
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, user } = useAuth();
   if (isLoading) {
     return (
       <div className="flex h-screen items-center justify-center bg-background">
@@ -168,21 +168,30 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
       </div>
     );
   }
-  return isAuthenticated ? <>{children}</> : <LoginPage />;
+  if (!isAuthenticated) return <LoginPage />;
+  if (user?.mustChangePassword) return <Navigate to="/change-password" replace />;
+  return <>{children}</>;
 }
 
 function AdminRoute({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isAdmin, isLoading } = useAuth();
+  const { isAuthenticated, isAdmin, isLoading, user } = useAuth();
   if (isLoading) return null;
   if (!isAuthenticated) return <LoginPage />;
+  if (user?.mustChangePassword) return <Navigate to="/change-password" replace />;
   if (!isAdmin) return <Navigate to="/" replace />;
   return <>{children}</>;
+}
+
+function ChangePasswordRoute() {
+  const { isAuthenticated, isLoading } = useAuth();
+  if (isLoading) return null;
+  return isAuthenticated ? <ChangePasswordPage /> : <LoginPage />;
 }
 
 function App() {
   return (
     <Routes>
-      <Route path="/bootstrap" element={<BootstrapPage />} />
+      <Route path="/change-password" element={<ChangePasswordRoute />} />
       <Route path="/accept-invite" element={<AcceptInvitePage />} />
       <Route path="/admin/*" element={
         <AdminRoute>

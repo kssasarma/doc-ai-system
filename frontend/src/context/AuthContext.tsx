@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { AuthUser, AuthResponse } from '../types';
-import { login as apiLogin, getMe } from '../services/authService';
+import { login as apiLogin, getMe, changePassword as apiChangePassword } from '../services/authService';
 
 interface AuthContextValue {
   user: AuthUser | null;
@@ -11,6 +11,7 @@ interface AuthContextValue {
   isAdmin: boolean;
   login: (username: string, password: string) => Promise<void>;
   applySession: (data: AuthResponse) => void;
+  changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
   logout: () => void;
 }
 
@@ -18,25 +19,28 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 const TOKEN_KEY = 'docai_token';
 
-// AuthResponse (login/me/bootstrap/accept-invite) never carries tenantId — only the
-// JWT payload does. Decode it client-side rather than relying on the response body.
-function decodeTenantIdFromToken(token: string): string | null {
+// AuthResponse (login/me/accept-invite) never carries tenantId or mustChangePassword as of the
+// original design — only the JWT payload does. Decode it client-side rather than relying on the
+// response body, which stays true after /change-password reissues a fresh token too.
+function decodeClaimsFromToken(token: string): { tenantId: string | null; mustChangePassword: boolean } {
   try {
     const payload = token.split('.')[1];
     const json = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/')));
-    return json.tenantId ?? null;
+    return { tenantId: json.tenantId ?? null, mustChangePassword: json.mustChangePassword ?? false };
   } catch {
-    return null;
+    return { tenantId: null, mustChangePassword: false };
   }
 }
 
 function toAuthUser(data: AuthResponse, token: string): AuthUser {
+  const claims = decodeClaimsFromToken(token);
   return {
     userId: data.userId!,
     username: data.username!,
     email: data.email!,
     role: data.role as AuthUser['role'],
-    tenantId: decodeTenantIdFromToken(token),
+    tenantId: claims.tenantId,
+    mustChangePassword: claims.mustChangePassword,
   };
 }
 
@@ -79,13 +83,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(toAuthUser(data, data.token));
   }, []);
 
-  // Used by bootstrap / accept-invite flows, which return the same AuthResponse shape as login.
+  // Used by accept-invite / change-password flows, which return the same AuthResponse shape as login.
   const applySession = useCallback((data: AuthResponse) => {
     if (!data.token) return;
     localStorage.setItem(TOKEN_KEY, data.token);
     setToken(data.token);
     setUser(toAuthUser(data, data.token));
   }, []);
+
+  const changePassword = useCallback(async (currentPassword: string, newPassword: string) => {
+    if (!token) throw new Error('Not authenticated');
+    const data = await apiChangePassword(token, currentPassword, newPassword);
+    if (data.error || !data.token) {
+      throw new Error(data.error || 'Password change failed');
+    }
+    applySession(data);
+  }, [token, applySession]);
 
   const logout = useCallback(() => {
     localStorage.removeItem(TOKEN_KEY);
@@ -103,6 +116,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isAdmin: user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN',
       login,
       applySession,
+      changePassword,
       logout,
     }}>
       {children}

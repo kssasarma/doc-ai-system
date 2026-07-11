@@ -2,6 +2,7 @@ package com.docai.bot.config;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -28,6 +29,12 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
     private final JwtService jwtService;
 
+    /** Requests still reachable while {@code mustChangePassword} is true — just enough to change it. */
+    private static final Set<String> PASSWORD_CHANGE_EXEMPT_PATHS = Set.of(
+        "/api/auth/me",
+        "/api/auth/change-password"
+    );
+
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
             FilterChain filterChain) throws ServletException, IOException {
@@ -39,8 +46,16 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             String role = jwtService.extractRole(token);
             String username = jwtService.extractUsername(token);
             UUID tenantId = jwtService.extractTenantId(token);
+            boolean mustChangePassword = jwtService.extractMustChangePassword(token);
 
-            UserPrincipal principal = new UserPrincipal(userId, username, role, tenantId);
+            if (mustChangePassword && !PASSWORD_CHANGE_EXEMPT_PATHS.contains(request.getRequestURI())) {
+                response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+                response.setContentType("application/json");
+                response.getWriter().write("{\"error\":\"Password change required\",\"mustChangePassword\":true}");
+                return;
+            }
+
+            UserPrincipal principal = new UserPrincipal(userId, username, role, tenantId, mustChangePassword);
             List<SimpleGrantedAuthority> authorities = List.of(new SimpleGrantedAuthority("ROLE_" + role));
 
             UsernamePasswordAuthenticationToken auth =

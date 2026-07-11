@@ -63,7 +63,9 @@ public class ApiKeyAuthFilter extends OncePerRequestFilter {
     }
 
     private void setPrincipal(HttpServletRequest request, ApiKey apiKey, User user) {
-        UserPrincipal principal = new UserPrincipal(user.getId(), user.getUsername(), user.getRole().name(), user.getTenantId());
+        // API-key auth is for non-interactive/programmatic callers — never subject to the
+        // interactive-login "must change password" gate enforced in JwtAuthFilter.
+        UserPrincipal principal = new UserPrincipal(user.getId(), user.getUsername(), user.getRole().name(), user.getTenantId(), false);
         List<SimpleGrantedAuthority> authorities = List.of(new SimpleGrantedAuthority("ROLE_" + user.getRole().name()));
 
         UsernamePasswordAuthenticationToken auth =

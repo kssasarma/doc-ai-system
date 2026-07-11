@@ -150,6 +150,7 @@ export interface AuthUser {
   email: string;
   role: Role;
   tenantId: string | null;
+  mustChangePassword: boolean;
 }
 
 export interface AuthResponse {
@@ -158,6 +159,7 @@ export interface AuthResponse {
   username?: string;
   email?: string;
   role?: string;
+  mustChangePassword?: boolean;
   error?: string;
 }
 

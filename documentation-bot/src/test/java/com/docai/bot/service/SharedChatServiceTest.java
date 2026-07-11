@@ -75,7 +75,7 @@ class SharedChatServiceTest {
         when(linkRepository.findByChatId(chatId)).thenReturn(Optional.empty());
         when(linkRepository.save(any(SharedChatLink.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        UserPrincipal owner = new UserPrincipal(ownerId, "owner", "USER", tenantA);
+        UserPrincipal owner = new UserPrincipal(ownerId, "owner", "USER", tenantA, false);
         SharedChatService.ShareLinkDTO dto = service.createShareLink(chatId, owner, true, null);
 
         assertThat(dto.isPublicAccess()).isTrue();
@@ -86,7 +86,7 @@ class SharedChatServiceTest {
     void createShareLink_nonOwner_isRejected() {
         when(sessionRepository.findById(chatId)).thenReturn(Optional.of(ownerSession()));
 
-        UserPrincipal intruder = new UserPrincipal(UUID.randomUUID(), "not-the-owner", "USER", tenantA);
+        UserPrincipal intruder = new UserPrincipal(UUID.randomUUID(), "not-the-owner", "USER", tenantA, false);
 
         assertThatThrownBy(() -> service.createShareLink(chatId, intruder, true, null))
             .isInstanceOf(AccessDeniedException.class);
@@ -125,7 +125,7 @@ class SharedChatServiceTest {
         SharedChatLink link = link(false, tenantA);
         when(linkRepository.findByToken("tok-123")).thenReturn(Optional.of(link));
 
-        UserPrincipal outsider = new UserPrincipal(UUID.randomUUID(), "outsider", "USER", tenantB);
+        UserPrincipal outsider = new UserPrincipal(UUID.randomUUID(), "outsider", "USER", tenantB, false);
 
         assertThatThrownBy(() -> service.getSharedChat("tok-123", outsider))
             .isInstanceOf(AccessDeniedException.class);
@@ -139,7 +139,7 @@ class SharedChatServiceTest {
         when(messageRepository.findByChatIdOrderByCreatedAtAsc(chatId)).thenReturn(List.of());
         when(userRepository.findById(ownerId)).thenReturn(Optional.empty());
 
-        UserPrincipal teammate = new UserPrincipal(UUID.randomUUID(), "teammate", "USER", tenantA);
+        UserPrincipal teammate = new UserPrincipal(UUID.randomUUID(), "teammate", "USER", tenantA, false);
 
         SharedChatService.SharedChatViewDTO dto = service.getSharedChat("tok-123", teammate);
 
@@ -154,7 +154,7 @@ class SharedChatServiceTest {
         when(messageRepository.findByChatIdOrderByCreatedAtAsc(chatId)).thenReturn(List.of());
         when(userRepository.findById(ownerId)).thenReturn(Optional.empty());
 
-        UserPrincipal owner = new UserPrincipal(ownerId, "owner", "USER", tenantA);
+        UserPrincipal owner = new UserPrincipal(ownerId, "owner", "USER", tenantA, false);
 
         SharedChatService.SharedChatViewDTO dto = service.getSharedChat("tok-123", owner);
 
@@ -169,7 +169,7 @@ class SharedChatServiceTest {
         when(messageRepository.findByChatIdOrderByCreatedAtAsc(chatId)).thenReturn(List.of());
         when(userRepository.findById(ownerId)).thenReturn(Optional.empty());
 
-        UserPrincipal superAdmin = new UserPrincipal(UUID.randomUUID(), "root", "SUPER_ADMIN", null);
+        UserPrincipal superAdmin = new UserPrincipal(UUID.randomUUID(), "root", "SUPER_ADMIN", null, false);
 
         SharedChatService.SharedChatViewDTO dto = service.getSharedChat("tok-123", superAdmin);
 
@@ -182,7 +182,7 @@ class SharedChatServiceTest {
         SharedChatLink link = link(false, null);
         when(linkRepository.findByToken("tok-123")).thenReturn(Optional.of(link));
 
-        UserPrincipal someTenantUser = new UserPrincipal(UUID.randomUUID(), "someone", "USER", tenantA);
+        UserPrincipal someTenantUser = new UserPrincipal(UUID.randomUUID(), "someone", "USER", tenantA, false);
 
         assertThatThrownBy(() -> service.getSharedChat("tok-123", someTenantUser))
             .isInstanceOf(AccessDeniedException.class);
@@ -205,7 +205,7 @@ class SharedChatServiceTest {
         SharedChatLink link = link(false, tenantA);
         when(linkRepository.findByToken("tok-123")).thenReturn(Optional.of(link));
 
-        UserPrincipal outsider = new UserPrincipal(UUID.randomUUID(), "outsider", "USER", tenantB);
+        UserPrincipal outsider = new UserPrincipal(UUID.randomUUID(), "outsider", "USER", tenantB, false);
 
         assertThatThrownBy(() -> service.forkSharedChat("tok-123", outsider))
             .isInstanceOf(AccessDeniedException.class);

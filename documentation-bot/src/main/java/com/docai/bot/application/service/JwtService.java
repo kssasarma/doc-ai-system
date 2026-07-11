@@ -33,6 +33,7 @@ public class JwtService {
             .claim("username", user.getUsername())
             .claim("role", user.getRole().name())
             .claim("tenantId", user.getTenantId() != null ? user.getTenantId().toString() : null)
+            .claim("mustChangePassword", user.isMustChangePassword())
             .issuedAt(new Date())
             .expiration(new Date(System.currentTimeMillis() + expirationMs))
             .signWith(getSigningKey())
@@ -63,6 +64,11 @@ public class JwtService {
     public UUID extractTenantId(String token) {
         String claim = extractAllClaims(token).get("tenantId", String.class);
         return claim != null ? UUID.fromString(claim) : null;
+    }
+
+    public boolean extractMustChangePassword(String token) {
+        Boolean claim = extractAllClaims(token).get("mustChangePassword", Boolean.class);
+        return Boolean.TRUE.equals(claim);
     }
 
     public boolean isTokenValid(String token) {

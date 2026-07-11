@@ -22,30 +22,6 @@ public class UserService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
 
-    /**
-     * One-time first-run bootstrap: the very first account on a fresh install becomes SUPER_ADMIN
-     * (not scoped to any tenant). Fails once any account exists — every subsequent account is
-     * provisioned via {@link InvitationService}.
-     */
-    @Transactional
-    public User bootstrapSuperAdmin(String username, String email, String password) {
-        if (userRepository.count() > 0) {
-            throw new IllegalStateException("Bootstrap already completed — use an invitation instead");
-        }
-
-        User user = User.builder()
-            .username(username)
-            .email(email)
-            .passwordHash(passwordEncoder.encode(password))
-            .role(User.Role.SUPER_ADMIN)
-            .tenantId(null)
-            .build();
-
-        User saved = userRepository.save(user);
-        log.info("Bootstrapped first SUPER_ADMIN account '{}'", username);
-        return saved;
-    }
-
     /** Returns the UUID of the currently authenticated user from the Spring Security context. */
     public UUID currentUserId() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
@@ -64,5 +40,20 @@ public class UserService {
         }
 
         return user;
+    }
+
+    /** Verifies the current password, sets the new one, and clears {@code mustChangePassword}. */
+    @Transactional
+    public User changePassword(UUID userId, String currentPassword, String newPassword) {
+        User user = userRepository.findById(userId)
+            .orElseThrow(() -> new IllegalArgumentException("User not found"));
+
+        if (!passwordEncoder.matches(currentPassword, user.getPasswordHash())) {
+            throw new IllegalArgumentException("Current password is incorrect");
+        }
+
+        user.setPasswordHash(passwordEncoder.encode(newPassword));
+        user.setMustChangePassword(false);
+        return userRepository.save(user);
     }
 }

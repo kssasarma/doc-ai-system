@@ -51,6 +51,11 @@ public class User {
     @Column(name = "tenant_id")
     private UUID tenantId;
 
+    /** True for seeded/reset accounts that must change their password before doing anything else. */
+    @Builder.Default
+    @Column(name = "must_change_password", nullable = false)
+    private boolean mustChangePassword = false;
+
     // SSO / OIDC fields — null for password-auth users
     @Column(name = "oidc_sub", length = 500)
     private String oidcSub;

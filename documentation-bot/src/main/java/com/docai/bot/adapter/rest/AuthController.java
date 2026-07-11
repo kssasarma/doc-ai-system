@@ -23,7 +23,6 @@ import java.util.List;
 import java.util.UUID;
 
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import lombok.Builder;
@@ -31,10 +30,11 @@ import lombok.Data;
 import lombok.RequiredArgsConstructor;
 
 /**
- * There is no public self-registration. The very first account on a fresh install bootstraps as
- * SUPER_ADMIN ({@code /bootstrap}); every other account is provisioned via an invitation
- * (see {@link com.docai.bot.adapter.rest.InvitationController}) and activated here via
- * {@code /accept-invite}.
+ * There is no public self-registration. The very first account on a fresh install is a fixed
+ * SUPER_ADMIN seeded at startup (see {@link com.docai.bot.config.AdminSeeder}), which must change
+ * its password on first login via {@code /change-password}; every other account is provisioned
+ * via an invitation (see {@link com.docai.bot.adapter.rest.InvitationController}) and activated
+ * here via {@code /accept-invite}.
  */
 @RestController
 @RequestMapping("/api/auth")
@@ -46,17 +46,6 @@ public class AuthController {
     private final TenantMembershipService tenantMembershipService;
     private final JwtService jwtService;
     private final UserRepository userRepository;
-
-    @PostMapping("/bootstrap")
-    public ResponseEntity<AuthResponse> bootstrap(@Valid @RequestBody RegisterRequest request) {
-        try {
-            User user = userService.bootstrapSuperAdmin(request.getUsername(), request.getEmail(), request.getPassword());
-            String token = jwtService.generateToken(user);
-            return ResponseEntity.status(HttpStatus.CREATED).body(AuthResponse.of(user, token));
-        } catch (IllegalStateException e) {
-            return ResponseEntity.status(HttpStatus.CONFLICT).body(AuthResponse.error(e.getMessage()));
-        }
-    }
 
     @PostMapping("/accept-invite")
     public ResponseEntity<AuthResponse> acceptInvite(@Valid @RequestBody AcceptInviteRequest request) {
@@ -89,6 +78,19 @@ public class AuthController {
             .orElse(ResponseEntity.notFound().build());
     }
 
+    /** Verifies the current password and sets a new one, clearing any pending forced-reset flag. */
+    @PostMapping("/change-password")
+    public ResponseEntity<AuthResponse> changePassword(@Valid @RequestBody ChangePasswordRequest request,
+                                                          @AuthenticationPrincipal UserPrincipal principal) {
+        try {
+            User user = userService.changePassword(principal.userId(), request.getCurrentPassword(), request.getNewPassword());
+            String token = jwtService.generateToken(user);
+            return ResponseEntity.ok(AuthResponse.of(user, token));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(AuthResponse.error(e.getMessage()));
+        }
+    }
+
     /** Every tenant the caller belongs to — backs a Slack-workspace-style tenant switcher. */
     @GetMapping("/my-tenants")
     public ResponseEntity<List<MembershipDTO>> myTenants(@AuthenticationPrincipal UserPrincipal principal) {
@@ -110,16 +112,12 @@ public class AuthController {
     }
 
     @Data
-    static class RegisterRequest {
+    static class ChangePasswordRequest {
         @NotBlank
-        @Size(min = 3, max = 50)
-        private String username;
-        @NotBlank
-        @Email
-        private String email;
+        private String currentPassword;
         @NotBlank
         @Size(min = 6)
-        private String password;
+        private String newPassword;
     }
 
     @Data
@@ -150,6 +148,7 @@ public class AuthController {
         private String username;
         private String email;
         private String role;
+        private boolean mustChangePassword;
         private String error;
 
         public static AuthResponse of(User user, String token) {
@@ -159,6 +158,7 @@ public class AuthController {
                 .username(user.getUsername())
                 .email(user.getEmail())
                 .role(user.getRole().name())
+                .mustChangePassword(user.isMustChangePassword())
                 .build();
         }
 
