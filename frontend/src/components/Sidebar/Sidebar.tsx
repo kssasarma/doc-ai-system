@@ -1,6 +1,6 @@
 import React, { Suspense, lazy, useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Menu as MenuIcon, X, Settings, LogOut, Bookmark, SlidersHorizontal, Bell, Folder, Key, BookOpen } from 'lucide-react';
+import { Plus, Menu as MenuIcon, X, Settings, LogOut, Bookmark, SlidersHorizontal, Bell, Folder, Key, BookOpen, ChevronUp } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { ChatSession } from '../../types';
 import { Search } from 'lucide-react';
@@ -11,6 +11,7 @@ import { EASE_OUT } from '../../lib/motion';
 import Button from '../ui/Button';
 import IconButton from '../ui/IconButton';
 import ThemeToggle from '../ui/ThemeToggle';
+import Menu from '../ui/Menu';
 import { Skeleton } from '../ui/Skeleton';
 import { useCommandPalette } from '../CommandPalette/CommandPaletteProvider';
 
@@ -183,94 +184,81 @@ const Sidebar: React.FC<SidebarProps> = ({
       </div>
 
       {/* Footer */}
-      <div className={cn('border-t border-border p-3', isCollapsed && 'flex flex-col items-center gap-2')}>
+      <div className={cn('border-t border-border p-3 flex flex-col gap-1.5', isCollapsed && 'items-center')}>
         <Suspense fallback={null}>
           <TenantSwitcher isCollapsed={isCollapsed} />
         </Suspense>
 
-        {!isCollapsed && user && (
-          <div className="flex items-center gap-2 mb-2 px-1">
-            <div className="w-7 h-7 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold flex-shrink-0">
-              {user.username.charAt(0).toUpperCase()}
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium text-foreground truncate">{user.username}</div>
-              <div className="text-xs text-muted-foreground">{user.role}</div>
-            </div>
-            <ThemeToggle />
-          </div>
-        )}
-        {isCollapsed && <ThemeToggle />}
-
-        <div className={cn('flex gap-1', isCollapsed ? 'flex-col' : 'flex-row flex-wrap')}>
+        {/* Quick access: notifications + library pages — icon-only, one row, always fits */}
+        <div className={cn('flex items-center gap-0.5', isCollapsed ? 'flex-col' : 'justify-between')}>
           <div className="relative">
-            <button
+            <IconButton
+              label={unreadCount > 0 ? `Notifications (${unreadCount} unread)` : 'Notifications'}
+              variant="ghost"
+              size="sm"
               onClick={() => setNotifOpen(v => !v)}
-              aria-label="Notifications"
-              title="Notifications"
-              className="relative flex items-center gap-1.5 px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-surface-hover rounded-lg transition-colors"
             >
-              <Bell size={14} />
-              {!isCollapsed && 'Notifications'}
-              <AnimatePresence>
-                {unreadCount > 0 && (
-                  <motion.span
-                    initial={{ scale: 0 }}
-                    animate={{ scale: 1 }}
-                    exit={{ scale: 0 }}
-                    className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-danger text-danger-foreground rounded-full text-[10px] flex items-center justify-center leading-none"
-                  >
-                    {unreadCount > 9 ? '9+' : unreadCount}
-                  </motion.span>
-                )}
-              </AnimatePresence>
-            </button>
+              <Bell size={15} />
+            </IconButton>
+            <AnimatePresence>
+              {unreadCount > 0 && (
+                <motion.span
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  exit={{ scale: 0 }}
+                  className="pointer-events-none absolute -top-0.5 -right-0.5 w-4 h-4 bg-danger text-danger-foreground rounded-full text-[10px] flex items-center justify-center leading-none"
+                >
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </motion.span>
+              )}
+            </AnimatePresence>
           </div>
 
           {NAV_ACTIONS(navigate).map(({ key, label, icon: Icon, onClick }) => (
-            <button
-              key={key}
-              onClick={onClick}
-              aria-label={label}
-              title={label}
-              className="flex items-center gap-1.5 px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-surface-hover rounded-lg transition-colors"
-            >
-              <Icon size={14} />
-              {!isCollapsed && label}
-            </button>
+            <IconButton key={key} label={label} variant="ghost" size="sm" onClick={onClick}>
+              <Icon size={15} />
+            </IconButton>
           ))}
+        </div>
 
-          <button
-            onClick={onOpenPreferences}
-            aria-label="Preferences"
-            title="Preferences"
-            className="flex items-center gap-1.5 px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-surface-hover rounded-lg transition-colors"
-          >
-            <SlidersHorizontal size={14} />
-            {!isCollapsed && 'Preferences'}
-          </button>
-
-          {isAdmin && (
-            <button
-              onClick={() => navigate('/admin')}
-              aria-label="Admin Panel"
-              title="Admin Panel"
-              className="flex items-center gap-1.5 px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-surface-hover rounded-lg transition-colors"
-            >
-              <Settings size={14} />
-              {!isCollapsed && 'Admin'}
-            </button>
-          )}
-
-          <button
-            onClick={logout}
-            aria-label="Sign out"
-            title="Sign out"
-            className="flex items-center gap-1.5 px-2 py-1.5 text-xs text-muted-foreground hover:text-danger hover:bg-danger/10 rounded-lg transition-colors"
-          >
-            <LogOut size={14} />
-            {!isCollapsed && 'Sign out'}
-          </button>
+        {/* Account — a single trigger opening a proper menu, instead of every action competing
+            for space in the footer at once. Placement is 'top': this sits at the very bottom of
+            the viewport, so a downward menu would get clipped. */}
+        <div className={cn('flex items-center gap-1', isCollapsed && 'flex-col')}>
+          <Menu
+            placement="top"
+            align="start"
+            trigger={
+              <button
+                type="button"
+                className={cn(
+                  'flex items-center gap-2 rounded-lg hover:bg-surface-hover transition-colors py-1.5',
+                  isCollapsed ? 'justify-center w-9' : 'flex-1 min-w-0 px-1.5',
+                )}
+              >
+                <div className="w-7 h-7 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold flex-shrink-0">
+                  {user?.username.charAt(0).toUpperCase()}
+                </div>
+                {!isCollapsed && user && (
+                  <>
+                    <div className="flex-1 min-w-0 text-left">
+                      <div className="text-sm font-medium text-foreground truncate">{user.username}</div>
+                      <div className="text-xs text-muted-foreground">{user.role}</div>
+                    </div>
+                    <ChevronUp size={14} className="text-muted-foreground flex-shrink-0" />
+                  </>
+                )}
+              </button>
+            }
+            options={[
+              { key: 'preferences', label: 'Preferences', icon: <SlidersHorizontal size={14} />, onSelect: onOpenPreferences },
+              ...(isAdmin
+                ? [{ key: 'admin', label: 'Admin Panel', icon: <Settings size={14} />, onSelect: () => navigate('/admin') }]
+                : []),
+              { key: 'signout', label: 'Sign out', icon: <LogOut size={14} />, onSelect: logout, danger: true },
+            ]}
+          />
+          <ThemeToggle />
         </div>
       </div>
 

@@ -170,6 +170,10 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   }
   if (!isAuthenticated) return <LoginPage />;
   if (user?.mustChangePassword) return <Navigate to="/change-password" replace />;
+  // SUPER_ADMIN has no tenant (tenantId is always null), so none of the tenant-scoped
+  // end-user surfaces here — chat, bookmarks, collections, FAQ, subscriptions, API keys —
+  // are meaningful for that role. Keep it confined to the admin console.
+  if (user?.role === 'SUPER_ADMIN') return <Navigate to="/admin" replace />;
   return <>{children}</>;
 }
 
@@ -183,9 +187,14 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
 }
 
 function ChangePasswordRoute() {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, user } = useAuth();
   if (isLoading) return null;
-  return isAuthenticated ? <ChangePasswordPage /> : <LoginPage />;
+  if (!isAuthenticated) return <LoginPage />;
+  // Nothing else links here — this route only exists for the forced first-login reset. Once the
+  // flag clears (or for a user who was never required to change it), bounce back into the app
+  // instead of leaving them stranded on a form with nothing left to submit.
+  if (!user?.mustChangePassword) return <Navigate to="/" replace />;
+  return <ChangePasswordPage />;
 }
 
 function App() {
