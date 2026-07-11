@@ -61,10 +61,11 @@ function PreBlock({ children }: { children?: React.ReactNode }) {
       <pre ref={preRef}>{children}</pre>
       <button
         onClick={handleCopy}
-        className="absolute top-1.5 right-1.5 flex items-center gap-1 px-1.5 py-1 rounded bg-gray-700/80 text-gray-200 text-[10px] opacity-0 group-hover/code:opacity-100 transition-opacity hover:bg-gray-600 z-10"
+        aria-label="Copy code"
         title="Copy code"
+        className="absolute top-1.5 right-1.5 flex items-center gap-1 px-1.5 py-1 rounded-md bg-surface/90 border border-border text-muted-foreground text-[10px] opacity-0 group-hover/code:opacity-100 transition-opacity hover:bg-surface-hover hover:text-foreground z-10"
       >
-        {copied ? <Check size={12} /> : <Copy size={12} />}
+        {copied ? <Check size={12} className="text-success" /> : <Copy size={12} />}
       </button>
     </div>
   );

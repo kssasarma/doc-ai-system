@@ -12,6 +12,17 @@
     <meta property="og:type" content="website" />
     <link rel="preload" href="/src/config/app.json" as="fetch" crossorigin="anonymous" />
     <title>Docs-inator - AI Documentation Assistant</title>
+    <script>
+      // Applied synchronously, before first paint, to avoid a flash of the wrong theme —
+      // mirrors the resolution logic in src/context/ThemeContext.tsx.
+      (function () {
+        try {
+          var mode = localStorage.getItem('docai_theme') || 'system';
+          var dark = mode === 'dark' || (mode === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          if (dark) document.documentElement.classList.add('dark');
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

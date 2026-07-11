@@ -1,7 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { motion } from 'framer-motion';
 import { MessageCircle, Trash2, MoreVertical, Pin, PinOff, Pencil, Check, X } from 'lucide-react';
 import { ChatSession } from '../../types';
 import { formatTimestamp, truncateText } from '../../utils/chatUtils';
+import { cn } from '../../lib/cn';
+import Menu from '../ui/Menu';
+import IconButton from '../ui/IconButton';
 
 interface SessionItemProps {
   session: ChatSession;
@@ -20,7 +24,6 @@ const SessionItem: React.FC<SessionItemProps> = ({
   onPin,
   onRename,
 }) => {
-  const [showMenu, setShowMenu] = useState(false);
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState(session.title);
   const renameInputRef = useRef<HTMLInputElement>(null);
@@ -29,23 +32,9 @@ const SessionItem: React.FC<SessionItemProps> = ({
     if (isRenaming) renameInputRef.current?.focus();
   }, [isRenaming]);
 
-  const handleDelete = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    onDelete();
-    setShowMenu(false);
-  };
-
-  const handlePin = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    onPin();
-    setShowMenu(false);
-  };
-
-  const startRename = (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const startRename = () => {
     setRenameValue(session.title);
     setIsRenaming(true);
-    setShowMenu(false);
   };
 
   const commitRename = () => {
@@ -65,16 +54,21 @@ const SessionItem: React.FC<SessionItemProps> = ({
   };
 
   return (
-    <div
-      className={`group relative p-3 rounded-lg cursor-pointer transition-all ${
-        isActive ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
-      }`}
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: 4 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.18 }}
+      className={cn(
+        'group relative p-3 rounded-lg cursor-pointer transition-colors',
+        isActive ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-surface-hover hover:text-foreground',
+      )}
       onClick={!isRenaming ? onSelect : undefined}
     >
       <div className="flex items-start gap-2">
         <div className="mt-0.5 flex-shrink-0 flex items-center gap-1">
           {session.pinned && (
-            <Pin size={11} className={isActive ? 'text-blue-200' : 'text-yellow-400'} />
+            <Pin size={11} className={isActive ? 'text-primary-foreground/80' : 'text-warning'} />
           )}
           <MessageCircle size={14} />
         </div>
@@ -87,12 +81,12 @@ const SessionItem: React.FC<SessionItemProps> = ({
                 value={renameValue}
                 onChange={e => setRenameValue(e.target.value)}
                 onKeyDown={handleKeyDown}
-                className="flex-1 text-xs bg-gray-700 text-white rounded px-1.5 py-0.5 border border-blue-400 focus:outline-none"
+                className="flex-1 text-xs bg-surface text-foreground rounded px-1.5 py-0.5 border border-primary focus:outline-none"
               />
-              <button onClick={e => { e.stopPropagation(); commitRename(); }} className="text-green-400 hover:text-green-300">
+              <button onClick={e => { e.stopPropagation(); commitRename(); }} aria-label="Save name" className="text-success hover:opacity-80">
                 <Check size={12} />
               </button>
-              <button onClick={e => { e.stopPropagation(); cancelRename(); }} className="text-gray-400 hover:text-gray-200">
+              <button onClick={e => { e.stopPropagation(); cancelRename(); }} aria-label="Cancel rename" className="opacity-70 hover:opacity-100">
                 <X size={12} />
               </button>
             </div>
@@ -103,7 +97,7 @@ const SessionItem: React.FC<SessionItemProps> = ({
           )}
 
           {!isRenaming && (
-            <div className="text-xs opacity-60">
+            <div className={cn('text-xs', isActive ? 'text-primary-foreground/70' : 'text-muted-foreground')}>
               {session.messages.length} msgs • {formatTimestamp(session.updatedAt)}
             </div>
           )}
@@ -113,9 +107,10 @@ const SessionItem: React.FC<SessionItemProps> = ({
               {session.tags.slice(0, 3).map(tag => (
                 <span
                   key={tag}
-                  className={`inline-block px-1.5 py-0 rounded text-xs ${
-                    isActive ? 'bg-blue-500 text-blue-100' : 'bg-gray-700 text-gray-400'
-                  }`}
+                  className={cn(
+                    'inline-block px-1.5 py-0 rounded text-xs',
+                    isActive ? 'bg-white/20 text-primary-foreground' : 'bg-muted text-muted-foreground',
+                  )}
                 >
                   {tag}
                 </span>
@@ -125,43 +120,32 @@ const SessionItem: React.FC<SessionItemProps> = ({
         </div>
 
         {!isRenaming && (
-          <div className="relative flex-shrink-0">
-            <button
-              onClick={e => { e.stopPropagation(); setShowMenu(v => !v); }}
-              className="opacity-0 group-hover:opacity-100 p-1 hover:bg-gray-600 rounded transition-all"
-            >
-              <MoreVertical size={13} />
-            </button>
-
-            {showMenu && (
-              <div className="absolute right-0 top-6 bg-gray-700 rounded-lg shadow-lg py-1 z-20 w-36">
-                <button
-                  onClick={handlePin}
-                  className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-600 transition-colors"
+          <div className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
+            <Menu
+              trigger={
+                <IconButton
+                  label="Session actions"
+                  variant="ghost"
+                  size="sm"
+                  className={isActive ? 'text-primary-foreground/80 hover:bg-white/15 hover:text-primary-foreground' : ''}
                 >
-                  {session.pinned ? <PinOff size={12} /> : <Pin size={12} />}
-                  {session.pinned ? 'Unpin' : 'Pin'}
-                </button>
-                <button
-                  onClick={startRename}
-                  className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-600 transition-colors"
-                >
-                  <Pencil size={12} />
-                  Rename
-                </button>
-                <button
-                  onClick={handleDelete}
-                  className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-red-300 hover:bg-gray-600 transition-colors"
-                >
-                  <Trash2 size={12} />
-                  Delete
-                </button>
-              </div>
-            )}
+                  <MoreVertical size={13} />
+                </IconButton>
+              }
+              options={[
+                {
+                  key: 'pin', label: session.pinned ? 'Unpin' : 'Pin',
+                  icon: session.pinned ? <PinOff size={12} /> : <Pin size={12} />,
+                  onSelect: onPin,
+                },
+                { key: 'rename', label: 'Rename', icon: <Pencil size={12} />, onSelect: startRename },
+                { key: 'delete', label: 'Delete', icon: <Trash2 size={12} />, onSelect: onDelete, danger: true },
+              ]}
+            />
           </div>
         )}
       </div>
-    </div>
+    </motion.div>
   );
 };
 

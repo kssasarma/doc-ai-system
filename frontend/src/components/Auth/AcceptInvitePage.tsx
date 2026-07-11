@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Mail } from 'lucide-react';
 import { acceptInvite } from '../../services/invitationService';
 import { useAuth } from '../../context/AuthContext';
+import AuthLayout from './AuthLayout';
+import Input from '../ui/Input';
+import Button from '../ui/Button';
 
 export default function AcceptInvitePage() {
   const { applySession } = useAuth();
@@ -18,12 +20,12 @@ export default function AcceptInvitePage() {
 
   if (!token) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-100 px-4">
-        <div className="bg-white rounded-2xl shadow-lg p-8 w-full max-w-sm text-center">
-          <p className="text-sm text-red-600">This invitation link is missing its token.</p>
-          <Link to="/" className="text-blue-600 hover:underline text-sm font-medium mt-4 inline-block">Back to sign in</Link>
+      <AuthLayout title="Accept invitation" subtitle="">
+        <div className="text-center">
+          <p className="text-sm text-danger">This invitation link is missing its token.</p>
+          <Link to="/" className="text-primary hover:underline text-sm font-medium mt-4 inline-block">Back to sign in</Link>
         </div>
-      </div>
+      </AuthLayout>
     );
   }
 
@@ -51,59 +53,30 @@ export default function AcceptInvitePage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100 px-4">
-      <div className="bg-white rounded-2xl shadow-lg p-8 w-full max-w-sm">
-        <div className="text-center mb-8">
-          <div className="w-12 h-12 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mx-auto mb-3">
-            <Mail size={24} />
-          </div>
-          <h1 className="text-2xl font-bold text-gray-900">Accept invitation</h1>
-          <p className="text-sm text-gray-500 mt-1">Choose a username and password to activate your account.</p>
-        </div>
+    <AuthLayout title="Accept invitation" subtitle="Choose a username and password to activate your account.">
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <p className="text-xs text-muted-foreground bg-muted rounded-lg px-3 py-2">
+          Already have an account with this email in another workspace? Enter your existing username and password below to join this workspace too — no new account needed.
+        </p>
+        <Input
+          label="Username" type="text" value={username} onChange={e => setUsername(e.target.value)}
+          required minLength={3} maxLength={50} autoFocus placeholder="Choose a username, or your existing one"
+        />
+        <Input
+          label="Password" type="password" value={password} onChange={e => setPassword(e.target.value)}
+          required minLength={6} placeholder="At least 6 characters, or your existing password"
+        />
+        <Input
+          label="Confirm password" type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)}
+          required minLength={6} placeholder="Re-enter password"
+        />
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <p className="text-xs text-gray-400 bg-gray-50 rounded-lg px-3 py-2">
-            Already have an account with this email in another workspace? Enter your existing username and password below to join this workspace too — no new account needed.
-          </p>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Username</label>
-            <input
-              type="text" value={username} onChange={e => setUsername(e.target.value)}
-              required minLength={3} maxLength={50} autoFocus
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Choose a username, or your existing one"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-            <input
-              type="password" value={password} onChange={e => setPassword(e.target.value)}
-              required minLength={6}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="At least 6 characters, or your existing password"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Confirm password</label>
-            <input
-              type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)}
-              required minLength={6}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Re-enter password"
-            />
-          </div>
+        {error && <div className="text-sm text-danger bg-danger/10 rounded-lg px-3 py-2">{error}</div>}
 
-          {error && <div className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</div>}
-
-          <button
-            type="submit"
-            disabled={isSubmitting}
-            className="w-full py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
-          >
-            {isSubmitting ? 'Activating…' : 'Activate account'}
-          </button>
-        </form>
-      </div>
-    </div>
+        <Button type="submit" loading={isSubmitting} className="w-full" size="lg">
+          {isSubmitting ? 'Activating…' : 'Activate account'}
+        </Button>
+      </form>
+    </AuthLayout>
   );
 }

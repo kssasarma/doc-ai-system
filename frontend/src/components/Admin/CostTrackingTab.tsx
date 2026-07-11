@@ -1,20 +1,27 @@
 import React, { useEffect, useState } from 'react';
+import { motion } from 'framer-motion';
 import { useAuth } from '../../context/AuthContext';
 import { fetchCostSummary, CostSummary, DailyStat } from '../../services/analyticsService';
 import { DollarSign, User, Package } from 'lucide-react';
+import { Card, CardHeader } from '../ui/Card';
+import EmptyState from '../ui/EmptyState';
+import { SkeletonCard } from '../ui/Skeleton';
+import { fadeInUp, staggerContainer, EASE_OUT } from '../../lib/motion';
 
 function CostBarChart({ data }: { data: DailyStat[] }) {
-  if (!data.length) return <div className="h-28 flex items-center justify-center text-gray-400 text-xs">No data yet</div>;
+  if (!data.length) return <EmptyState icon={DollarSign} title="No data yet" className="py-8" />;
   const max = Math.max(...data.map(d => d.estimatedCost), 0.001);
   return (
     <div className="h-28 flex items-end gap-px">
       {data.map((d, i) => (
         <div key={i} className="flex-1 flex flex-col items-center group relative">
-          <div
-            className="w-full bg-emerald-500 rounded-sm opacity-80 hover:opacity-100 transition-opacity"
-            style={{ height: `${(d.estimatedCost / max) * 96}px` }}
+          <motion.div
+            className="w-full bg-primary rounded-sm opacity-80 hover:opacity-100 transition-opacity"
+            initial={{ height: 0 }}
+            animate={{ height: `${(d.estimatedCost / max) * 96}px` }}
+            transition={{ duration: 0.3, ease: EASE_OUT }}
           />
-          <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-[10px] px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-10">
+          <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-foreground text-background text-[10px] px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-10">
             {d.date.slice(5)}: ${d.estimatedCost.toFixed(4)}
           </div>
         </div>
@@ -39,87 +46,101 @@ export default function CostTrackingTab() {
     }).finally(() => setLoading(false));
   }, [token]);
 
-  if (loading) return <div className="p-12 text-center text-gray-400">Loading cost data…</div>;
-  if (!cost) return <div className="p-12 text-center text-gray-400">No cost data yet.</div>;
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <SkeletonCard /><SkeletonCard /><SkeletonCard />
+        </div>
+        <SkeletonCard className="h-40" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+          <SkeletonCard /><SkeletonCard />
+        </div>
+      </div>
+    );
+  }
+  if (!cost) return <EmptyState icon={DollarSign} title="No cost data yet" description="Cost data will appear here once queries start generating LLM usage." />;
 
   return (
-    <div className="space-y-6">
+    <motion.div variants={staggerContainer} initial="hidden" animate="visible" className="space-y-6">
       {/* Summary cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <motion.div variants={fadeInUp} className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {[
-          { label: 'Cost this month', value: `$${cost.totalCostThisMonth.toFixed(4)}`, sub: 'estimated LLM cost', icon: <DollarSign size={18} className="text-emerald-500" /> },
-          { label: 'Avg cost / query', value: `$${cost.avgCostPerQuery.toFixed(5)}`, sub: 'last 30 days', icon: <DollarSign size={18} className="text-blue-500" /> },
-          { label: 'Total cost (all time)', value: `$${cost.totalCostAllTime.toFixed(4)}`, sub: 'since deployment', icon: <DollarSign size={18} className="text-gray-400" /> },
+          { label: 'Cost this month', value: `$${cost.totalCostThisMonth.toFixed(4)}`, sub: 'estimated LLM cost', icon: <DollarSign size={18} className="text-success" /> },
+          { label: 'Avg cost / query', value: `$${cost.avgCostPerQuery.toFixed(5)}`, sub: 'last 30 days', icon: <DollarSign size={18} className="text-primary" /> },
+          { label: 'Total cost (all time)', value: `$${cost.totalCostAllTime.toFixed(4)}`, sub: 'since deployment', icon: <DollarSign size={18} className="text-muted-foreground" /> },
         ].map(c => (
-          <div key={c.label} className="bg-white rounded-xl border border-gray-200 p-4">
+          <Card key={c.label} className="p-4">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-medium text-gray-500">{c.label}</span>
+              <span className="text-xs font-medium text-muted-foreground">{c.label}</span>
               {c.icon}
             </div>
-            <div className="text-2xl font-bold text-gray-900">{c.value}</div>
-            <div className="text-xs text-gray-400 mt-0.5">{c.sub}</div>
-          </div>
+            <div className="text-2xl font-bold text-foreground">{c.value}</div>
+            <div className="text-xs text-muted-foreground mt-0.5">{c.sub}</div>
+          </Card>
         ))}
-      </div>
+      </motion.div>
 
       {/* Daily cost chart */}
-      <div className="bg-white rounded-xl border border-gray-200 p-5">
-        <h3 className="text-sm font-semibold text-gray-700 mb-3">Daily Cost Trend (last 30 days)</h3>
-        <CostBarChart data={cost.dailyCost} />
-        <div className="flex justify-between text-[10px] text-gray-400 mt-1">
-          <span>{cost.dailyCost[0]?.date?.slice(5) ?? ''}</span>
-          <span>{cost.dailyCost[cost.dailyCost.length - 1]?.date?.slice(5) ?? ''}</span>
-        </div>
-        <p className="text-xs text-gray-400 mt-2">Estimated based on token usage × model pricing. Defaults: gpt-4o-mini ($0.15/1M input, $0.60/1M output).</p>
-      </div>
-
-      {/* Cost by user */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-        <div className="bg-white rounded-xl border border-gray-200">
-          <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
-            <User size={16} className="text-blue-500" />
-            <h3 className="text-sm font-semibold text-gray-700">Cost by User (top 10, this month)</h3>
+      <motion.div variants={fadeInUp}>
+        <Card className="p-5">
+          <h3 className="text-sm font-semibold text-foreground mb-3">Daily Cost Trend (last 30 days)</h3>
+          <CostBarChart data={cost.dailyCost} />
+          <div className="flex justify-between text-[10px] text-muted-foreground mt-1">
+            <span>{cost.dailyCost[0]?.date?.slice(5) ?? ''}</span>
+            <span>{cost.dailyCost[cost.dailyCost.length - 1]?.date?.slice(5) ?? ''}</span>
           </div>
+          <p className="text-xs text-muted-foreground mt-2">Estimated based on token usage × model pricing. Defaults: gpt-4o-mini ($0.15/1M input, $0.60/1M output).</p>
+        </Card>
+      </motion.div>
+
+      {/* Cost by user / product */}
+      <motion.div variants={fadeInUp} className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+        <Card>
+          <CardHeader className="flex items-center gap-2">
+            <User size={16} className="text-primary" />
+            <h3 className="text-sm font-semibold text-foreground">Cost by User (top 10, this month)</h3>
+          </CardHeader>
           {cost.costByUser.length === 0 ? (
-            <div className="p-6 text-center text-gray-400 text-sm">No data.</div>
+            <EmptyState icon={User} title="No data" className="py-8" />
           ) : (
-            <div className="divide-y divide-gray-100">
+            <div className="divide-y divide-border">
               {cost.costByUser.map((u, i) => (
                 <div key={i} className="px-5 py-3 flex items-center justify-between">
                   <div>
-                    <div className="text-sm font-medium text-gray-800">{u.username}</div>
-                    <div className="text-xs text-gray-400">{u.queryCount} queries</div>
+                    <div className="text-sm font-medium text-foreground">{u.username}</div>
+                    <div className="text-xs text-muted-foreground">{u.queryCount} queries</div>
                   </div>
-                  <span className="text-sm font-semibold text-emerald-600">{fmt(u.totalCost)}</span>
+                  <span className="text-sm font-semibold text-success">{fmt(u.totalCost)}</span>
                 </div>
               ))}
             </div>
           )}
-        </div>
+        </Card>
 
         {/* Cost by product */}
-        <div className="bg-white rounded-xl border border-gray-200">
-          <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
-            <Package size={16} className="text-purple-500" />
-            <h3 className="text-sm font-semibold text-gray-700">Cost by Product (this month)</h3>
-          </div>
+        <Card>
+          <CardHeader className="flex items-center gap-2">
+            <Package size={16} className="text-accent" />
+            <h3 className="text-sm font-semibold text-foreground">Cost by Product (this month)</h3>
+          </CardHeader>
           {cost.costByProduct.length === 0 ? (
-            <div className="p-6 text-center text-gray-400 text-sm">No data.</div>
+            <EmptyState icon={Package} title="No data" className="py-8" />
           ) : (
-            <div className="divide-y divide-gray-100">
+            <div className="divide-y divide-border">
               {cost.costByProduct.map((p, i) => (
                 <div key={i} className="px-5 py-3 flex items-center justify-between">
                   <div>
-                    <div className="text-sm font-medium text-gray-800">{p.product}</div>
-                    <div className="text-xs text-gray-400">{p.version ?? 'all versions'} · {p.queryCount} queries</div>
+                    <div className="text-sm font-medium text-foreground">{p.product}</div>
+                    <div className="text-xs text-muted-foreground">{p.version ?? 'all versions'} · {p.queryCount} queries</div>
                   </div>
-                  <span className="text-sm font-semibold text-purple-600">{fmt(p.totalCost)}</span>
+                  <span className="text-sm font-semibold text-accent">{fmt(p.totalCost)}</span>
                 </div>
               ))}
             </div>
           )}
-        </div>
-      </div>
-    </div>
+        </Card>
+      </motion.div>
+    </motion.div>
   );
 }

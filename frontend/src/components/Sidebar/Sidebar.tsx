@@ -1,9 +1,18 @@
 import React, { Suspense, lazy, useState, useMemo, useEffect } from 'react';
-import { Plus, Menu, X, Settings, LogOut, Bookmark, SlidersHorizontal, Bell, Folder, Key, BookOpen } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Plus, Menu as MenuIcon, X, Settings, LogOut, Bookmark, SlidersHorizontal, Bell, Folder, Key, BookOpen } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { ChatSession } from '../../types';
+import { Search } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { fetchUnreadCount } from '../../services/notificationService';
+import { cn } from '../../lib/cn';
+import { EASE_OUT } from '../../lib/motion';
+import Button from '../ui/Button';
+import IconButton from '../ui/IconButton';
+import ThemeToggle from '../ui/ThemeToggle';
+import { Skeleton } from '../ui/Skeleton';
+import { useCommandPalette } from '../CommandPalette/CommandPaletteProvider';
 
 const SessionItem = lazy(() => import('./SessionItem'));
 const NotificationPanel = lazy(() => import('./NotificationPanel'));
@@ -22,6 +31,14 @@ interface SidebarProps {
   onToggleCollapse: () => void;
 }
 
+const NAV_ACTIONS = (navigate: ReturnType<typeof useNavigate>) => [
+  { key: 'bookmarks', label: 'Bookmarks', icon: Bookmark, onClick: () => navigate('/bookmarks') },
+  { key: 'collections', label: 'Collections', icon: Folder, onClick: () => navigate('/collections') },
+  { key: 'faq', label: 'FAQ', icon: BookOpen, onClick: () => navigate('/faq') },
+  { key: 'subscriptions', label: 'Subscriptions', icon: Bell, onClick: () => navigate('/subscriptions') },
+  { key: 'api-keys', label: 'API Keys', icon: Key, onClick: () => navigate('/api-keys') },
+];
+
 const Sidebar: React.FC<SidebarProps> = ({
   sessions,
   activeSessionId,
@@ -36,6 +53,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const { user, logout, isAdmin, token } = useAuth();
   const navigate = useNavigate();
+  const { open: openPalette } = useCommandPalette();
   const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [notifOpen, setNotifOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -45,7 +63,6 @@ const Sidebar: React.FC<SidebarProps> = ({
     fetchUnreadCount(token).then(res => {
       if (res.success && res.data != null) setUnreadCount(res.data);
     });
-    // Poll every 60s for new notifications
     const interval = setInterval(() => {
       fetchUnreadCount(token).then(res => {
         if (res.success && res.data != null) setUnreadCount(res.data);
@@ -71,37 +88,37 @@ const Sidebar: React.FC<SidebarProps> = ({
   }, [sessions, tagFilter]);
 
   return (
-    <div className={`bg-gray-900 text-white h-screen transition-all duration-300 ${
-      isCollapsed ? 'w-16' : 'w-80'
-    } flex flex-col relative`}>
+    <motion.div
+      animate={{ width: isCollapsed ? 64 : 320 }}
+      transition={{ duration: 0.28, ease: EASE_OUT }}
+      className="bg-surface text-foreground h-screen flex flex-col relative border-r border-border flex-shrink-0 overflow-hidden"
+    >
       {/* Header */}
-      <div className="p-4 border-b border-gray-700 flex items-center justify-between">
-        <button
-          onClick={onToggleCollapse}
-          className="p-2 hover:bg-gray-800 rounded-lg transition-colors"
-        >
-          {isCollapsed ? <Menu size={20} /> : <X size={20} />}
-        </button>
+      <div className="p-4 border-b border-border flex items-center justify-between gap-2">
+        <IconButton label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'} variant="ghost" onClick={onToggleCollapse}>
+          {isCollapsed ? <MenuIcon size={18} /> : <X size={18} />}
+        </IconButton>
 
         {!isCollapsed && (
-          <button
-            onClick={onCreateSession}
-            className="flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors text-sm font-medium"
-          >
-            <Plus size={16} />
+          <Button onClick={onCreateSession} leftIcon={<Plus size={16} />} size="sm" className="flex-1">
             New Chat
-          </button>
+          </Button>
         )}
+
+        <IconButton label="Open command palette (Ctrl+K)" variant="ghost" onClick={openPalette}>
+          <Search size={16} />
+        </IconButton>
       </div>
 
       {/* Tag filter bar */}
       {!isCollapsed && allTags.length > 0 && (
-        <div className="px-3 py-2 border-b border-gray-800 flex flex-wrap gap-1">
+        <div className="px-3 py-2 border-b border-border flex flex-wrap gap-1">
           <button
             onClick={() => setTagFilter(null)}
-            className={`px-2 py-0.5 rounded text-xs transition-colors ${
-              tagFilter === null ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
-            }`}
+            className={cn(
+              'px-2 py-0.5 rounded text-xs transition-colors',
+              tagFilter === null ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-surface-hover',
+            )}
           >
             All
           </button>
@@ -109,9 +126,10 @@ const Sidebar: React.FC<SidebarProps> = ({
             <button
               key={tag}
               onClick={() => setTagFilter(tag === tagFilter ? null : tag)}
-              className={`px-2 py-0.5 rounded text-xs transition-colors ${
-                tagFilter === tag ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
-              }`}
+              className={cn(
+                'px-2 py-0.5 rounded text-xs transition-colors',
+                tagFilter === tag ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-surface-hover',
+              )}
             >
               {tag}
             </button>
@@ -127,12 +145,14 @@ const Sidebar: React.FC<SidebarProps> = ({
               <button
                 key={session.chatId}
                 onClick={() => onSelectSession(session.chatId)}
-                className={`w-12 h-12 rounded-lg flex items-center justify-center text-xs font-medium transition-colors ${
-                  session.chatId === activeSessionId
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
-                }`}
                 title={session.title}
+                aria-label={session.title}
+                className={cn(
+                  'w-12 h-12 rounded-lg flex items-center justify-center text-xs font-medium transition-colors',
+                  session.chatId === activeSessionId
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-muted text-muted-foreground hover:bg-surface-hover',
+                )}
               >
                 {session.title.charAt(0).toUpperCase()}
               </button>
@@ -140,7 +160,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           </div>
         ) : (
           <div className="space-y-1">
-            <Suspense fallback={<div className="p-2 text-gray-400 text-sm">Loading...</div>}>
+            <Suspense fallback={<div className="space-y-2 p-1">{[0, 1, 2].map(i => <Skeleton key={i} className="h-14 rounded-lg" />)}</div>}>
               {sortedSessions.map(session => (
                 <SessionItem
                   key={session.chatId}
@@ -154,7 +174,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               ))}
             </Suspense>
             {sortedSessions.length === 0 && (
-              <div className="text-gray-400 text-sm p-4 text-center">
+              <div className="text-muted-foreground text-sm p-4 text-center">
                 {tagFilter ? `No chats tagged "${tagFilter}"` : 'No chat sessions yet. Create your first one!'}
               </div>
             )}
@@ -163,98 +183,79 @@ const Sidebar: React.FC<SidebarProps> = ({
       </div>
 
       {/* Footer */}
-      <div className={`border-t border-gray-700 p-3 ${isCollapsed ? 'flex flex-col items-center gap-2' : ''}`}>
+      <div className={cn('border-t border-border p-3', isCollapsed && 'flex flex-col items-center gap-2')}>
         <Suspense fallback={null}>
           <TenantSwitcher isCollapsed={isCollapsed} />
         </Suspense>
 
         {!isCollapsed && user && (
           <div className="flex items-center gap-2 mb-2 px-1">
-            <div className="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center text-xs font-bold flex-shrink-0">
+            <div className="w-7 h-7 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold flex-shrink-0">
               {user.username.charAt(0).toUpperCase()}
             </div>
             <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium text-gray-200 truncate">{user.username}</div>
-              <div className="text-xs text-gray-500">{user.role}</div>
+              <div className="text-sm font-medium text-foreground truncate">{user.username}</div>
+              <div className="text-xs text-muted-foreground">{user.role}</div>
             </div>
+            <ThemeToggle />
           </div>
         )}
+        {isCollapsed && <ThemeToggle />}
 
-        <div className={`flex ${isCollapsed ? 'flex-col' : 'flex-row flex-wrap'} gap-1`}>
-          {/* Notification bell */}
-          <button
-            onClick={() => setNotifOpen(v => !v)}
-            title="Notifications"
-            className="relative flex items-center gap-1.5 px-2 py-1.5 text-xs text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
-          >
-            <Bell size={14} />
-            {!isCollapsed && 'Notifications'}
-            {unreadCount > 0 && (
-              <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-red-500 text-white rounded-full text-[10px] flex items-center justify-center leading-none">
-                {unreadCount > 9 ? '9+' : unreadCount}
-              </span>
-            )}
-          </button>
+        <div className={cn('flex gap-1', isCollapsed ? 'flex-col' : 'flex-row flex-wrap')}>
+          <div className="relative">
+            <button
+              onClick={() => setNotifOpen(v => !v)}
+              aria-label="Notifications"
+              title="Notifications"
+              className="relative flex items-center gap-1.5 px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-surface-hover rounded-lg transition-colors"
+            >
+              <Bell size={14} />
+              {!isCollapsed && 'Notifications'}
+              <AnimatePresence>
+                {unreadCount > 0 && (
+                  <motion.span
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    exit={{ scale: 0 }}
+                    className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-danger text-danger-foreground rounded-full text-[10px] flex items-center justify-center leading-none"
+                  >
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </motion.span>
+                )}
+              </AnimatePresence>
+            </button>
+          </div>
 
-          <button
-            onClick={() => navigate('/bookmarks')}
-            title="Bookmarks"
-            className="flex items-center gap-1.5 px-2 py-1.5 text-xs text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
-          >
-            <Bookmark size={14} />
-            {!isCollapsed && 'Bookmarks'}
-          </button>
-
-          <button
-            onClick={() => navigate('/collections')}
-            title="Collections"
-            className="flex items-center gap-1.5 px-2 py-1.5 text-xs text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
-          >
-            <Folder size={14} />
-            {!isCollapsed && 'Collections'}
-          </button>
-
-          <button
-            onClick={() => navigate('/faq')}
-            title="FAQ"
-            className="flex items-center gap-1.5 px-2 py-1.5 text-xs text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
-          >
-            <BookOpen size={14} />
-            {!isCollapsed && 'FAQ'}
-          </button>
-
-          <button
-            onClick={() => navigate('/subscriptions')}
-            title="Subscriptions"
-            className="flex items-center gap-1.5 px-2 py-1.5 text-xs text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
-          >
-            <Bell size={14} />
-            {!isCollapsed && 'Subscriptions'}
-          </button>
+          {NAV_ACTIONS(navigate).map(({ key, label, icon: Icon, onClick }) => (
+            <button
+              key={key}
+              onClick={onClick}
+              aria-label={label}
+              title={label}
+              className="flex items-center gap-1.5 px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-surface-hover rounded-lg transition-colors"
+            >
+              <Icon size={14} />
+              {!isCollapsed && label}
+            </button>
+          ))}
 
           <button
             onClick={onOpenPreferences}
+            aria-label="Preferences"
             title="Preferences"
-            className="flex items-center gap-1.5 px-2 py-1.5 text-xs text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
+            className="flex items-center gap-1.5 px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-surface-hover rounded-lg transition-colors"
           >
             <SlidersHorizontal size={14} />
             {!isCollapsed && 'Preferences'}
           </button>
 
-          <button
-            onClick={() => navigate('/api-keys')}
-            title="API Keys"
-            className="flex items-center gap-1.5 px-2 py-1.5 text-xs text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
-          >
-            <Key size={14} />
-            {!isCollapsed && 'API Keys'}
-          </button>
-
           {isAdmin && (
             <button
               onClick={() => navigate('/admin')}
+              aria-label="Admin Panel"
               title="Admin Panel"
-              className="flex items-center gap-1.5 px-2 py-1.5 text-xs text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
+              className="flex items-center gap-1.5 px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-surface-hover rounded-lg transition-colors"
             >
               <Settings size={14} />
               {!isCollapsed && 'Admin'}
@@ -263,8 +264,9 @@ const Sidebar: React.FC<SidebarProps> = ({
 
           <button
             onClick={logout}
+            aria-label="Sign out"
             title="Sign out"
-            className="flex items-center gap-1.5 px-2 py-1.5 text-xs text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
+            className="flex items-center gap-1.5 px-2 py-1.5 text-xs text-muted-foreground hover:text-danger hover:bg-danger/10 rounded-lg transition-colors"
           >
             <LogOut size={14} />
             {!isCollapsed && 'Sign out'}
@@ -281,7 +283,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           />
         </Suspense>
       )}
-    </div>
+    </motion.div>
   );
 };
 

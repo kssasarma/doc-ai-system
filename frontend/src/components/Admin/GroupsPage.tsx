@@ -1,13 +1,25 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Users, Plus, Trash2, AlertCircle, CheckCircle, RefreshCw, ChevronDown, ChevronRight, UserPlus } from 'lucide-react';
+import { Users, Plus, Trash2, AlertCircle, ChevronDown, ChevronRight, UserPlus } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { listGroups, createGroup, deleteGroup, listGroupMembers, addGroupMember, removeGroupMember } from '../../services/groupService';
 import { getTenantUsers } from '../../services/tenantService';
 import type { Group, GroupMember, TenantUser } from '../../types';
 import { useAuth } from '../../context/AuthContext';
+import { fadeInUp, staggerContainer, EASE_OUT } from '../../lib/motion';
+import PageHeader from '../ui/PageHeader';
+import { Card, CardHeader } from '../ui/Card';
+import Button from '../ui/Button';
+import IconButton from '../ui/IconButton';
+import Input from '../ui/Input';
+import Select from '../ui/Select';
+import EmptyState from '../ui/EmptyState';
+import { Skeleton, SkeletonText } from '../ui/Skeleton';
+import { useToast } from '../ui/Toast';
 
 export default function GroupsPage() {
   const { token, user } = useAuth();
   const tenantId = user?.tenantId ?? '';
+  const toast = useToast();
 
   const [groups, setGroups] = useState<Group[]>([]);
   const [loading, setLoading] = useState(true);
@@ -64,102 +76,145 @@ export default function GroupsPage() {
       await deleteGroup(token, groupId);
       if (expandedGroupId === groupId) setExpandedGroupId(null);
       await load();
-    } catch { /* surfaced via the list not changing; acceptable for a destructive low-risk action */ }
+      toast.success('Group deleted.');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to delete group.');
+    }
   };
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-lg font-semibold text-gray-800 mb-1">Groups</h2>
-        <p className="text-sm text-gray-500">
-          Grant several users access to a document in one action instead of one grant per person — add users to a group, then grant the group access from a document's Access panel.
-        </p>
-      </div>
+    <div>
+      <PageHeader
+        title="Groups"
+        description="Grant several users access to a document in one action instead of one grant per person — add users to a group, then grant the group access from a document's Access panel."
+      />
 
-      {/* Create group */}
-      <div className="bg-white rounded-xl border border-gray-200 p-5">
-        <h3 className="text-sm font-semibold text-gray-700 mb-1 flex items-center gap-2">
-          <Plus size={16} className="text-blue-500" /> Create a group
-        </h3>
-        <form onSubmit={handleCreate} className="flex flex-col sm:flex-row gap-3 mt-3">
-          <input
-            type="text"
-            value={newGroupName}
-            onChange={e => setNewGroupName(e.target.value)}
-            required
-            placeholder="e.g. Support Team"
-            className="flex-1 text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-          <button
-            type="submit"
-            disabled={creating || !newGroupName.trim()}
-            className="flex items-center justify-center gap-1.5 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-60 transition-colors"
-          >
-            {creating ? <RefreshCw size={14} className="animate-spin" /> : <Plus size={14} />}
-            {creating ? 'Creating…' : 'Create group'}
-          </button>
-        </form>
-        {createMsg && (
-          <div className={`flex items-center gap-2 text-xs mt-3 rounded-lg px-3 py-2 ${createMsg.type === 'success' ? 'text-green-700 bg-green-50' : 'text-red-600 bg-red-50'}`}>
-            {createMsg.type === 'success' ? <CheckCircle size={14} className="flex-shrink-0" /> : <AlertCircle size={14} className="flex-shrink-0" />}
-            {createMsg.text}
-          </div>
-        )}
-      </div>
-
-      {/* Group list */}
-      <div className="bg-white rounded-xl border border-gray-200">
-        <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
-          <Users size={16} className="text-gray-400" />
-          <h3 className="text-sm font-semibold text-gray-700">Tenant Groups</h3>
-          {!loading && <span className="ml-auto text-xs text-gray-400">{groups.length} groups</span>}
-        </div>
-        {loading ? (
-          <div className="p-12 text-center text-gray-400">Loading groups…</div>
-        ) : error ? (
-          <div className="p-6 text-center text-red-500 flex items-center justify-center gap-2"><AlertCircle className="w-5 h-5" />{error}</div>
-        ) : groups.length === 0 ? (
-          <div className="p-12 text-center text-gray-400">No groups yet. Create your first group above.</div>
-        ) : (
-          <div className="divide-y divide-gray-100">
-            {groups.map(g => (
-              <div key={g.id}>
-                <button
-                  onClick={() => setExpandedGroupId(expandedGroupId === g.id ? null : g.id)}
-                  className="w-full flex items-center gap-3 px-5 py-3 hover:bg-gray-50 transition-colors text-left"
-                >
-                  <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-white text-sm font-bold flex-shrink-0">
-                    {g.name.charAt(0).toUpperCase()}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <span className="text-sm font-medium text-gray-900">{g.name}</span>
-                    <div className="text-xs text-gray-400">{g.memberCount} member{g.memberCount !== 1 ? 's' : ''}</div>
-                  </div>
-                  <button
-                    onClick={e => { e.stopPropagation(); handleDelete(g.id); }}
-                    title="Delete group"
-                    className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors flex-shrink-0"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                  {expandedGroupId === g.id ? <ChevronDown size={14} className="text-gray-400 flex-shrink-0" /> : <ChevronRight size={14} className="text-gray-400 flex-shrink-0" />}
-                </button>
-
-                {expandedGroupId === g.id && (
-                  <div className="bg-gray-50 px-5 py-4 border-t border-gray-100">
-                    <GroupMembersPanel
-                      token={token!}
-                      groupId={g.id}
-                      tenantUsers={tenantUsers}
-                      onMembershipChanged={load}
-                    />
-                  </div>
-                )}
+      <motion.div variants={staggerContainer} initial="hidden" animate="visible" className="space-y-6">
+        {/* Create group */}
+        <motion.div variants={fadeInUp}>
+          <Card className="p-5">
+            <h3 className="text-sm font-semibold text-foreground mb-1 flex items-center gap-2">
+              <Plus size={16} className="text-primary" /> Create a group
+            </h3>
+            <form onSubmit={handleCreate} className="flex flex-col sm:flex-row gap-3 mt-3">
+              <div className="flex-1">
+                <Input
+                  type="text"
+                  value={newGroupName}
+                  onChange={e => setNewGroupName(e.target.value)}
+                  required
+                  placeholder="e.g. Support Team"
+                />
               </div>
-            ))}
-          </div>
-        )}
-      </div>
+              <Button
+                type="submit"
+                disabled={!newGroupName.trim()}
+                loading={creating}
+                leftIcon={!creating ? <Plus size={14} /> : undefined}
+              >
+                {creating ? 'Creating…' : 'Create group'}
+              </Button>
+            </form>
+            {createMsg && (
+              <div
+                className={
+                  createMsg.type === 'success'
+                    ? 'flex items-center gap-2 text-xs mt-3 rounded-lg px-3 py-2 bg-success/10 text-success'
+                    : 'flex items-center gap-2 text-xs mt-3 rounded-lg px-3 py-2 bg-danger/10 text-danger'
+                }
+              >
+                <AlertCircle size={14} className="flex-shrink-0" />
+                {createMsg.text}
+              </div>
+            )}
+          </Card>
+        </motion.div>
+
+        {/* Group list */}
+        <motion.div variants={fadeInUp}>
+          <Card>
+            <CardHeader className="flex items-center gap-2">
+              <Users size={16} className="text-muted-foreground" />
+              <h3 className="text-sm font-semibold text-foreground">Tenant Groups</h3>
+              {!loading && <span className="ml-auto text-xs text-muted-foreground">{groups.length} groups</span>}
+            </CardHeader>
+            {loading ? (
+              <div className="divide-y divide-border">
+                {[0, 1, 2].map(i => (
+                  <div key={i} className="flex items-center gap-3 px-5 py-3">
+                    <Skeleton className="w-8 h-8 rounded-full flex-shrink-0" />
+                    <div className="flex-1 space-y-1.5">
+                      <Skeleton className="h-3.5 w-1/3" />
+                      <Skeleton className="h-3 w-1/5" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : error ? (
+              <div className="p-6 text-center text-danger flex items-center justify-center gap-2">
+                <AlertCircle className="w-5 h-5" />{error}
+              </div>
+            ) : groups.length === 0 ? (
+              <EmptyState
+                icon={Users}
+                title="No groups yet"
+                description="Create your first group above to start managing document access in bulk."
+              />
+            ) : (
+              <div className="divide-y divide-border">
+                {groups.map(g => (
+                  <div key={g.id}>
+                    <div className="flex items-center gap-2 px-5 py-3 hover:bg-surface-hover transition-colors">
+                      <button
+                        onClick={() => setExpandedGroupId(expandedGroupId === g.id ? null : g.id)}
+                        className="flex items-center gap-3 flex-1 min-w-0 text-left"
+                      >
+                        <div className="w-8 h-8 rounded-full bg-accent flex items-center justify-center text-white text-sm font-bold flex-shrink-0">
+                          {g.name.charAt(0).toUpperCase()}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium text-foreground">{g.name}</div>
+                          <div className="text-xs text-muted-foreground">{g.memberCount} member{g.memberCount !== 1 ? 's' : ''}</div>
+                        </div>
+                        {expandedGroupId === g.id ? (
+                          <ChevronDown size={14} className="text-muted-foreground flex-shrink-0" />
+                        ) : (
+                          <ChevronRight size={14} className="text-muted-foreground flex-shrink-0" />
+                        )}
+                      </button>
+                      <IconButton label="Delete group" variant="danger" size="sm" onClick={() => handleDelete(g.id)}>
+                        <Trash2 size={14} />
+                      </IconButton>
+                    </div>
+
+                    <AnimatePresence initial={false}>
+                      {expandedGroupId === g.id && (
+                        <motion.div
+                          key="panel"
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: 'auto', opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.2, ease: EASE_OUT }}
+                          className="overflow-hidden"
+                        >
+                          <div className="bg-muted px-5 py-4 border-t border-border">
+                            <GroupMembersPanel
+                              token={token!}
+                              groupId={g.id}
+                              tenantUsers={tenantUsers}
+                              onMembershipChanged={load}
+                            />
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+        </motion.div>
+      </motion.div>
     </div>
   );
 }
@@ -172,6 +227,7 @@ function GroupMembersPanel({
   tenantUsers: TenantUser[];
   onMembershipChanged: () => void;
 }) {
+  const toast = useToast();
   const [members, setMembers] = useState<GroupMember[] | null>(null);
   const [error, setError] = useState('');
   const [selectedUserId, setSelectedUserId] = useState('');
@@ -201,6 +257,7 @@ function GroupMembersPanel({
       setSelectedUserId('');
       await load();
       onMembershipChanged();
+      toast.success('Member added.');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to add member');
     } finally {
@@ -214,6 +271,7 @@ function GroupMembersPanel({
       await removeGroupMember(token, groupId, userId);
       await load();
       onMembershipChanged();
+      toast.success('Member removed.');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to remove member');
     } finally {
@@ -224,49 +282,56 @@ function GroupMembersPanel({
   return (
     <div className="space-y-3">
       <div className="flex flex-col sm:flex-row gap-2">
-        <select
-          value={selectedUserId}
-          onChange={e => setSelectedUserId(e.target.value)}
-          className="flex-1 text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          <option value="">
-            {addableUsers.length === 0 ? 'No more users to add' : 'Select a user to add…'}
-          </option>
-          {addableUsers.map(u => (
-            <option key={u.userId} value={u.userId}>{u.username} ({u.email})</option>
-          ))}
-        </select>
-        <button
+        <div className="flex-1">
+          <Select value={selectedUserId} onChange={e => setSelectedUserId(e.target.value)}>
+            <option value="">
+              {addableUsers.length === 0 ? 'No more users to add' : 'Select a user to add…'}
+            </option>
+            {addableUsers.map(u => (
+              <option key={u.userId} value={u.userId}>{u.username} ({u.email})</option>
+            ))}
+          </Select>
+        </div>
+        <Button
+          variant="secondary"
+          size="md"
           onClick={handleAdd}
-          disabled={!selectedUserId || adding}
-          className="flex items-center justify-center gap-1.5 px-3 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-50 whitespace-nowrap"
+          disabled={!selectedUserId}
+          loading={adding}
+          leftIcon={!adding ? <UserPlus size={14} /> : undefined}
+          className="whitespace-nowrap"
         >
-          <UserPlus size={14} /> Add
-        </button>
+          Add
+        </Button>
       </div>
 
-      {error && <div className="flex items-center gap-2 text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2"><AlertCircle size={13} className="flex-shrink-0" />{error}</div>}
+      {error && (
+        <div className="flex items-center gap-2 text-xs text-danger bg-danger/10 rounded-lg px-3 py-2">
+          <AlertCircle size={13} className="flex-shrink-0" />{error}
+        </div>
+      )}
 
       {members === null ? (
-        <div className="text-xs text-gray-400 py-2">Loading members…</div>
+        <SkeletonText lines={2} />
       ) : members.length === 0 ? (
-        <p className="text-xs text-gray-400 italic py-1">No members yet.</p>
+        <EmptyState icon={UserPlus} title="No members yet" description="Add a user above to give them access via this group." />
       ) : (
         <div className="space-y-1.5">
           {members.map(m => (
-            <div key={m.userId} className="flex items-center justify-between bg-white border border-gray-200 rounded-lg px-3 py-2">
+            <div key={m.userId} className="flex items-center justify-between bg-surface border border-border rounded-lg px-3 py-2">
               <div>
-                <span className="text-sm text-gray-800">{m.username}</span>
-                <span className="text-xs text-gray-400 ml-2">{m.email}</span>
+                <span className="text-sm text-foreground">{m.username}</span>
+                <span className="text-xs text-muted-foreground ml-2">{m.email}</span>
               </div>
-              <button
+              <IconButton
+                label="Remove from group"
+                variant="danger"
+                size="sm"
                 onClick={() => handleRemove(m.userId)}
                 disabled={removingUserId === m.userId}
-                className="p-1 text-red-400 hover:text-red-600 disabled:opacity-50 transition-colors"
-                title="Remove from group"
               >
                 <Trash2 size={14} />
-              </button>
+              </IconButton>
             </div>
           ))}
         </div>

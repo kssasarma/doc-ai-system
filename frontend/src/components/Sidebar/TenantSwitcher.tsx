@@ -1,8 +1,10 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronsUpDown, Check, Loader2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { listMyTenants, switchTenant } from '../../services/authService';
 import type { TenantMembership } from '../../types';
+import { scaleIn } from '../../lib/motion';
 
 /** Slack-workspace-style switcher — only renders once we know the caller belongs to more than
  * one tenant, so single-tenant users (the overwhelming majority) see nothing extra. */
@@ -43,7 +45,8 @@ export default function TenantSwitcher({ isCollapsed }: { isCollapsed: boolean }
       <button
         onClick={() => setOpen(v => !v)}
         title={active ? `${active.tenantName} — click to switch workspace` : 'Switch workspace'}
-        className="w-9 h-9 rounded-lg bg-gray-800 hover:bg-gray-700 flex items-center justify-center text-xs font-bold text-gray-300 transition-colors"
+        aria-label={active ? `${active.tenantName} — click to switch workspace` : 'Switch workspace'}
+        className="w-9 h-9 rounded-lg bg-muted hover:bg-surface-hover flex items-center justify-center text-xs font-bold text-muted-foreground transition-colors"
       >
         {(active?.tenantName ?? '?').charAt(0).toUpperCase()}
       </button>
@@ -54,43 +57,51 @@ export default function TenantSwitcher({ isCollapsed }: { isCollapsed: boolean }
     <div className="relative mb-2">
       <button
         onClick={() => setOpen(v => !v)}
-        className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-gray-800 transition-colors text-left"
+        className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-surface-hover transition-colors text-left"
       >
-        <div className="w-6 h-6 rounded bg-indigo-600 flex items-center justify-center text-[10px] font-bold flex-shrink-0">
+        <div className="w-6 h-6 rounded bg-primary text-primary-foreground flex items-center justify-center text-[10px] font-bold flex-shrink-0">
           {(active?.tenantName ?? '?').charAt(0).toUpperCase()}
         </div>
         <div className="flex-1 min-w-0">
-          <div className="text-xs font-medium text-gray-200 truncate">{active?.tenantName ?? 'Unknown workspace'}</div>
+          <div className="text-xs font-medium text-foreground truncate">{active?.tenantName ?? 'Unknown workspace'}</div>
         </div>
-        <ChevronsUpDown size={13} className="text-gray-500 flex-shrink-0" />
+        <ChevronsUpDown size={13} className="text-muted-foreground flex-shrink-0" />
       </button>
 
-      {open && (
-        <div className="absolute bottom-full left-0 mb-1 w-full bg-gray-800 border border-gray-700 rounded-lg shadow-xl overflow-hidden z-20">
-          {memberships.map(m => (
-            <button
-              key={m.tenantId}
-              onClick={() => handleSwitch(m.tenantId)}
-              disabled={switching !== null}
-              className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs hover:bg-gray-700 transition-colors disabled:opacity-60"
-            >
-              <div className="w-5 h-5 rounded bg-indigo-600 flex items-center justify-center text-[9px] font-bold flex-shrink-0">
-                {m.tenantName.charAt(0).toUpperCase()}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="text-gray-200 truncate">{m.tenantName}</div>
-                <div className="text-gray-500">{m.role}</div>
-              </div>
-              {switching === m.tenantId ? (
-                <Loader2 size={12} className="animate-spin text-gray-400 flex-shrink-0" />
-              ) : m.tenantId === user?.tenantId ? (
-                <Check size={12} className="text-green-400 flex-shrink-0" />
-              ) : null}
-            </button>
-          ))}
-          {error && <div className="px-3 py-2 text-[11px] text-red-400">{error}</div>}
-        </div>
-      )}
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            variants={scaleIn}
+            initial="hidden"
+            animate="visible"
+            exit="exit"
+            className="absolute bottom-full left-0 mb-1 w-full bg-surface border border-border rounded-lg shadow-elevated dark:shadow-elevated-dark overflow-hidden z-20"
+          >
+            {memberships.map(m => (
+              <button
+                key={m.tenantId}
+                onClick={() => handleSwitch(m.tenantId)}
+                disabled={switching !== null}
+                className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs hover:bg-surface-hover transition-colors disabled:opacity-60"
+              >
+                <div className="w-5 h-5 rounded bg-primary text-primary-foreground flex items-center justify-center text-[9px] font-bold flex-shrink-0">
+                  {m.tenantName.charAt(0).toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-foreground truncate">{m.tenantName}</div>
+                  <div className="text-muted-foreground">{m.role}</div>
+                </div>
+                {switching === m.tenantId ? (
+                  <Loader2 size={12} className="animate-spin text-muted-foreground flex-shrink-0" />
+                ) : m.tenantId === user?.tenantId ? (
+                  <Check size={12} className="text-success flex-shrink-0" />
+                ) : null}
+              </button>
+            ))}
+            {error && <div className="px-3 py-2 text-[11px] text-danger">{error}</div>}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

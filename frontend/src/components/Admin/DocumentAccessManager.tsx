@@ -5,6 +5,12 @@ import {
   listGroupGrantees, grantDocumentAccessToGroup, revokeDocumentAccessFromGroup,
 } from '../../services/documentAccessService';
 import type { DocumentGrantee, DocumentGroupGrantee, Group, TenantUser } from '../../types';
+import Button from '../ui/Button';
+import IconButton from '../ui/IconButton';
+import Select from '../ui/Select';
+import EmptyState from '../ui/EmptyState';
+import { SkeletonText } from '../ui/Skeleton';
+import { useToast } from '../ui/Toast';
 
 export default function DocumentAccessManager({
   token, documentId, tenantUsers, groups,
@@ -14,6 +20,7 @@ export default function DocumentAccessManager({
   tenantUsers: TenantUser[];
   groups: Group[];
 }) {
+  const toast = useToast();
   const [grantees, setGrantees] = useState<DocumentGrantee[] | null>(null);
   const [error, setError] = useState('');
   const [selectedUserId, setSelectedUserId] = useState('');
@@ -61,6 +68,7 @@ export default function DocumentAccessManager({
       await grantDocumentAccess(token, documentId, selectedUserId);
       setSelectedUserId('');
       await load();
+      toast.success('Access granted.');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to grant access');
     } finally {
@@ -73,6 +81,7 @@ export default function DocumentAccessManager({
     try {
       await revokeDocumentAccess(token, documentId, userId);
       await load();
+      toast.success('Access revoked.');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to revoke access');
     } finally {
@@ -88,6 +97,7 @@ export default function DocumentAccessManager({
       await grantDocumentAccessToGroup(token, documentId, selectedGroupId);
       setSelectedGroupId('');
       await loadGroups();
+      toast.success('Group access granted.');
     } catch (e) {
       setGroupError(e instanceof Error ? e.message : 'Failed to grant group access');
     } finally {
@@ -100,6 +110,7 @@ export default function DocumentAccessManager({
     try {
       await revokeDocumentAccessFromGroup(token, documentId, groupId);
       await loadGroups();
+      toast.success('Group access revoked.');
     } catch (e) {
       setGroupError(e instanceof Error ? e.message : 'Failed to revoke group access');
     } finally {
@@ -109,55 +120,61 @@ export default function DocumentAccessManager({
 
   return (
     <div className="space-y-5">
-      <div className="flex items-start gap-2 text-xs text-gray-400">
+      <div className="flex items-start gap-2 text-xs text-muted-foreground">
         <Lock size={13} className="flex-shrink-0 mt-0.5" />
         <span>Only users granted access below — directly or via a group — (plus any tenant admin) can see this document in chat.</span>
       </div>
 
       {/* Per-user grants */}
       <div className="space-y-3">
-        <h4 className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Users</h4>
+        <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Users</h4>
         <div className="flex flex-col sm:flex-row gap-2">
-          <select
-            value={selectedUserId}
-            onChange={e => setSelectedUserId(e.target.value)}
-            className="flex-1 text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="">
-              {grantableUsers.length === 0 ? 'No more users to grant' : 'Select a user to grant access…'}
-            </option>
-            {grantableUsers.map(u => (
-              <option key={u.userId} value={u.userId}>{u.username} ({u.email})</option>
-            ))}
-          </select>
-          <button
+          <div className="flex-1">
+            <Select value={selectedUserId} onChange={e => setSelectedUserId(e.target.value)}>
+              <option value="">
+                {grantableUsers.length === 0 ? 'No more users to grant' : 'Select a user to grant access…'}
+              </option>
+              {grantableUsers.map(u => (
+                <option key={u.userId} value={u.userId}>{u.username} ({u.email})</option>
+              ))}
+            </Select>
+          </div>
+          <Button
+            variant="secondary"
             onClick={handleGrant}
-            disabled={!selectedUserId || granting}
-            className="flex items-center justify-center gap-1.5 px-3 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-50 whitespace-nowrap"
+            disabled={!selectedUserId}
+            loading={granting}
+            leftIcon={!granting ? <UserPlus size={14} /> : undefined}
+            className="whitespace-nowrap"
           >
-            <UserPlus size={14} /> Grant
-          </button>
+            Grant
+          </Button>
         </div>
 
-        {error && <div className="flex items-center gap-2 text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2"><AlertCircle size={13} className="flex-shrink-0" />{error}</div>}
+        {error && (
+          <div className="flex items-center gap-2 text-xs text-danger bg-danger/10 rounded-lg px-3 py-2">
+            <AlertCircle size={13} className="flex-shrink-0" />{error}
+          </div>
+        )}
 
         {grantees === null ? (
-          <div className="text-xs text-gray-400 py-2">Loading grants…</div>
+          <SkeletonText lines={2} />
         ) : grantees.length === 0 ? (
-          <p className="text-xs text-gray-400 italic py-1">No users have been granted access yet.</p>
+          <EmptyState icon={UserPlus} title="No users granted access yet" description="Grant a user access above to let them see this document in chat." />
         ) : (
           <div className="space-y-1.5">
             {grantees.map(g => (
-              <div key={g.userId} className="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
-                <span className="text-sm text-gray-800">{g.username}</span>
-                <button
+              <div key={g.userId} className="flex items-center justify-between bg-muted border border-border rounded-lg px-3 py-2">
+                <span className="text-sm text-foreground">{g.username}</span>
+                <IconButton
+                  label="Revoke access"
+                  variant="danger"
+                  size="sm"
                   onClick={() => handleRevoke(g.userId)}
                   disabled={revokingUserId === g.userId}
-                  className="p-1 text-red-400 hover:text-red-600 disabled:opacity-50 transition-colors"
-                  title="Revoke access"
                 >
                   <Trash2 size={14} />
-                </button>
+                </IconButton>
               </div>
             ))}
           </div>
@@ -165,51 +182,57 @@ export default function DocumentAccessManager({
       </div>
 
       {/* Per-group grants */}
-      <div className="space-y-3 pt-4 border-t border-gray-100">
-        <h4 className="text-xs font-semibold text-gray-600 uppercase tracking-wide flex items-center gap-1.5">
+      <div className="space-y-3 pt-4 border-t border-border">
+        <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
           <Users size={12} /> Groups
         </h4>
         <div className="flex flex-col sm:flex-row gap-2">
-          <select
-            value={selectedGroupId}
-            onChange={e => setSelectedGroupId(e.target.value)}
-            className="flex-1 text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="">
-              {groups.length === 0 ? 'No groups exist yet' : grantableGroups.length === 0 ? 'No more groups to grant' : 'Select a group to grant access…'}
-            </option>
-            {grantableGroups.map(g => (
-              <option key={g.id} value={g.id}>{g.name} ({g.memberCount} member{g.memberCount !== 1 ? 's' : ''})</option>
-            ))}
-          </select>
-          <button
+          <div className="flex-1">
+            <Select value={selectedGroupId} onChange={e => setSelectedGroupId(e.target.value)}>
+              <option value="">
+                {groups.length === 0 ? 'No groups exist yet' : grantableGroups.length === 0 ? 'No more groups to grant' : 'Select a group to grant access…'}
+              </option>
+              {grantableGroups.map(g => (
+                <option key={g.id} value={g.id}>{g.name} ({g.memberCount} member{g.memberCount !== 1 ? 's' : ''})</option>
+              ))}
+            </Select>
+          </div>
+          <Button
+            variant="secondary"
             onClick={handleGrantGroup}
-            disabled={!selectedGroupId || grantingGroup}
-            className="flex items-center justify-center gap-1.5 px-3 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-50 whitespace-nowrap"
+            disabled={!selectedGroupId}
+            loading={grantingGroup}
+            leftIcon={!grantingGroup ? <UserPlus size={14} /> : undefined}
+            className="whitespace-nowrap"
           >
-            <UserPlus size={14} /> Grant
-          </button>
+            Grant
+          </Button>
         </div>
 
-        {groupError && <div className="flex items-center gap-2 text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2"><AlertCircle size={13} className="flex-shrink-0" />{groupError}</div>}
+        {groupError && (
+          <div className="flex items-center gap-2 text-xs text-danger bg-danger/10 rounded-lg px-3 py-2">
+            <AlertCircle size={13} className="flex-shrink-0" />{groupError}
+          </div>
+        )}
 
         {groupGrantees === null ? (
-          <div className="text-xs text-gray-400 py-2">Loading group grants…</div>
+          <SkeletonText lines={2} />
         ) : groupGrantees.length === 0 ? (
-          <p className="text-xs text-gray-400 italic py-1">No groups have been granted access yet.</p>
+          <EmptyState icon={Users} title="No groups granted access yet" description="Grant a group access above to let its members see this document in chat." />
         ) : (
           <div className="space-y-1.5">
             {groupGrantees.map(g => (
-              <div key={g.groupId} className="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
-                <span className="text-sm text-gray-800">{g.groupName}</span>
-                <button
+              <div key={g.groupId} className="flex items-center justify-between bg-muted border border-border rounded-lg px-3 py-2">
+                <span className="text-sm text-foreground">{g.groupName}</span>
+                <IconButton
+                  label="Revoke group access"
+                  variant="danger"
+                  size="sm"
                   onClick={() => handleRevokeGroup(g.groupId)}
                   disabled={revokingGroupId === g.groupId}
-                  className="p-1 text-red-400 hover:text-red-600 disabled:opacity-50 transition-colors"
-                  title="Revoke group access"
                 >
                   <Trash2 size={14} />
-                </button>
+                </IconButton>
               </div>
             ))}
           </div>

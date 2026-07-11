@@ -1,9 +1,16 @@
 import React, { Suspense, lazy, useState, useCallback, useEffect } from 'react';
+import { motion } from 'framer-motion';
 import { ChatSession } from '../../types';
-import { MessageSquarePlus, SearchX, Download, Pencil, Check, X, Share2 } from 'lucide-react';
+import { MessageSquarePlus, SearchX, Download, Pencil, Check, X, Share2, MessageCircle } from 'lucide-react';
 import { exportConversation } from '../../services/chatService';
 import { useAuth } from '../../context/AuthContext';
 import ScopeChip from './ScopeChip';
+import { fadeIn } from '../../lib/motion';
+import Button from '../ui/Button';
+import IconButton from '../ui/IconButton';
+import Menu from '../ui/Menu';
+import EmptyState from '../ui/EmptyState';
+import { Skeleton } from '../ui/Skeleton';
 
 const ShareModal = lazy(() => import('./ShareModal'));
 
@@ -85,50 +92,42 @@ const ChatArea: React.FC<ChatAreaProps> = ({
 
   if (chatNotFound) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-gray-50">
-        <div className="text-center text-gray-500">
-          <SearchX className="w-16 h-16 mx-auto mb-4 text-gray-400" />
-          <h2 className="text-2xl font-semibold mb-2 text-gray-700">Chat Not Found</h2>
-          <p className="text-lg mb-6">The chat you're looking for doesn't exist or may have been deleted.</p>
-          {onCreateSession && (
-            <button
-              onClick={onCreateSession}
-              className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
-            >
-              <MessageSquarePlus className="w-5 h-5" />
+      <div className="flex-1 flex items-center justify-center bg-background">
+        <EmptyState
+          icon={SearchX}
+          title="Chat Not Found"
+          description="The chat you're looking for doesn't exist or may have been deleted."
+          action={onCreateSession && (
+            <Button onClick={onCreateSession} leftIcon={<MessageSquarePlus size={16} />}>
               Start New Chat
-            </button>
+            </Button>
           )}
-        </div>
+        />
       </div>
     );
   }
 
   if (!session) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-gray-50">
-        <div className="text-center text-gray-500">
-          <div className="text-6xl mb-4">💬</div>
-          <h2 className="text-2xl font-semibold mb-2">Welcome to Docs-inator</h2>
-          <p className="text-lg mb-6">Select a chat from the sidebar or start a new conversation</p>
-          {onCreateSession && (
-            <button
-              onClick={onCreateSession}
-              className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
-            >
-              <MessageSquarePlus className="w-5 h-5" />
+      <div className="flex-1 flex items-center justify-center bg-background">
+        <EmptyState
+          icon={MessageCircle}
+          title="Welcome to Docs-inator"
+          description="Select a chat from the sidebar or start a new conversation."
+          action={onCreateSession && (
+            <Button onClick={onCreateSession} leftIcon={<MessageSquarePlus size={16} />}>
               Start New Chat
-            </button>
+            </Button>
           )}
-        </div>
+        />
       </div>
     );
   }
 
   return (
-    <div className="flex-1 flex flex-col bg-gray-50">
+    <div className="flex-1 flex flex-col bg-background min-w-0">
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-4 py-3">
+      <motion.div variants={fadeIn} initial="hidden" animate="visible" className="bg-surface border-b border-border px-4 py-3">
         <div className="flex items-center justify-between gap-2">
           <div className="flex-1 min-w-0">
             {editingTitle ? (
@@ -141,30 +140,32 @@ const ChatArea: React.FC<ChatAreaProps> = ({
                     if (e.key === 'Enter') handleCommitTitle();
                     else if (e.key === 'Escape') handleCancelTitle();
                   }}
-                  className="text-lg font-semibold text-gray-900 bg-gray-100 border border-blue-400 rounded px-2 py-0.5 focus:outline-none flex-1 min-w-0"
+                  className="text-lg font-semibold text-foreground bg-muted border border-primary rounded px-2 py-0.5 focus:outline-none flex-1 min-w-0"
                 />
-                <button onClick={handleCommitTitle} className="text-green-600 hover:text-green-700">
+                <IconButton label="Save title" variant="ghost" size="sm" onClick={handleCommitTitle} className="text-success hover:bg-success/10">
                   <Check size={16} />
-                </button>
-                <button onClick={handleCancelTitle} className="text-gray-400 hover:text-gray-600">
+                </IconButton>
+                <IconButton label="Cancel rename" variant="ghost" size="sm" onClick={handleCancelTitle}>
                   <X size={16} />
-                </button>
+                </IconButton>
               </div>
             ) : (
               <div className="flex items-center gap-2 group">
-                <h1 className="text-xl font-semibold text-gray-900 truncate">{session.title}</h1>
+                <h1 className="text-xl font-semibold text-foreground truncate">{session.title}</h1>
                 {onRenameSession && (
-                  <button
+                  <IconButton
+                    label="Rename session"
+                    variant="ghost"
+                    size="sm"
                     onClick={handleStartEditTitle}
-                    className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-gray-600 rounded transition-all"
-                    title="Rename session"
+                    className="opacity-0 group-hover:opacity-100"
                   >
                     <Pencil size={13} />
-                  </button>
+                  </IconButton>
                 )}
               </div>
             )}
-            <p className="text-sm text-gray-500">{session.messages.length} messages</p>
+            <p className="text-sm text-muted-foreground">{session.messages.length} messages</p>
           </div>
 
           {/* Retrieval scope (optional, per-conversation) */}
@@ -174,49 +175,32 @@ const ChatArea: React.FC<ChatAreaProps> = ({
             onChange={(p, v) => { setScopeProduct(p); setScopeVersion(v); }}
           />
 
-          {/* Share button */}
-          <button
-            onClick={() => setShareOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors border border-gray-200 flex-shrink-0"
-            title="Share conversation"
-          >
-            <Share2 size={14} />
+          <Button variant="outline" size="sm" onClick={() => setShareOpen(true)} leftIcon={<Share2 size={14} />} className="flex-shrink-0">
             Share
-          </button>
+          </Button>
 
-          {/* Export menu */}
-          <div className="relative group/export flex-shrink-0">
-            <button
-              disabled={exportPending}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors border border-gray-200"
-              title="Export conversation"
-            >
-              <Download size={14} className={exportPending ? 'animate-bounce' : ''} />
-              Export
-            </button>
-            <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-10 hidden group-hover/export:block w-36">
-              <button
-                onClick={() => handleExport('markdown')}
-                className="w-full text-left px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
-              >
-                Markdown (.md)
-              </button>
-              <button
-                onClick={() => handleExport('json')}
-                className="w-full text-left px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
-              >
-                JSON (.json)
-              </button>
-            </div>
-          </div>
+          <Menu
+            align="end"
+            trigger={
+              <Button variant="outline" size="sm" disabled={exportPending} leftIcon={<Download size={14} className={exportPending ? 'animate-bounce' : ''} />}>
+                Export
+              </Button>
+            }
+            options={[
+              { key: 'markdown', label: 'Markdown (.md)', onSelect: () => handleExport('markdown') },
+              { key: 'json', label: 'JSON (.json)', onSelect: () => handleExport('json') },
+            ]}
+          />
         </div>
-      </div>
+      </motion.div>
 
       {/* Messages */}
       <div className="flex-1 overflow-hidden">
         <Suspense fallback={
-          <div className="flex-1 flex items-center justify-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+          <div className="p-4 space-y-4">
+            <Skeleton className="h-16 w-2/3" />
+            <Skeleton className="h-16 w-1/2 ml-auto" />
+            <Skeleton className="h-24 w-3/4" />
           </div>
         }>
           <MessageList
@@ -229,8 +213,8 @@ const ChatArea: React.FC<ChatAreaProps> = ({
       </div>
 
       {/* Input */}
-      <div className="bg-white border-t border-gray-200 p-4">
-        <Suspense fallback={<div className="h-12 bg-gray-100 rounded-lg animate-pulse"></div>}>
+      <div className="bg-surface border-t border-border p-4">
+        <Suspense fallback={<Skeleton className="h-12 rounded-xl" />}>
           <MessageInput
             onSendMessage={handleSend}
             disabled={isLoading}

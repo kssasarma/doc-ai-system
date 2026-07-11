@@ -1,11 +1,18 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import { ArrowLeft, GitFork, User, Bot, AlertTriangle } from 'lucide-react';
 import MarkdownContent from './MarkdownContent';
 import { SharedChatSession } from '../../types';
 import { fetchSharedChat, forkSharedChat } from '../../services/shareService';
 import { useAuth } from '../../context/AuthContext';
 import { formatTimestamp } from '../../utils/chatUtils';
+import { staggerContainer, fadeInUp } from '../../lib/motion';
+import { cn } from '../../lib/cn';
+import Button from '../ui/Button';
+import IconButton from '../ui/IconButton';
+import Spinner from '../ui/Spinner';
+import EmptyState from '../ui/EmptyState';
 
 const SharedChatView: React.FC = () => {
   const { token: shareToken } = useParams<{ token: string }>();
@@ -43,46 +50,47 @@ const SharedChatView: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="flex h-screen items-center justify-center">
-        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600" />
+      <div className="flex h-screen items-center justify-center bg-background">
+        <Spinner size="lg" />
       </div>
     );
   }
 
   if (error || !chat) {
     return (
-      <div className="flex h-screen items-center justify-center">
-        <div className="text-center space-y-3">
-          <AlertTriangle size={40} className="mx-auto text-red-400" />
-          <p className="text-lg font-medium text-gray-800">{error || 'Chat not found'}</p>
-          <button
-            onClick={() => navigate('/')}
-            className="text-sm text-blue-600 hover:underline"
-          >
-            Go to home
-          </button>
-        </div>
+      <div className="flex h-screen items-center justify-center bg-background">
+        <EmptyState
+          icon={AlertTriangle}
+          title={error || 'Chat not found'}
+          action={
+            <Button variant="link" onClick={() => navigate('/')}>
+              Go to home
+            </Button>
+          }
+        />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-background">
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4 sticky top-0 z-10">
+      <div className="bg-surface border-b border-border px-6 py-4 sticky top-0 z-10">
         <div className="max-w-2xl mx-auto flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 min-w-0">
-            <button
+            <IconButton
+              label="Go back"
+              variant="ghost"
               onClick={() => navigate(-1)}
-              className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors flex-shrink-0"
+              className="flex-shrink-0"
             >
               <ArrowLeft size={18} />
-            </button>
+            </IconButton>
             <div className="min-w-0">
-              <h1 className="text-base font-semibold text-gray-900 truncate">
+              <h1 className="text-base font-semibold text-foreground truncate">
                 {chat.title || 'Shared conversation'}
               </h1>
-              <p className="text-xs text-gray-500">
+              <p className="text-xs text-muted-foreground">
                 Shared by {chat.createdByUsername}
                 {chat.product && <> · {chat.product} {chat.version}</>}
                 {chat.expiresAt && <> · Expires {new Date(chat.expiresAt).toLocaleDateString()}</>}
@@ -91,63 +99,68 @@ const SharedChatView: React.FC = () => {
           </div>
 
           {isAuthenticated && (
-            <button
+            <Button
               onClick={handleFork}
               disabled={isForking || forked}
-              className="flex items-center gap-2 px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-60 transition-colors font-medium flex-shrink-0"
+              leftIcon={<GitFork size={14} />}
+              className="flex-shrink-0"
             >
-              <GitFork size={14} />
               {forked ? 'Forked! Redirecting…' : isForking ? 'Forking…' : 'Continue conversation'}
-            </button>
+            </Button>
           )}
         </div>
       </div>
 
       {/* Messages */}
-      <div className="max-w-2xl mx-auto px-6 py-8 space-y-6">
+      <motion.div
+        variants={staggerContainer}
+        initial="hidden"
+        animate="visible"
+        className="max-w-2xl mx-auto px-6 py-8 space-y-6"
+      >
         {chat.messages.map((msg, i) => (
-          <div
+          <motion.div
             key={i}
-            className={`flex gap-3 ${msg.role === 'USER' ? 'flex-row-reverse' : ''}`}
+            variants={fadeInUp}
+            className={cn('flex gap-3', msg.role === 'USER' ? 'flex-row-reverse' : '')}
           >
-            <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
-              msg.role === 'USER' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600'
-            }`}>
+            <div className={cn(
+              'flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center',
+              msg.role === 'USER' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground',
+            )}>
               {msg.role === 'USER' ? <User size={14} /> : <Bot size={14} />}
             </div>
-            <div className={`flex-1 max-w-[85%] ${msg.role === 'USER' ? 'items-end' : 'items-start'} flex flex-col gap-1`}>
-              <div className={`px-4 py-3 rounded-2xl text-sm leading-relaxed ${
+            <div className={cn('flex-1 max-w-[85%] flex flex-col gap-1', msg.role === 'USER' ? 'items-end' : 'items-start')}>
+              <div className={cn(
+                'px-4 py-3 rounded-2xl text-sm leading-relaxed',
                 msg.role === 'USER'
-                  ? 'bg-blue-600 text-white rounded-tr-sm'
-                  : 'bg-white border border-gray-200 text-gray-800 rounded-tl-sm shadow-sm'
-              }`}>
+                  ? 'bg-primary text-primary-foreground rounded-tr-sm'
+                  : 'bg-surface border border-border text-foreground shadow-soft rounded-tl-sm',
+              )}>
                 {msg.role === 'ASSISTANT' ? (
-                  <div className="prose prose-sm max-w-none prose-p:my-1 prose-headings:my-2 prose-pre:rounded prose-pre:p-0 prose-code:text-blue-600 prose-code:bg-gray-100 prose-code:px-1 prose-code:rounded prose-code:before:content-none prose-code:after:content-none [&_pre_code]:bg-transparent [&_pre_code]:text-inherit [&_pre_code]:px-0">
+                  <div className="prose prose-sm dark:prose-invert max-w-none prose-p:my-1 prose-headings:my-2 prose-pre:rounded prose-pre:p-0 prose-code:text-primary prose-code:bg-muted prose-code:px-1 prose-code:rounded prose-code:before:content-none prose-code:after:content-none [&_pre_code]:bg-transparent [&_pre_code]:text-inherit [&_pre_code]:px-0">
                     <MarkdownContent content={msg.content} />
                   </div>
                 ) : (
                   msg.content
                 )}
               </div>
-              <span className="text-xs text-gray-400 px-1">
+              <span className="text-xs text-muted-foreground px-1">
                 {formatTimestamp(new Date(msg.createdAt).getTime())}
               </span>
             </div>
-          </div>
+          </motion.div>
         ))}
 
         {!isAuthenticated && (
-          <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 text-center">
-            <p className="text-sm text-blue-700 font-medium mb-2">Want to continue this conversation?</p>
-            <button
-              onClick={() => navigate('/')}
-              className="text-sm text-blue-600 underline hover:text-blue-800"
-            >
+          <motion.div variants={fadeInUp} className="bg-primary/10 border border-primary/20 rounded-xl p-4 text-center">
+            <p className="text-sm text-primary font-medium mb-2">Want to continue this conversation?</p>
+            <Button variant="link" onClick={() => navigate('/')}>
               Sign in to fork this chat →
-            </button>
-          </div>
+            </Button>
+          </motion.div>
         )}
-      </div>
+      </motion.div>
     </div>
   );
 };

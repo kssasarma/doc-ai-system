@@ -1,7 +1,18 @@
 import React, { useEffect, useState } from 'react';
 import { Shield, Trash2, Download, RefreshCw } from 'lucide-react';
 import axios from 'axios';
+import { motion } from 'framer-motion';
 import { useAuth } from '../../context/AuthContext';
+import PageHeader from '../ui/PageHeader';
+import { Card } from '../ui/Card';
+import Badge from '../ui/Badge';
+import EmptyState from '../ui/EmptyState';
+import IconButton from '../ui/IconButton';
+import Button from '../ui/Button';
+import { SkeletonRow } from '../ui/Skeleton';
+import { useToast } from '../ui/Toast';
+import { fadeInUp, staggerContainer } from '../../lib/motion';
+import { cn } from '../../lib/cn';
 
 const BOT_URL = import.meta.env.VITE_BOT_API_URL ?? 'http://localhost:8082';
 
@@ -14,10 +25,10 @@ interface DeletionRequest {
 
 export default function GdprTab() {
   const { token } = useAuth();
+  const toast = useToast();
   const [requests, setRequests] = useState<DeletionRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [processingId, setProcessingId] = useState<string | null>(null);
-  const [msg, setMsg] = useState<string | null>(null);
 
   useEffect(() => { load(); }, []);
 
@@ -37,101 +48,98 @@ export default function GdprTab() {
   const handleProcess = async (id: string, userId: string) => {
     if (!token) return;
     setProcessingId(id);
-    setMsg(null);
     try {
       await axios.delete(`${BOT_URL}/api/admin/users/${userId}`,
         { headers: { Authorization: `Bearer ${token}` } });
       setRequests(prev => prev.filter(r => r.id !== id));
-      setMsg('User data deleted successfully.');
+      toast.success('User data deleted successfully.');
     } catch {
-      setMsg('Failed to process deletion request.');
+      toast.error('Failed to process deletion request.');
     }
     setProcessingId(null);
   };
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-lg font-semibold text-gray-800 mb-1">GDPR & Compliance</h2>
-        <p className="text-sm text-gray-500">
-          Manage data subject requests. Pending deletion requests must be processed within 30 days (GDPR Article 17).
-        </p>
-      </div>
+    <motion.div variants={staggerContainer} initial="hidden" animate="visible" className="space-y-6">
+      <PageHeader
+        title="GDPR & Compliance"
+        description="Manage data subject requests. Pending deletion requests must be processed within 30 days (GDPR Article 17)."
+      />
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <ComplianceCard icon={<Shield size={18} className="text-green-600" />} title="Data Portability"
-          description="Users can export all their data via Account Settings → Export My Data." color="green" />
-        <ComplianceCard icon={<Trash2 size={18} className="text-red-600" />} title="Right to Erasure"
-          description="Deletion requests submitted by users appear below for admin processing." color="red" />
-        <ComplianceCard icon={<Download size={18} className="text-blue-600" />} title="Retention Policies"
-          description="Configure auto-deletion windows per tenant in the Tenant Management tab." color="blue" />
-      </div>
+      <motion.div variants={fadeInUp} className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <ComplianceCard icon={<Shield size={18} className="text-success" />} title="Data Portability"
+          description="Users can export all their data via Account Settings → Export My Data." variant="success" />
+        <ComplianceCard icon={<Trash2 size={18} className="text-danger" />} title="Right to Erasure"
+          description="Deletion requests submitted by users appear below for admin processing." variant="danger" />
+        <ComplianceCard icon={<Download size={18} className="text-primary" />} title="Retention Policies"
+          description="Configure auto-deletion windows per tenant in the Tenant Management tab." variant="primary" />
+      </motion.div>
 
-      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-        <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
-          <h3 className="text-sm font-medium text-gray-700">Pending Deletion Requests</h3>
-          <button onClick={load} className="p-1.5 text-gray-400 hover:text-gray-600">
-            <RefreshCw size={14} />
-          </button>
-        </div>
-
-        {loading && (
-          <div className="flex justify-center py-8">
-            <div className="animate-spin h-6 w-6 border-b-2 border-red-500 rounded-full" />
+      <motion.div variants={fadeInUp}>
+        <Card className="overflow-hidden">
+          <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+            <h3 className="text-sm font-medium text-foreground">Pending Deletion Requests</h3>
+            <IconButton label="Refresh deletion requests" variant="ghost" size="sm" onClick={load}>
+              <RefreshCw size={14} />
+            </IconButton>
           </div>
-        )}
 
-        {!loading && requests.length === 0 && (
-          <div className="text-center py-10 text-gray-400">
-            <Shield size={32} className="mx-auto mb-2 opacity-30" />
-            <p className="text-sm font-medium">No pending deletion requests</p>
-          </div>
-        )}
-
-        {requests.map(req => (
-          <div key={req.id} className="flex items-center gap-3 px-4 py-3 border-b border-gray-50 last:border-0">
-            <div className="flex-1 min-w-0">
-              <p className="text-sm text-gray-800 font-mono truncate">{req.userId}</p>
-              <p className="text-xs text-gray-400 mt-0.5">
-                Requested {new Date(req.requestedAt).toLocaleDateString()}
-              </p>
+          {loading && (
+            <div className="py-2">
+              <SkeletonRow columns={3} />
+              <SkeletonRow columns={3} />
+              <SkeletonRow columns={3} />
             </div>
-            <span className={`text-xs px-2 py-0.5 rounded-full ${
-              req.status === 'PENDING' ? 'bg-yellow-50 text-yellow-600' :
-              req.status === 'COMPLETED' ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'
-            }`}>{req.status}</span>
-            {req.status === 'PENDING' && (
-              <button
-                onClick={() => handleProcess(req.id, req.userId)}
-                disabled={processingId === req.id}
-                className="flex items-center gap-1 px-3 py-1.5 text-xs bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
-              >
-                {processingId === req.id ? <RefreshCw size={12} className="animate-spin" /> : <Trash2 size={12} />}
-                Erase
-              </button>
-            )}
-          </div>
-        ))}
-      </div>
+          )}
 
-      {msg && (
-        <p className={`text-sm px-3 py-2 rounded-lg ${msg.includes('Failed') ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-700'}`}>
-          {msg}
-        </p>
-      )}
-    </div>
+          {!loading && requests.length === 0 && (
+            <EmptyState icon={Shield} title="No pending deletion requests"
+              description="Deletion requests submitted by users will appear here for processing." />
+          )}
+
+          {requests.map(req => (
+            <div key={req.id} className="flex items-center gap-3 px-4 py-3 border-b border-border last:border-0">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm text-foreground font-mono truncate">{req.userId}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Requested {new Date(req.requestedAt).toLocaleDateString()}
+                </p>
+              </div>
+              <Badge variant={req.status === 'PENDING' ? 'warning' : req.status === 'COMPLETED' ? 'success' : 'danger'}>
+                {req.status}
+              </Badge>
+              {req.status === 'PENDING' && (
+                <Button
+                  variant="danger"
+                  size="sm"
+                  onClick={() => handleProcess(req.id, req.userId)}
+                  loading={processingId === req.id}
+                  leftIcon={<Trash2 size={12} />}
+                >
+                  Erase
+                </Button>
+              )}
+            </div>
+          ))}
+        </Card>
+      </motion.div>
+    </motion.div>
   );
 }
 
-function ComplianceCard({ icon, title, description, color }: {
+function ComplianceCard({ icon, title, description, variant }: {
   icon: React.ReactNode; title: string; description: string;
-  color: 'green' | 'red' | 'blue';
+  variant: 'success' | 'danger' | 'primary';
 }) {
-  const bg = { green: 'bg-green-50 border-green-100', red: 'bg-red-50 border-red-100', blue: 'bg-blue-50 border-blue-100' }[color];
+  const bg = {
+    success: 'bg-success/10 border-success/20',
+    danger: 'bg-danger/10 border-danger/20',
+    primary: 'bg-primary/10 border-primary/20',
+  }[variant];
   return (
-    <div className={`border rounded-xl p-4 ${bg}`}>
-      <div className="flex items-center gap-2 mb-2">{icon}<span className="text-sm font-medium text-gray-800">{title}</span></div>
-      <p className="text-xs text-gray-500">{description}</p>
+    <div className={cn('border rounded-xl p-4', bg)}>
+      <div className="flex items-center gap-2 mb-2">{icon}<span className="text-sm font-medium text-foreground">{title}</span></div>
+      <p className="text-xs text-muted-foreground">{description}</p>
     </div>
   );
 }

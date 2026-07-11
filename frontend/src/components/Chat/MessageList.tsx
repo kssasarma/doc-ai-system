@@ -1,6 +1,9 @@
 import React, { useEffect, useRef } from 'react';
+import { motion } from 'framer-motion';
+import { Sparkles } from 'lucide-react';
 import { ChatMessage } from '../../types';
 import MessageItem from './MessageItem';
+import { staggerContainer, scaleIn } from '../../lib/motion';
 
 interface MessageListProps {
   messages: ChatMessage[];
@@ -24,17 +27,24 @@ const MessageList: React.FC<MessageListProps> = ({
   if (messages.length === 0) {
     return (
       <div className="flex-1 flex items-center justify-center p-8">
-        <div className="text-center text-gray-500">
-          <div className="text-4xl mb-4">🤖</div>
-          <h3 className="text-lg font-medium mb-2">Start your conversation</h3>
-          <p>Ask me anything about your documentation!</p>
-        </div>
+        <motion.div variants={scaleIn} initial="hidden" animate="visible" className="text-center">
+          <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-4">
+            <Sparkles size={24} className="text-primary" />
+          </div>
+          <h3 className="text-lg font-medium text-foreground mb-1">Start your conversation</h3>
+          <p className="text-sm text-muted-foreground">Ask me anything about your documentation!</p>
+        </motion.div>
       </div>
     );
   }
 
   return (
-    <div className="h-full overflow-y-auto p-4 space-y-4">
+    <motion.div
+      variants={staggerContainer}
+      initial="hidden"
+      animate="visible"
+      className="h-full overflow-y-auto p-4 space-y-4"
+    >
       {messages.map((message) => (
         <MessageItem
           key={message.id}
@@ -45,7 +55,7 @@ const MessageList: React.FC<MessageListProps> = ({
         />
       ))}
       <div ref={messagesEndRef} />
-    </div>
+    </motion.div>
   );
 };
 

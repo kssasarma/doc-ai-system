@@ -8,6 +8,7 @@ import appConfig from './config/app.json';
 import LoginPage from './components/Auth/LoginPage';
 import BootstrapPage from './components/Auth/BootstrapPage';
 import AcceptInvitePage from './components/Auth/AcceptInvitePage';
+import Spinner from './components/ui/Spinner';
 
 const Sidebar = lazy(() => import('./components/Sidebar/Sidebar'));
 const ChatArea = lazy(() => import('./components/Chat/ChatArea'));
@@ -21,10 +22,10 @@ const FaqPage = lazy(() => import('./components/Faq/FaqPage'));
 const SubscriptionsPage = lazy(() => import('./components/Subscriptions/SubscriptionsPage'));
 
 const LoadingSpinner = () => (
-  <div className="flex h-screen w-full items-center justify-center">
+  <div className="flex h-screen w-full items-center justify-center bg-background">
     <div className="flex flex-col items-center gap-4">
-      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600" />
-      <div className="text-lg font-medium text-gray-700">Loading {appConfig.app.title}…</div>
+      <Spinner size="lg" />
+      <div className="text-lg font-medium text-foreground">Loading {appConfig.app.title}…</div>
     </div>
   </div>
 );
@@ -127,7 +128,7 @@ function ChatPage() {
   }, [activeSession, activeSessionId, updateMessage]);
 
   return (
-    <div className="flex h-screen bg-gray-100">
+    <div className="flex h-screen bg-background overflow-hidden">
       <Suspense fallback={<LoadingSpinner />}>
         <Sidebar
           sessions={sessions}
@@ -162,8 +163,8 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
   if (isLoading) {
     return (
-      <div className="flex h-screen items-center justify-center">
-        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600" />
+      <div className="flex h-screen items-center justify-center bg-background">
+        <Spinner size="lg" />
       </div>
     );
   }

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Check, X, RefreshCw, MessageSquare, Zap } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { Check, X, MessageSquare, Zap } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import {
   listPendingFaq,
@@ -10,9 +11,19 @@ import {
   type PagedFaqEntries,
 } from '../../services/faqService';
 import { useAuth } from '../../context/AuthContext';
+import { fadeInUp, staggerContainer } from '../../lib/motion';
+import PageHeader from '../ui/PageHeader';
+import { Card } from '../ui/Card';
+import Button from '../ui/Button';
+import Badge from '../ui/Badge';
+import Input from '../ui/Input';
+import EmptyState from '../ui/EmptyState';
+import { SkeletonCard } from '../ui/Skeleton';
+import { useToast } from '../ui/Toast';
 
 export default function FaqManagementTab() {
   const { token } = useAuth();
+  const toast = useToast();
   const [data, setData] = useState<PagedFaqEntries | null>(null);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(0);
@@ -42,6 +53,9 @@ export default function FaqManagementTab() {
         content: prev.content.filter(e => e.id !== id),
         totalElements: prev.totalElements - 1,
       } : prev);
+      toast.success('FAQ entry approved and published.');
+    } else {
+      toast.error(result.error ?? 'Failed to approve entry');
     }
     setActionPending(null);
   };
@@ -56,6 +70,9 @@ export default function FaqManagementTab() {
         content: prev.content.filter(e => e.id !== id),
         totalElements: prev.totalElements - 1,
       } : prev);
+      toast.success('FAQ entry rejected.');
+    } else {
+      toast.error(result.error ?? 'Failed to reject entry');
     }
     setActionPending(null);
   };
@@ -75,89 +92,96 @@ export default function FaqManagementTab() {
   };
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-lg font-semibold text-gray-800 mb-1">FAQ Review Queue</h2>
-        <p className="text-sm text-gray-500">
-          Auto-generated FAQ entries from your query logs. Approve to publish or reject to discard.
-        </p>
+    <motion.div variants={staggerContainer} initial="hidden" animate="visible">
+      <PageHeader
+        title="FAQ Review Queue"
+        description="Auto-generated FAQ entries from your query logs. Approve to publish or reject to discard."
+      />
+
+      <div className="space-y-6">
+        {/* On-demand generation */}
+        <motion.div variants={fadeInUp}>
+          <Card className="p-4 bg-accent/10 border-accent/20">
+            <div className="flex items-center gap-2 mb-2 text-sm font-medium text-accent">
+              <Zap size={14} /> Generate FAQ from query logs
+            </div>
+            <div className="flex gap-2">
+              <Input
+                className="flex-1"
+                placeholder="Product name"
+                value={generateProduct}
+                onChange={e => setGenerateProduct(e.target.value)}
+              />
+              <Button
+                variant="primary"
+                onClick={handleGenerate}
+                disabled={generating || !generateProduct.trim()}
+                loading={generating}
+                leftIcon={!generating ? <Zap size={14} /> : undefined}
+              >
+                Generate
+              </Button>
+            </div>
+            {generateMsg && <p className="text-xs mt-2 text-accent">{generateMsg}</p>}
+          </Card>
+        </motion.div>
+
+        {/* Queue stats */}
+        {data && (
+          <motion.div variants={fadeInUp} className="text-sm text-muted-foreground">
+            {data.totalElements} entr{data.totalElements !== 1 ? 'ies' : 'y'} awaiting review
+          </motion.div>
+        )}
+
+        {loading && (
+          <motion.div variants={fadeInUp} className="space-y-4">
+            {[0, 1, 2].map(i => <SkeletonCard key={i} />)}
+          </motion.div>
+        )}
+
+        {!loading && data?.content.length === 0 && (
+          <motion.div variants={fadeInUp}>
+            <EmptyState
+              icon={MessageSquare}
+              title="No entries pending review"
+              description="Run FAQ generation above or wait for the weekly scheduled job."
+            />
+          </motion.div>
+        )}
+
+        <motion.div variants={fadeInUp} className="space-y-4">
+          {data?.content.map(entry => (
+            <FaqReviewCard
+              key={entry.id}
+              entry={entry}
+              expanded={expandedId === entry.id}
+              onToggle={() => setExpandedId(prev => prev === entry.id ? null : entry.id)}
+              onApprove={() => handleApprove(entry.id)}
+              onReject={() => handleReject(entry.id)}
+              pending={actionPending === entry.id}
+            />
+          ))}
+        </motion.div>
+
+        {data && data.totalPages > 1 && (
+          <motion.div variants={fadeInUp} className="flex justify-center items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage(p => Math.max(0, p - 1))}
+              disabled={page === 0}
+            >Previous</Button>
+            <span className="px-3 py-1.5 text-sm text-muted-foreground">{page + 1} / {data.totalPages}</span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage(p => Math.min(data.totalPages - 1, p + 1))}
+              disabled={page >= data.totalPages - 1}
+            >Next</Button>
+          </motion.div>
+        )}
       </div>
-
-      {/* On-demand generation */}
-      <div className="bg-purple-50 border border-purple-100 rounded-xl p-4">
-        <div className="flex items-center gap-2 mb-2 text-sm font-medium text-purple-800">
-          <Zap size={14} /> Generate FAQ from query logs
-        </div>
-        <div className="flex gap-2">
-          <input
-            className="flex-1 px-3 py-2 text-sm border border-purple-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-300 bg-white"
-            placeholder="Product name"
-            value={generateProduct}
-            onChange={e => setGenerateProduct(e.target.value)}
-          />
-          <button
-            onClick={handleGenerate}
-            disabled={generating || !generateProduct.trim()}
-            className="flex items-center gap-1.5 px-4 py-2 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700 disabled:opacity-50 transition-colors"
-          >
-            {generating ? <RefreshCw size={14} className="animate-spin" /> : <Zap size={14} />}
-            Generate
-          </button>
-        </div>
-        {generateMsg && <p className="text-xs mt-2 text-purple-700">{generateMsg}</p>}
-      </div>
-
-      {/* Queue stats */}
-      {data && (
-        <div className="text-sm text-gray-500">
-          {data.totalElements} entr{data.totalElements !== 1 ? 'ies' : 'y'} awaiting review
-        </div>
-      )}
-
-      {loading && (
-        <div className="flex justify-center py-12">
-          <div className="animate-spin rounded-full h-7 w-7 border-b-2 border-purple-600" />
-        </div>
-      )}
-
-      {!loading && data?.content.length === 0 && (
-        <div className="text-center py-12 text-gray-400">
-          <MessageSquare size={36} className="mx-auto mb-2 opacity-30" />
-          <p className="font-medium">No entries pending review</p>
-          <p className="text-sm mt-1">Run FAQ generation above or wait for the weekly scheduled job.</p>
-        </div>
-      )}
-
-      <div className="space-y-4">
-        {data?.content.map(entry => (
-          <FaqReviewCard
-            key={entry.id}
-            entry={entry}
-            expanded={expandedId === entry.id}
-            onToggle={() => setExpandedId(prev => prev === entry.id ? null : entry.id)}
-            onApprove={() => handleApprove(entry.id)}
-            onReject={() => handleReject(entry.id)}
-            pending={actionPending === entry.id}
-          />
-        ))}
-      </div>
-
-      {data && data.totalPages > 1 && (
-        <div className="flex justify-center gap-2">
-          <button
-            onClick={() => setPage(p => Math.max(0, p - 1))}
-            disabled={page === 0}
-            className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg disabled:opacity-40"
-          >Previous</button>
-          <span className="px-3 py-1.5 text-sm text-gray-500">{page + 1} / {data.totalPages}</span>
-          <button
-            onClick={() => setPage(p => Math.min(data.totalPages - 1, p + 1))}
-            disabled={page >= data.totalPages - 1}
-            className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg disabled:opacity-40"
-          >Next</button>
-        </div>
-      )}
-    </div>
+    </motion.div>
   );
 }
 
@@ -172,43 +196,47 @@ function FaqReviewCard({
   pending: boolean;
 }) {
   return (
-    <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+    <Card className="overflow-hidden">
       <div className="flex items-start gap-3 p-4">
         <button onClick={onToggle} className="flex-1 text-left">
-          <p className="text-sm font-medium text-gray-800">{entry.question}</p>
+          <p className="text-sm font-medium text-foreground">{entry.question}</p>
           <div className="flex items-center gap-2 mt-1">
             {entry.product && (
-              <span className="text-xs px-2 py-0.5 bg-blue-50 text-blue-600 rounded-full">
+              <Badge variant="primary">
                 {entry.product}{entry.version ? ` ${entry.version}` : ''}
-              </span>
+              </Badge>
             )}
-            <span className="text-xs text-gray-400">Click to preview answer</span>
+            <span className="text-xs text-muted-foreground">Click to preview answer</span>
           </div>
         </button>
         <div className="flex gap-2 flex-shrink-0">
-          <button
+          <Button
+            variant="primary"
+            size="sm"
             onClick={onApprove}
             disabled={pending}
-            className="flex items-center gap-1 px-3 py-1.5 text-xs bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
+            leftIcon={<Check size={12} />}
           >
-            <Check size={12} /> Approve
-          </button>
-          <button
+            Approve
+          </Button>
+          <Button
+            variant="danger"
+            size="sm"
             onClick={onReject}
             disabled={pending}
-            className="flex items-center gap-1 px-3 py-1.5 text-xs border border-red-200 text-red-600 rounded-lg hover:bg-red-50 disabled:opacity-50 transition-colors"
+            leftIcon={<X size={12} />}
           >
-            <X size={12} /> Reject
-          </button>
+            Reject
+          </Button>
         </div>
       </div>
       {expanded && (
-        <div className="px-4 pb-4 border-t border-gray-100 pt-3">
-          <div className="prose prose-sm max-w-none text-gray-700 prose-p:my-1 prose-code:text-blue-600 prose-code:bg-blue-50 prose-code:px-1 prose-code:rounded prose-code:before:content-none prose-code:after:content-none">
+        <div className="px-4 pb-4 border-t border-border pt-3">
+          <div className="prose prose-sm dark:prose-invert max-w-none text-foreground prose-p:my-1 prose-code:text-primary prose-code:bg-muted prose-code:px-1 prose-code:rounded prose-code:before:content-none prose-code:after:content-none">
             <ReactMarkdown>{entry.answer}</ReactMarkdown>
           </div>
         </div>
       )}
-    </div>
+    </Card>
   );
 }

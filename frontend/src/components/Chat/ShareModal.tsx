@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { X, Share2, Copy, Check, Trash2, Globe, Lock } from 'lucide-react';
+import { Share2, Copy, Check, Trash2, Globe, Lock } from 'lucide-react';
 import { ShareLink } from '../../types';
 import {
   createShareLink,
@@ -7,6 +7,10 @@ import {
   deleteShareLink,
 } from '../../services/shareService';
 import { useAuth } from '../../context/AuthContext';
+import Modal, { ModalBody, ModalFooter } from '../ui/Modal';
+import Button from '../ui/Button';
+import Spinner from '../ui/Spinner';
+import { cn } from '../../lib/cn';
 
 interface ShareModalProps {
   chatId: string;
@@ -60,129 +64,104 @@ const ShareModal: React.FC<ShareModalProps> = ({ chatId, onClose }) => {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-          <div className="flex items-center gap-2">
-            <Share2 size={18} className="text-blue-600" />
-            <h2 className="text-lg font-semibold text-gray-900">Share Chat</h2>
+    <Modal open onClose={onClose} title="Share Chat" icon={<Share2 size={18} className="text-primary" />}>
+      <ModalBody className="space-y-4">
+        {isLoading ? (
+          <div className="flex items-center justify-center py-8">
+            <Spinner size="lg" />
           </div>
-          <button onClick={onClose} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
-            <X size={16} />
-          </button>
-        </div>
-
-        <div className="px-6 py-5 space-y-4">
-          {isLoading ? (
-            <div className="flex items-center justify-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+        ) : link ? (
+          <>
+            <div className="flex items-center gap-2 p-3 bg-muted rounded-xl border border-border">
+              <span className="flex-1 text-sm text-foreground font-mono truncate">{shareUrl}</span>
+              <Button size="sm" onClick={handleCopy} leftIcon={copied ? <Check size={12} /> : <Copy size={12} />} className="flex-shrink-0">
+                {copied ? 'Copied' : 'Copy'}
+              </Button>
             </div>
-          ) : link ? (
-            <>
-              <div className="flex items-center gap-2 p-3 bg-gray-50 rounded-xl border border-gray-200">
-                <span className="flex-1 text-sm text-gray-700 font-mono truncate">{shareUrl}</span>
-                <button
-                  onClick={handleCopy}
-                  className="flex items-center gap-1 px-3 py-1.5 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex-shrink-0"
-                >
-                  {copied ? <><Check size={12} /> Copied</> : <><Copy size={12} /> Copy</>}
-                </button>
-              </div>
 
-              <div className="flex items-center gap-2 text-sm text-gray-500">
-                {link.publicAccess
-                  ? <><Globe size={14} className="text-green-500" /> Anyone with the link can view</>
-                  : <><Lock size={14} className="text-gray-400" /> Only signed-in users can view</>
-                }
-                {link.expiresAt && (
-                  <span className="ml-auto text-xs">
-                    Expires {new Date(link.expiresAt).toLocaleDateString()}
-                  </span>
-                )}
-              </div>
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              {link.publicAccess
+                ? <><Globe size={14} className="text-success" /> Anyone with the link can view</>
+                : <><Lock size={14} className="text-muted-foreground" /> Only signed-in users can view</>
+              }
+              {link.expiresAt && (
+                <span className="ml-auto text-xs">
+                  Expires {new Date(link.expiresAt).toLocaleDateString()}
+                </span>
+              )}
+            </div>
 
-              <button
-                onClick={handleDelete}
-                className="flex items-center gap-2 text-sm text-red-500 hover:text-red-700 transition-colors"
-              >
-                <Trash2 size={14} /> Revoke link
-              </button>
-            </>
-          ) : (
-            <>
-              <p className="text-sm text-gray-600">
-                Create a shareable link so teammates can read this conversation. They can also fork it into their own account.
-              </p>
-
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-2">Access</label>
-                <div className="grid grid-cols-2 gap-2">
-                  {[
-                    { value: false, icon: Lock, label: 'Team only', desc: 'Signed-in users' },
-                    { value: true, icon: Globe, label: 'Public', desc: 'Anyone with link' },
-                  ].map(opt => (
-                    <button
-                      key={String(opt.value)}
-                      onClick={() => setPublicAccess(opt.value)}
-                      className={`flex flex-col items-center p-3 rounded-xl border-2 text-xs transition-all ${
-                        publicAccess === opt.value
-                          ? 'border-blue-500 bg-blue-50 text-blue-700'
-                          : 'border-gray-200 text-gray-600 hover:border-gray-300'
-                      }`}
-                    >
-                      <opt.icon size={16} className="mb-1" />
-                      <span className="font-medium">{opt.label}</span>
-                      <span className="opacity-70">{opt.desc}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-2">Expires</label>
-                <div className="flex gap-2">
-                  {EXPIRE_OPTIONS.map(opt => (
-                    <button
-                      key={String(opt.value)}
-                      onClick={() => setExpireDays(opt.value)}
-                      className={`flex-1 py-2 rounded-lg border text-xs font-medium transition-colors ${
-                        expireDays === opt.value
-                          ? 'border-blue-500 bg-blue-50 text-blue-700'
-                          : 'border-gray-200 text-gray-600 hover:border-gray-300'
-                      }`}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-
-        {!link && !isLoading && (
-          <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-100">
-            <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
-              Cancel
-            </button>
             <button
-              onClick={handleCreate}
-              disabled={isCreating}
-              className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors font-medium"
+              onClick={handleDelete}
+              className="flex items-center gap-2 text-sm text-danger hover:text-danger-hover transition-colors"
             >
-              {isCreating ? 'Creating…' : 'Create link'}
+              <Trash2 size={14} /> Revoke link
             </button>
-          </div>
+          </>
+        ) : (
+          <>
+            <p className="text-sm text-muted-foreground">
+              Create a shareable link so teammates can read this conversation. They can also fork it into their own account.
+            </p>
+
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-2">Access</label>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { value: false, icon: Lock, label: 'Team only', desc: 'Signed-in users' },
+                  { value: true, icon: Globe, label: 'Public', desc: 'Anyone with link' },
+                ].map(opt => (
+                  <button
+                    key={String(opt.value)}
+                    onClick={() => setPublicAccess(opt.value)}
+                    className={cn(
+                      'flex flex-col items-center p-3 rounded-xl border-2 text-xs transition-all',
+                      publicAccess === opt.value ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:border-muted-foreground/40',
+                    )}
+                  >
+                    <opt.icon size={16} className="mb-1" />
+                    <span className="font-medium">{opt.label}</span>
+                    <span className="opacity-70">{opt.desc}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-2">Expires</label>
+              <div className="flex gap-2">
+                {EXPIRE_OPTIONS.map(opt => (
+                  <button
+                    key={String(opt.value)}
+                    onClick={() => setExpireDays(opt.value)}
+                    className={cn(
+                      'flex-1 py-2 rounded-lg border text-xs font-medium transition-colors',
+                      expireDays === opt.value ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:border-muted-foreground/40',
+                    )}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </>
         )}
-        {link && (
-          <div className="flex justify-end px-6 py-4 border-t border-gray-100">
-            <button onClick={onClose} className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium">
-              Done
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
+      </ModalBody>
+
+      {!link && !isLoading && (
+        <ModalFooter>
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button onClick={handleCreate} loading={isCreating}>
+            {isCreating ? 'Creating…' : 'Create link'}
+          </Button>
+        </ModalFooter>
+      )}
+      {link && (
+        <ModalFooter>
+          <Button onClick={onClose}>Done</Button>
+        </ModalFooter>
+      )}
+    </Modal>
   );
 };
 

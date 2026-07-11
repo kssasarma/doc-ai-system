@@ -1,7 +1,11 @@
 import React, { Suspense } from 'react';
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import { ArrowLeft, LucideIcon } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import ThemeToggle from '../ui/ThemeToggle';
+import Spinner from '../ui/Spinner';
+import { cn } from '../../lib/cn';
 
 export interface AdminNavItem {
   to: string;
@@ -11,70 +15,99 @@ export interface AdminNavItem {
 
 function TabFallback() {
   return (
-    <div className="p-12 text-center text-gray-400">
-      <div className="animate-spin w-6 h-6 border-2 border-blue-400 border-t-transparent rounded-full mx-auto mb-2" />
+    <div className="p-12 text-center text-muted-foreground flex flex-col items-center gap-2">
+      <Spinner size="md" />
       Loading…
     </div>
   );
 }
 
+/** One shared `layoutId` animates a pill/underline sliding between nav items on route change —
+ * used for both the desktop sidebar (pill fill) and mobile tab bar (underline), so both surfaces
+ * express "which item is active" with the same animated language instead of two static styles. */
+function NavItem({
+  item, isActive, variant,
+}: {
+  item: AdminNavItem;
+  isActive: boolean;
+  variant: 'sidebar' | 'tab';
+}) {
+  return (
+    <NavLink
+      to={item.to}
+      end
+      className={cn(
+        'relative flex items-center whitespace-nowrap transition-colors font-medium',
+        variant === 'sidebar'
+          ? cn('gap-2.5 px-3 py-2 rounded-lg text-sm', isActive ? 'text-primary' : 'text-muted-foreground hover:text-foreground')
+          : cn('gap-1.5 px-4 py-3 text-sm', isActive ? 'text-primary' : 'text-muted-foreground hover:text-foreground'),
+      )}
+    >
+      {isActive && (
+        <motion.span
+          layoutId={variant === 'sidebar' ? 'admin-nav-active-sidebar' : 'admin-nav-active-tab'}
+          transition={{ type: 'spring', stiffness: 380, damping: 32 }}
+          className={cn(
+            'absolute',
+            variant === 'sidebar' ? 'inset-0 bg-primary/10 rounded-lg' : 'inset-x-0 bottom-0 h-0.5 bg-primary',
+          )}
+        />
+      )}
+      <item.icon size={variant === 'sidebar' ? 16 : 14} className="relative" />
+      <span className="relative">{item.label}</span>
+    </NavLink>
+  );
+}
+
 export default function AdminLayout({ navItems, title }: { navItems: AdminNavItem[]; title: string }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, isSuperAdmin } = useAuth();
 
-  const linkClasses = (isActive: boolean) =>
-    `flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-      isActive ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
-    }`;
-
-  const tabClasses = (isActive: boolean) =>
-    `flex items-center gap-1.5 px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap transition-colors ${
-      isActive ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-800 hover:border-gray-300'
-    }`;
+  const isItemActive = (to: string) =>
+    location.pathname === to || location.pathname === `${to}/` || location.pathname.startsWith(`${to}/`);
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col md:flex-row">
+    <div className="min-h-screen bg-background flex flex-col md:flex-row">
       {/* Desktop sidebar */}
-      <aside className="hidden md:flex md:flex-col md:w-60 md:flex-shrink-0 bg-white border-r border-gray-200">
-        <div className="px-4 py-4 border-b border-gray-200">
-          <button
-            onClick={() => navigate('/')}
-            className="flex items-center gap-2 text-gray-600 hover:text-gray-900 text-sm transition-colors mb-3"
-          >
-            <ArrowLeft className="w-4 h-4" /> Back to Chat
-          </button>
-          <h1 className="text-lg font-semibold text-gray-900">{title}</h1>
+      <aside className="hidden md:flex md:flex-col md:w-60 md:flex-shrink-0 bg-surface border-r border-border">
+        <div className="px-4 py-4 border-b border-border">
+          <div className="flex items-center justify-between mb-3">
+            <button
+              onClick={() => navigate('/')}
+              className="flex items-center gap-2 text-muted-foreground hover:text-foreground text-sm transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4" /> Back to Chat
+            </button>
+            <ThemeToggle />
+          </div>
+          <h1 className="text-lg font-semibold text-foreground">{title}</h1>
           {user && (
-            <p className="text-xs text-gray-400 mt-1 truncate">
+            <p className="text-xs text-muted-foreground mt-1 truncate">
               {user.username} · {isSuperAdmin ? 'Super Admin' : 'Tenant Admin'}
             </p>
           )}
         </div>
         <nav className="flex-1 overflow-y-auto p-3 space-y-1">
           {navItems.map(item => (
-            <NavLink key={item.to} to={item.to} className={({ isActive }) => linkClasses(isActive)} end>
-              <item.icon size={16} />
-              {item.label}
-            </NavLink>
+            <NavItem key={item.to} item={item} isActive={isItemActive(item.to)} variant="sidebar" />
           ))}
         </nav>
       </aside>
 
       {/* Mobile top bar */}
-      <div className="md:hidden bg-white border-b border-gray-200 flex-shrink-0">
-        <div className="px-4 py-3 flex items-center gap-3">
-          <button onClick={() => navigate('/')} className="flex items-center gap-1.5 text-gray-600 text-sm">
+      <div className="md:hidden bg-surface border-b border-border flex-shrink-0">
+        <div className="px-4 py-3 flex items-center justify-between gap-3">
+          <button onClick={() => navigate('/')} className="flex items-center gap-1.5 text-muted-foreground text-sm">
             <ArrowLeft className="w-4 h-4" /> Chat
           </button>
-          <h1 className="text-base font-semibold text-gray-900">{title}</h1>
+          <h1 className="text-base font-semibold text-foreground">{title}</h1>
+          <ThemeToggle />
         </div>
         <div className="overflow-x-auto px-2">
           <div className="flex gap-0 min-w-max">
             {navItems.map(item => (
-              <NavLink key={item.to} to={item.to} className={({ isActive }) => tabClasses(isActive)} end>
-                <item.icon size={14} />
-                {item.label}
-              </NavLink>
+              <NavItem key={item.to} item={item} isActive={isItemActive(item.to)} variant="tab" />
             ))}
           </div>
         </div>

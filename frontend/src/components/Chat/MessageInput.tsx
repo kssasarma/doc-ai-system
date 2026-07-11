@@ -1,5 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import { Send, Loader2 } from 'lucide-react';
+import { cn } from '../../lib/cn';
+import IconButton from '../ui/IconButton';
 
 interface MessageInputProps {
   onSendMessage: (message: string) => void;
@@ -9,6 +12,7 @@ interface MessageInputProps {
 
 const MessageInput: React.FC<MessageInputProps> = ({ onSendMessage, disabled, prefillValue }) => {
   const [message, setMessage] = useState('');
+  const [focused, setFocused] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -26,7 +30,7 @@ const MessageInput: React.FC<MessageInputProps> = ({ onSendMessage, disabled, pr
     }
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSubmit(e);
@@ -42,30 +46,47 @@ const MessageInput: React.FC<MessageInputProps> = ({ onSendMessage, disabled, pr
 
   return (
     <form onSubmit={handleSubmit} className="flex gap-3 items-end">
-      <div className="flex-1 relative">
+      <div
+        className={cn(
+          'flex-1 relative rounded-xl border bg-surface transition-shadow',
+          focused ? 'border-primary ring-4 ring-primary/10' : 'border-border',
+        )}
+      >
         <textarea
           ref={textareaRef}
           value={message}
           onChange={(e) => setMessage(e.target.value)}
-          onKeyPress={handleKeyPress}
+          onKeyDown={handleKeyDown}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
           placeholder="Ask me anything about your documentation..."
-          className="w-full px-4 py-3 border border-gray-300 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent min-h-[48px] max-h-32"
+          className="w-full px-4 py-3 bg-transparent text-sm text-foreground placeholder:text-muted-foreground resize-none focus:outline-none min-h-[48px] max-h-32"
           rows={1}
           disabled={disabled}
         />
       </div>
-      
-      <button
+
+      <IconButton
         type="submit"
+        label={disabled ? 'Sending…' : 'Send message'}
+        variant="primary"
+        size="lg"
         disabled={!message.trim() || disabled}
-        className="px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center"
+        className="h-[48px] w-[48px] flex-shrink-0"
       >
-        {disabled ? (
-          <Loader2 size={20} className="animate-spin" />
-        ) : (
-          <Send size={20} />
-        )}
-      </button>
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.span
+            key={disabled ? 'loading' : 'send'}
+            initial={{ opacity: 0, scale: 0.6, rotate: -30 }}
+            animate={{ opacity: 1, scale: 1, rotate: 0 }}
+            exit={{ opacity: 0, scale: 0.6 }}
+            transition={{ duration: 0.15 }}
+            className="inline-flex"
+          >
+            {disabled ? <Loader2 size={19} className="animate-spin" /> : <Send size={19} />}
+          </motion.span>
+        </AnimatePresence>
+      </IconButton>
     </form>
   );
 };
