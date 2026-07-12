@@ -94,7 +94,7 @@ const CollectionsPage: React.FC = () => {
   };
 
   return (
-    <div className="flex h-screen bg-background">
+    <div className="flex h-full bg-background">
       {/* Left panel — collection list */}
       <div className="w-72 bg-surface border-r border-border flex flex-col">
         <div className="flex items-center justify-between px-4 py-4 border-b border-border">

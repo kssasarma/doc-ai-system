@@ -1,6 +1,6 @@
 import React, { Suspense, lazy, useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Menu as MenuIcon, X, Settings, LogOut, Bookmark, SlidersHorizontal, Bell, Folder, Key, BookOpen, ChevronUp } from 'lucide-react';
+import { Plus, Menu as MenuIcon, X, Bookmark, Bell, Folder, Key, BookOpen } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { ChatSession } from '../../types';
 import { Search } from 'lucide-react';
@@ -10,8 +10,6 @@ import { cn } from '../../lib/cn';
 import { EASE_OUT } from '../../lib/motion';
 import Button from '../ui/Button';
 import IconButton from '../ui/IconButton';
-import ThemeToggle from '../ui/ThemeToggle';
-import Menu from '../ui/Menu';
 import { Skeleton } from '../ui/Skeleton';
 import { useCommandPalette } from '../CommandPalette/CommandPaletteProvider';
 
@@ -27,7 +25,6 @@ interface SidebarProps {
   onDeleteSession: (sessionId: string) => void;
   onPinSession: (sessionId: string) => void;
   onRenameSession: (sessionId: string, title: string) => void;
-  onOpenPreferences: () => void;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
 }
@@ -48,11 +45,10 @@ const Sidebar: React.FC<SidebarProps> = ({
   onDeleteSession,
   onPinSession,
   onRenameSession,
-  onOpenPreferences,
   isCollapsed,
   onToggleCollapse,
 }) => {
-  const { user, logout, isAdmin, token } = useAuth();
+  const { token } = useAuth();
   const navigate = useNavigate();
   const { open: openPalette } = useCommandPalette();
   const [tagFilter, setTagFilter] = useState<string | null>(null);
@@ -92,7 +88,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     <motion.div
       animate={{ width: isCollapsed ? 64 : 320 }}
       transition={{ duration: 0.28, ease: EASE_OUT }}
-      className="bg-surface text-foreground h-screen flex flex-col relative border-r border-border flex-shrink-0 overflow-hidden"
+      className="bg-surface text-foreground h-full flex flex-col relative border-r border-border flex-shrink-0 overflow-hidden"
     >
       {/* Header */}
       <div className="p-4 border-b border-border flex items-center justify-between gap-2">
@@ -183,13 +179,14 @@ const Sidebar: React.FC<SidebarProps> = ({
         )}
       </div>
 
-      {/* Footer */}
+      {/* Footer — workspace switcher + destination shortcuts. Account-level actions (profile,
+          Preferences, Admin Panel, sign out, theme) live in the persistent top-right AccountMenu
+          (see AppShell), not here — one consistent place for those across the whole app. */}
       <div className={cn('border-t border-border p-3 flex flex-col gap-1.5', isCollapsed && 'items-center')}>
         <Suspense fallback={null}>
           <TenantSwitcher isCollapsed={isCollapsed} />
         </Suspense>
 
-        {/* Quick access: notifications + library pages — icon-only, one row, always fits */}
         <div className={cn('flex items-center gap-0.5', isCollapsed ? 'flex-col' : 'justify-between')}>
           <div className="relative">
             <IconButton
@@ -219,46 +216,6 @@ const Sidebar: React.FC<SidebarProps> = ({
               <Icon size={15} />
             </IconButton>
           ))}
-        </div>
-
-        {/* Account — a single trigger opening a proper menu, instead of every action competing
-            for space in the footer at once. Placement is 'top': this sits at the very bottom of
-            the viewport, so a downward menu would get clipped. */}
-        <div className={cn('flex items-center gap-1', isCollapsed && 'flex-col')}>
-          <Menu
-            placement="top"
-            align="start"
-            trigger={
-              <button
-                type="button"
-                className={cn(
-                  'flex items-center gap-2 rounded-lg hover:bg-surface-hover transition-colors py-1.5',
-                  isCollapsed ? 'justify-center w-9' : 'flex-1 min-w-0 px-1.5',
-                )}
-              >
-                <div className="w-7 h-7 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold flex-shrink-0">
-                  {user?.username.charAt(0).toUpperCase()}
-                </div>
-                {!isCollapsed && user && (
-                  <>
-                    <div className="flex-1 min-w-0 text-left">
-                      <div className="text-sm font-medium text-foreground truncate">{user.username}</div>
-                      <div className="text-xs text-muted-foreground">{user.role}</div>
-                    </div>
-                    <ChevronUp size={14} className="text-muted-foreground flex-shrink-0" />
-                  </>
-                )}
-              </button>
-            }
-            options={[
-              { key: 'preferences', label: 'Preferences', icon: <SlidersHorizontal size={14} />, onSelect: onOpenPreferences },
-              ...(isAdmin
-                ? [{ key: 'admin', label: 'Admin Panel', icon: <Settings size={14} />, onSelect: () => navigate('/admin') }]
-                : []),
-              { key: 'signout', label: 'Sign out', icon: <LogOut size={14} />, onSelect: logout, danger: true },
-            ]}
-          />
-          <ThemeToggle />
         </div>
       </div>
 

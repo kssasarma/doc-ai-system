@@ -70,7 +70,7 @@ const BookmarksPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-full bg-background">
       <div className="max-w-3xl mx-auto px-6 py-6">
         {/* Header */}
         <div className="flex items-start gap-3">

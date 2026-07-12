@@ -9,6 +9,7 @@ import LoginPage from './components/Auth/LoginPage';
 import ChangePasswordPage from './components/Auth/ChangePasswordPage';
 import AcceptInvitePage from './components/Auth/AcceptInvitePage';
 import Spinner from './components/ui/Spinner';
+import AppShell from './components/Layout/AppShell';
 
 const Sidebar = lazy(() => import('./components/Sidebar/Sidebar'));
 const ChatArea = lazy(() => import('./components/Chat/ChatArea'));
@@ -16,7 +17,6 @@ const AdminEntry = lazy(() => import('./components/Admin/AdminEntry'));
 const BookmarksPage = lazy(() => import('./components/Bookmarks/BookmarksPage'));
 const CollectionsPage = lazy(() => import('./components/Collections/CollectionsPage'));
 const SharedChatView = lazy(() => import('./components/Chat/SharedChatView'));
-const PreferencesModal = lazy(() => import('./components/Settings/PreferencesModal'));
 const ApiKeysPage = lazy(() => import('./components/Settings/ApiKeysPage'));
 const FaqPage = lazy(() => import('./components/Faq/FaqPage'));
 const SubscriptionsPage = lazy(() => import('./components/Subscriptions/SubscriptionsPage'));
@@ -50,7 +50,6 @@ function ChatPage() {
 
   const [isLoading, setIsLoading] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [prefsOpen, setPrefsOpen] = useState(false);
 
   const handleSendMessage = useCallback(async (content: string, scope?: { product?: string; version?: string }) => {
     if (!activeSessionId || isLoading || !token) return;
@@ -128,7 +127,7 @@ function ChatPage() {
   }, [activeSession, activeSessionId, updateMessage]);
 
   return (
-    <div className="flex h-screen bg-background overflow-hidden">
+    <div className="flex h-full bg-background overflow-hidden">
       <Suspense fallback={<LoadingSpinner />}>
         <Sidebar
           sessions={sessions}
@@ -138,7 +137,6 @@ function ChatPage() {
           onDeleteSession={deleteSession}
           onPinSession={handlePinSession}
           onRenameSession={(chatId, title) => updateSession(chatId, { title })}
-          onOpenPreferences={() => setPrefsOpen(true)}
           isCollapsed={sidebarCollapsed}
           onToggleCollapse={() => setSidebarCollapsed(prev => !prev)}
         />
@@ -151,9 +149,6 @@ function ChatPage() {
           onRenameSession={handleRenameSession}
           onRegeneratedAnswer={handleRegeneratedAnswer}
         />
-        {prefsOpen && (
-          <PreferencesModal onClose={() => setPrefsOpen(false)} />
-        )}
       </Suspense>
     </div>
   );
@@ -174,7 +169,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   // end-user surfaces here — chat, bookmarks, collections, FAQ, subscriptions, API keys —
   // are meaningful for that role. Keep it confined to the admin console.
   if (user?.role === 'SUPER_ADMIN') return <Navigate to="/admin" replace />;
-  return <>{children}</>;
+  return <AppShell>{children}</AppShell>;
 }
 
 function AdminRoute({ children }: { children: React.ReactNode }) {

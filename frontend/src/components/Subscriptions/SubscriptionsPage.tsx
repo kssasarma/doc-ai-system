@@ -72,7 +72,7 @@ export default function SubscriptionsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-full bg-background">
       <div className="max-w-2xl mx-auto py-8 px-4">
         <motion.div variants={staggerContainer} initial="hidden" animate="visible">
           <PageHeader

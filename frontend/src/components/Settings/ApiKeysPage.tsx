@@ -116,7 +116,7 @@ export default function ApiKeysPage() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-full bg-background">
       <div className="bg-surface border-b border-border px-6 py-4 flex items-center gap-4">
         <Button variant="ghost" size="sm" leftIcon={<ArrowLeft size={16} />} onClick={() => navigate(-1)}>
           Back

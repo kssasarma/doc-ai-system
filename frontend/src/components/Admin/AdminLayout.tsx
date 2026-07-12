@@ -1,11 +1,13 @@
-import React, { Suspense } from 'react';
+import React, { Suspense, lazy, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ArrowLeft, LucideIcon } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import ThemeToggle from '../ui/ThemeToggle';
+import AccountMenu from '../ui/AccountMenu';
 import Spinner from '../ui/Spinner';
 import { cn } from '../../lib/cn';
+
+const PreferencesModal = lazy(() => import('../Settings/PreferencesModal'));
 
 export interface AdminNavItem {
   to: string;
@@ -63,6 +65,7 @@ export default function AdminLayout({ navItems, title }: { navItems: AdminNavIte
   const navigate = useNavigate();
   const location = useLocation();
   const { user, isSuperAdmin } = useAuth();
+  const [prefsOpen, setPrefsOpen] = useState(false);
 
   const isItemActive = (to: string) =>
     location.pathname === to || location.pathname === `${to}/` || location.pathname.startsWith(`${to}/`);
@@ -79,7 +82,7 @@ export default function AdminLayout({ navItems, title }: { navItems: AdminNavIte
             >
               <ArrowLeft className="w-4 h-4" /> Back to Chat
             </button>
-            <ThemeToggle />
+            <AccountMenu onOpenPreferences={() => setPrefsOpen(true)} compact />
           </div>
           <h1 className="text-lg font-semibold text-foreground">{title}</h1>
           {user && (
@@ -102,7 +105,7 @@ export default function AdminLayout({ navItems, title }: { navItems: AdminNavIte
             <ArrowLeft className="w-4 h-4" /> Chat
           </button>
           <h1 className="text-base font-semibold text-foreground">{title}</h1>
-          <ThemeToggle />
+          <AccountMenu onOpenPreferences={() => setPrefsOpen(true)} compact />
         </div>
         <div className="overflow-x-auto px-2">
           <div className="flex gap-0 min-w-max">
@@ -121,6 +124,12 @@ export default function AdminLayout({ navItems, title }: { navItems: AdminNavIte
           </Suspense>
         </div>
       </main>
+
+      {prefsOpen && (
+        <Suspense fallback={null}>
+          <PreferencesModal onClose={() => setPrefsOpen(false)} />
+        </Suspense>
+      )}
     </div>
   );
 }
