@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { fetchBranding, type TenantBranding } from '../services/brandingService';
+import { useAuth } from './AuthContext';
 
 /** "#2563eb" -> "37 99 235" (space-separated RGB triplet, the format tailwind.config.js's
  * `rgb(var(--color-x) / <alpha-value>)` color tokens expect). Falls back to null (leaving the
@@ -22,29 +23,44 @@ const DEFAULT_BRANDING: TenantBranding = {
   footerText: null,
 };
 
-const BrandingContext = createContext<TenantBranding>(DEFAULT_BRANDING);
+interface BrandingContextValue extends TenantBranding {
+  /** Re-fetches branding for the current tenant without waiting for a token change — call after
+   * an admin saves new branding in SettingsPage so the rest of the app (favicon, title, CSS
+   * custom properties, injected custom CSS) picks up the change immediately. */
+  refreshBranding: () => Promise<void>;
+}
+
+const BrandingContext = createContext<BrandingContextValue>({ ...DEFAULT_BRANDING, refreshBranding: async () => {} });
 
 export function BrandingProvider({ children }: { children: React.ReactNode }) {
+  const { token } = useAuth();
   const [branding, setBranding] = useState<TenantBranding>(DEFAULT_BRANDING);
 
-  useEffect(() => {
-    fetchBranding()
-      .then(setBranding)
-      .catch(() => {}); // silent fallback to defaults
-
-    // Apply custom CSS if present
-    if (branding.customCss) {
-      const style = document.createElement('style');
-      style.id = 'tenant-custom-css';
-      style.textContent = branding.customCss;
-      document.head.appendChild(style);
-      return () => { document.getElementById('tenant-custom-css')?.remove(); };
+  const refresh = React.useCallback(async () => {
+    try {
+      setBranding(await fetchBranding(token));
+    } catch {
+      // silent fallback to whatever branding is already applied
     }
-  }, []);
+  }, [token]);
 
-  // Apply CSS custom properties whenever branding changes — a tenant's chosen brand color
-  // becomes the design system's `primary`/`accent` tokens everywhere (buttons, links, focus
-  // rings), in both light and dark theme (brand identity doesn't change with theme).
+  // Re-fetches whenever the auth token changes: once on mount (no token — platform default or
+  // whatever anonymous tenant resolution applies), then again after login/logout/tenant switch,
+  // each time picking up the now-current tenant's branding instead of only ever fetching once
+  // before any tenant was resolvable.
+  useEffect(() => {
+    let cancelled = false;
+    fetchBranding(token)
+      .then(data => { if (!cancelled) setBranding(data); })
+      .catch(() => {}); // silent fallback to whatever branding is already applied
+    return () => { cancelled = true; };
+  }, [token]);
+
+  // Applied whenever branding itself changes (not just on mount) — CSS custom properties, the
+  // favicon/title, and any tenant custom CSS. Keeping the custom-CSS injection in this same
+  // effect (rather than the fetch effect above) matters: reading branding.customCss from a
+  // mount-only effect's closure would always see the still-default value, since the fetch above
+  // resolves later, after that effect already ran once.
   useEffect(() => {
     const primaryRgb = hexToRgbTriplet(branding.primaryColor);
     const accentRgb = hexToRgbTriplet(branding.accentColor);
@@ -59,10 +75,18 @@ export function BrandingProvider({ children }: { children: React.ReactNode }) {
     if (branding.productName) {
       document.title = branding.productName;
     }
+
+    if (branding.customCss) {
+      const style = document.createElement('style');
+      style.id = 'tenant-custom-css';
+      style.textContent = branding.customCss;
+      document.head.appendChild(style);
+      return () => { document.getElementById('tenant-custom-css')?.remove(); };
+    }
   }, [branding]);
 
   return (
-    <BrandingContext.Provider value={branding}>
+    <BrandingContext.Provider value={{ ...branding, refreshBranding: refresh }}>
       {children}
     </BrandingContext.Provider>
   );

@@ -108,6 +108,7 @@ export default function FaqManagementTab() {
             <div className="flex gap-2">
               <Input
                 className="flex-1"
+                aria-label="Product name"
                 placeholder="Product name"
                 value={generateProduct}
                 onChange={e => setGenerateProduct(e.target.value)}

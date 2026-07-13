@@ -8,6 +8,7 @@ import Button from '../ui/Button';
 import Input from '../ui/Input';
 import Spinner from '../ui/Spinner';
 import { cn } from '../../lib/cn';
+import { useToast } from '../ui/Toast';
 
 interface AddToCollectionModalProps {
   messageId: string;
@@ -17,13 +18,13 @@ interface AddToCollectionModalProps {
 
 const AddToCollectionModal: React.FC<AddToCollectionModalProps> = ({ messageId, chatId, onClose }) => {
   const { token } = useAuth();
+  const toast = useToast();
   const [collections, setCollections] = useState<Collection[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [note, setNote] = useState('');
   const [selectedCollectionId, setSelectedCollectionId] = useState<string | null>(null);
   const [isAdding, setIsAdding] = useState(false);
   const [added, setAdded] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!token) return;
@@ -35,13 +36,12 @@ const AddToCollectionModal: React.FC<AddToCollectionModalProps> = ({ messageId, 
   const handleAdd = async () => {
     if (!token || !selectedCollectionId) return;
     setIsAdding(true);
-    setError(null);
     const res = await addToCollection(selectedCollectionId, messageId, chatId, note, token);
     if (res.success) {
       setAdded(true);
       setTimeout(onClose, 1000);
     } else {
-      setError(res.error || 'Failed to add to collection');
+      toast.error(res.error || 'Failed to add to collection.');
     }
     setIsAdding(false);
   };
@@ -84,13 +84,12 @@ const AddToCollectionModal: React.FC<AddToCollectionModalProps> = ({ messageId, 
         {selectedCollectionId && (
           <Input
             type="text"
+            aria-label="Note"
             placeholder="Add a note (optional)"
             value={note}
             onChange={e => setNote(e.target.value)}
           />
         )}
-
-        {error && <p className="text-xs text-danger">{error}</p>}
       </ModalBody>
 
       <ModalFooter>

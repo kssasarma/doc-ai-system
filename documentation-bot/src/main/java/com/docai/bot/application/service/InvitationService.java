@@ -13,9 +13,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.docai.bot.config.DigestProperties;
 import com.docai.bot.domain.entity.InvitationToken;
+import com.docai.bot.domain.entity.Tenant;
 import com.docai.bot.domain.entity.User;
 import com.docai.bot.domain.repository.InvitationTokenRepository;
 import com.docai.bot.domain.repository.TenantMembershipRepository;
+import com.docai.bot.domain.repository.TenantRepository;
 import com.docai.bot.domain.repository.UserRepository;
 
 import jakarta.mail.internet.MimeMessage;
@@ -42,6 +44,7 @@ public class InvitationService {
 
     private final InvitationTokenRepository invitationRepository;
     private final UserRepository userRepository;
+    private final TenantRepository tenantRepository;
     private final TenantMembershipRepository membershipRepository;
     private final TenantMembershipService membershipService;
     private final PasswordEncoder passwordEncoder;
@@ -60,6 +63,18 @@ public class InvitationService {
                 throw new IllegalArgumentException("This person is already a member of this tenant");
             }
         });
+
+        if (tenantId != null) {
+            Tenant tenant = tenantRepository.findById(tenantId)
+                .orElseThrow(() -> new IllegalArgumentException("Tenant not found: " + tenantId));
+            long currentMembers = membershipRepository.countByTenantId(tenantId);
+            long pendingInvites = invitationRepository
+                .countByTenantIdAndAcceptedAtIsNullAndExpiresAtAfter(tenantId, LocalDateTime.now());
+            if (currentMembers + pendingInvites >= tenant.getMaxUsers()) {
+                throw new IllegalStateException(
+                    "This tenant has reached its plan limit of " + tenant.getMaxUsers() + " users");
+            }
+        }
 
         byte[] bytes = new byte[TOKEN_BYTES];
         random.nextBytes(bytes);

@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Value;
@@ -19,6 +20,8 @@ import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
 import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+import software.amazon.awssdk.services.s3.presigner.S3Presigner;
+import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
 
 /**
  * Stores documents in an S3-compatible object store — MinIO in this deployment, real AWS S3
@@ -32,6 +35,7 @@ import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 public class S3DocumentStorageService implements DocumentStorageService {
 
     private final S3Client s3Client;
+    private final S3Presigner s3Presigner;
 
     @Value("${ingestor.storage.s3.bucket}")
     private String bucket;
@@ -94,5 +98,17 @@ public class S3DocumentStorageService implements DocumentStorageService {
     @Override
     public String storageType() {
         return "S3";
+    }
+
+    @Override
+    public String presignedDownloadUrl(String storageKey, Duration ttl) {
+        if (!exists(storageKey)) {
+            throw new IllegalStateException("File not found in storage: " + storageKey);
+        }
+        GetObjectPresignRequest presignRequest = GetObjectPresignRequest.builder()
+            .signatureDuration(ttl)
+            .getObjectRequest(GetObjectRequest.builder().bucket(bucket).key(storageKey).build())
+            .build();
+        return s3Presigner.presignGetObject(presignRequest).url().toString();
     }
 }

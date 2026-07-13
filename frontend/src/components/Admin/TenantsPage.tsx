@@ -266,7 +266,6 @@ function TenantCard({ tenant, token, expanded, panel, onToggle, onPanelChange, o
                         onChange={e => setLlmConfig(c => c ? { ...c, chatProvider: e.target.value } : c)}>
                         <option value="openai">OpenAI</option>
                         <option value="anthropic">Anthropic</option>
-                        <option value="azure_openai">Azure OpenAI</option>
                       </Select>
                       <Input label="Chat Model" value={llmConfig.chatModel}
                         onChange={e => setLlmConfig(c => c ? { ...c, chatModel: e.target.value } : c)} />

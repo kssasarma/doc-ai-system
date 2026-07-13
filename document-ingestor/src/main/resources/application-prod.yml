@@ -1,0 +1,7 @@
+# Active via SPRING_PROFILES_ACTIVE=prod. Removes the dev-only default for the JWT signing
+# secret (shared with documentation-bot) — Spring fails startup if it can't resolve, so a prod
+# deploy that forgot to set JWT_SECRET refuses to boot instead of trusting tokens signed with a
+# public, committed key.
+app:
+  jwt:
+    secret: ${JWT_SECRET}

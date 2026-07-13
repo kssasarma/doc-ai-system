@@ -5,6 +5,7 @@ import { useAuth } from '../../context/AuthContext';
 import Modal, { ModalBody, ModalFooter } from '../ui/Modal';
 import Button from '../ui/Button';
 import Textarea from '../ui/Textarea';
+import { useToast } from '../ui/Toast';
 
 interface EscalationModalProps {
   messageId: string;
@@ -19,15 +20,14 @@ const EscalationModal: React.FC<EscalationModalProps> = ({
   messageId, questionText, aiAnswerText, product, version, onClose
 }) => {
   const { token } = useAuth();
+  const toast = useToast();
   const [additionalContext, setAdditionalContext] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async () => {
     if (!token) return;
     setIsSubmitting(true);
-    setError(null);
 
     const fullQuestion = additionalContext.trim()
       ? `${questionText}\n\nAdditional context: ${additionalContext.trim()}`
@@ -38,7 +38,7 @@ const EscalationModal: React.FC<EscalationModalProps> = ({
       setSubmitted(true);
       setTimeout(onClose, 2000);
     } else {
-      setError(res.error || 'Failed to submit. The question may already be escalated.');
+      toast.error(res.error || 'Failed to submit. The question may already be escalated.');
     }
     setIsSubmitting(false);
   };
@@ -74,8 +74,6 @@ const EscalationModal: React.FC<EscalationModalProps> = ({
             <p className="text-xs text-muted-foreground">
               Your question and the AI's answer will be sent to a product expert for review. You'll receive a notification when they respond.
             </p>
-
-            {error && <p className="text-xs text-danger">{error}</p>}
           </>
         )}
       </ModalBody>

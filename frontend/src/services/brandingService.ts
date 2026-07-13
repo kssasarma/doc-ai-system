@@ -1,6 +1,7 @@
 import axios from 'axios';
+import { BACKEND_URL } from '../config/backend';
 
-const BOT_URL = import.meta.env.VITE_BOT_API_URL ?? 'http://localhost:8082';
+const BOT_URL = BACKEND_URL;
 
 export interface TenantBranding {
   productName: string;
@@ -13,8 +14,13 @@ export interface TenantBranding {
   footerText: string | null;
 }
 
-export async function fetchBranding(): Promise<TenantBranding> {
-  const { data } = await axios.get<TenantBranding>(`${BOT_URL}/api/branding`);
+/** Public pre-login (no token) returns the platform default; once the caller is authenticated,
+ * passing their token lets the backend resolve their own tenant's branding instead (see
+ * TenantResolutionFilter — it trusts the JWT's tenant claim, never a client-supplied header). */
+export async function fetchBranding(token?: string | null): Promise<TenantBranding> {
+  const { data } = await axios.get<TenantBranding>(`${BOT_URL}/api/branding`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
   return data;
 }
 

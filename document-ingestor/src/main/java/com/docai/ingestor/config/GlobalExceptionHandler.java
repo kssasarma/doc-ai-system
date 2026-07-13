@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import org.slf4j.MDC;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
@@ -93,12 +94,19 @@ public class GlobalExceptionHandler {
         private String traceId;
 
         public static ErrorResponse of(String code, String message, WebRequest request) {
+            // Falls back to a fresh id only if RequestCorrelationFilter didn't run for this
+            // request (shouldn't happen for any real HTTP request, but keeps this safe as a
+            // standalone unit).
+            String traceId = MDC.get(RequestCorrelationFilter.MDC_KEY);
+            if (traceId == null) {
+                traceId = UUID.randomUUID().toString().replace("-", "");
+            }
             return ErrorResponse.builder()
                 .code(code)
                 .message(message)
                 .path(request.getDescription(false).replace("uri=", ""))
                 .timestamp(Instant.now().toEpochMilli())
-                .traceId(UUID.randomUUID().toString().replace("-", ""))
+                .traceId(traceId)
                 .build();
         }
     }

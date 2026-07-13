@@ -35,6 +35,12 @@ public class UserService {
         User user = userRepository.findByUsername(username)
             .orElseThrow(() -> new IllegalArgumentException("Invalid credentials"));
 
+        // Same error as a wrong password — an erased account should look exactly like one that
+        // never existed, not confirm to the caller that this username used to belong to someone.
+        if (user.getDeletedAt() != null) {
+            throw new IllegalArgumentException("Invalid credentials");
+        }
+
         if (!passwordEncoder.matches(password, user.getPasswordHash())) {
             throw new IllegalArgumentException("Invalid credentials");
         }

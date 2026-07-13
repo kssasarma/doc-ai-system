@@ -98,17 +98,17 @@ public class EmailDigestService {
 
     @Transactional(readOnly = true)
     public void sendDigest(EmailDigest digest) throws MessagingException, java.io.UnsupportedEncodingException {
-        String email = userRepository.findById(digest.getUserId())
-            .map(u -> u.getEmail())
-            .orElse(null);
+        var recipient = userRepository.findById(digest.getUserId()).orElse(null);
+        String email = recipient != null ? recipient.getEmail() : null;
         if (email == null || email.isBlank()) {
             log.warn("Skipping digest for user {} — no email address", digest.getUserId());
             return;
         }
+        UUID tenantId = recipient.getTenantId();
 
         LocalDateTime since = periodStart(digest.getFrequency());
-        List<Object[]> topQueries = queryLogRepository.findTopQuestions(since, PageRequest.of(0, 5));
-        List<Document> recentDocs = loadRecentDocuments(digest, since);
+        List<Object[]> topQueries = queryLogRepository.findTopQuestions(tenantId, since, PageRequest.of(0, 5));
+        List<Document> recentDocs = loadRecentDocuments(tenantId, digest, since);
 
         String html = buildHtml(digest, topQueries, recentDocs);
 
@@ -133,8 +133,8 @@ public class EmailDigestService {
         };
     }
 
-    private List<Document> loadRecentDocuments(EmailDigest digest, LocalDateTime since) {
-        List<Document> all = documentRepository.findAll();
+    private List<Document> loadRecentDocuments(UUID tenantId, EmailDigest digest, LocalDateTime since) {
+        List<Document> all = documentRepository.findByTenantId(tenantId);
         return all.stream()
             .filter(d -> d.getCreatedAt() != null && d.getCreatedAt().isAfter(since))
             .filter(d -> digest.getProductFilter() == null || digest.getProductFilter().equalsIgnoreCase(d.getProduct()))

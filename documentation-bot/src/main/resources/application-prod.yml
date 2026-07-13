@@ -1,0 +1,9 @@
+# Active via SPRING_PROFILES_ACTIVE=prod. Removes the dev-only defaults for secrets that must
+# never ship with a baked-in value — Spring fails startup if these placeholders can't resolve,
+# which is exactly what we want: a prod deploy that forgot to set them should refuse to boot
+# rather than sign JWTs with a public key or seed a guessable admin password.
+app:
+  jwt:
+    secret: ${JWT_SECRET}
+  seed-admin:
+    password: ${SEED_ADMIN_PASSWORD}

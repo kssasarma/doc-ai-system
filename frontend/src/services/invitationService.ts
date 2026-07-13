@@ -1,7 +1,8 @@
 import axios from 'axios';
+import { BACKEND_URL } from '../config/backend';
 import type { Invitation, AuthResponse } from '../types';
 
-const BOT_URL = import.meta.env.VITE_BOT_API_URL ?? 'http://localhost:8082';
+const BOT_URL = BACKEND_URL;
 
 function headers(token: string) {
   return { Authorization: `Bearer ${token}` };

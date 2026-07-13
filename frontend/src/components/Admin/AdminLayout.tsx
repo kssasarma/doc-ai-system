@@ -8,6 +8,7 @@ import Spinner from '../ui/Spinner';
 import { cn } from '../../lib/cn';
 
 const PreferencesModal = lazy(() => import('../Settings/PreferencesModal'));
+const TenantSwitcher = lazy(() => import('../Sidebar/TenantSwitcher'));
 
 export interface AdminNavItem {
   to: string;
@@ -91,6 +92,13 @@ export default function AdminLayout({ navItems, title }: { navItems: AdminNavIte
             </p>
           )}
         </div>
+        {!isSuperAdmin && (
+          <div className="px-3 pt-3">
+            <Suspense fallback={null}>
+              <TenantSwitcher isCollapsed={false} menuPlacement="down" />
+            </Suspense>
+          </div>
+        )}
         <nav className="flex-1 overflow-y-auto p-3 space-y-1">
           {navItems.map(item => (
             <NavItem key={item.to} item={item} isActive={isItemActive(item.to)} variant="sidebar" />
@@ -105,7 +113,14 @@ export default function AdminLayout({ navItems, title }: { navItems: AdminNavIte
             <ArrowLeft className="w-4 h-4" /> Chat
           </button>
           <h1 className="text-base font-semibold text-foreground">{title}</h1>
-          <AccountMenu onOpenPreferences={() => setPrefsOpen(true)} compact />
+          <div className="flex items-center gap-2">
+            {!isSuperAdmin && (
+              <Suspense fallback={null}>
+                <TenantSwitcher isCollapsed menuPlacement="down" />
+              </Suspense>
+            )}
+            <AccountMenu onOpenPreferences={() => setPrefsOpen(true)} compact />
+          </div>
         </div>
         <div className="overflow-x-auto px-2">
           <div className="flex gap-0 min-w-max">

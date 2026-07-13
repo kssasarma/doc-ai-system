@@ -63,14 +63,13 @@ export default function DocumentAccessManager({
   const handleGrant = async () => {
     if (!selectedUserId) return;
     setGranting(true);
-    setError('');
     try {
       await grantDocumentAccess(token, documentId, selectedUserId);
       setSelectedUserId('');
       await load();
       toast.success('Access granted.');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to grant access');
+      toast.error(e instanceof Error ? e.message : 'Failed to grant access.');
     } finally {
       setGranting(false);
     }
@@ -83,7 +82,7 @@ export default function DocumentAccessManager({
       await load();
       toast.success('Access revoked.');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to revoke access');
+      toast.error(e instanceof Error ? e.message : 'Failed to revoke access.');
     } finally {
       setRevokingUserId(null);
     }
@@ -92,14 +91,13 @@ export default function DocumentAccessManager({
   const handleGrantGroup = async () => {
     if (!selectedGroupId) return;
     setGrantingGroup(true);
-    setGroupError('');
     try {
       await grantDocumentAccessToGroup(token, documentId, selectedGroupId);
       setSelectedGroupId('');
       await loadGroups();
       toast.success('Group access granted.');
     } catch (e) {
-      setGroupError(e instanceof Error ? e.message : 'Failed to grant group access');
+      toast.error(e instanceof Error ? e.message : 'Failed to grant group access.');
     } finally {
       setGrantingGroup(false);
     }
@@ -112,7 +110,7 @@ export default function DocumentAccessManager({
       await loadGroups();
       toast.success('Group access revoked.');
     } catch (e) {
-      setGroupError(e instanceof Error ? e.message : 'Failed to revoke group access');
+      toast.error(e instanceof Error ? e.message : 'Failed to revoke group access.');
     } finally {
       setRevokingGroupId(null);
     }
@@ -130,7 +128,7 @@ export default function DocumentAccessManager({
         <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Users</h4>
         <div className="flex flex-col sm:flex-row gap-2">
           <div className="flex-1">
-            <Select value={selectedUserId} onChange={e => setSelectedUserId(e.target.value)}>
+            <Select aria-label="Select a user to grant access" value={selectedUserId} onChange={e => setSelectedUserId(e.target.value)}>
               <option value="">
                 {grantableUsers.length === 0 ? 'No more users to grant' : 'Select a user to grant access…'}
               </option>
@@ -188,7 +186,7 @@ export default function DocumentAccessManager({
         </h4>
         <div className="flex flex-col sm:flex-row gap-2">
           <div className="flex-1">
-            <Select value={selectedGroupId} onChange={e => setSelectedGroupId(e.target.value)}>
+            <Select aria-label="Select a group to grant access" value={selectedGroupId} onChange={e => setSelectedGroupId(e.target.value)}>
               <option value="">
                 {groups.length === 0 ? 'No groups exist yet' : grantableGroups.length === 0 ? 'No more groups to grant' : 'Select a group to grant access…'}
               </option>

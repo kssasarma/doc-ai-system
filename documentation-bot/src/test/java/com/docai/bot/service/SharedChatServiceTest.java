@@ -23,9 +23,11 @@ import com.docai.bot.application.service.SharedChatService;
 import com.docai.bot.config.UserPrincipal;
 import com.docai.bot.domain.entity.ChatSession;
 import com.docai.bot.domain.entity.SharedChatLink;
+import com.docai.bot.domain.entity.SharedChatRecipient;
 import com.docai.bot.domain.repository.ChatMessageRepository;
 import com.docai.bot.domain.repository.ChatSessionRepository;
 import com.docai.bot.domain.repository.SharedChatLinkRepository;
+import com.docai.bot.domain.repository.SharedChatRecipientRepository;
 import com.docai.bot.domain.repository.UserRepository;
 
 /**
@@ -39,6 +41,7 @@ class SharedChatServiceTest {
     @Mock ChatSessionRepository sessionRepository;
     @Mock ChatMessageRepository messageRepository;
     @Mock UserRepository userRepository;
+    @Mock SharedChatRecipientRepository recipientRepository;
 
     private SharedChatService service;
 
@@ -49,7 +52,7 @@ class SharedChatServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new SharedChatService(linkRepository, sessionRepository, messageRepository, userRepository);
+        service = new SharedChatService(linkRepository, sessionRepository, messageRepository, userRepository, recipientRepository);
     }
 
     private ChatSession ownerSession() {
@@ -142,6 +145,39 @@ class SharedChatServiceTest {
         UserPrincipal teammate = new UserPrincipal(UUID.randomUUID(), "teammate", "USER", tenantA, false);
 
         SharedChatService.SharedChatViewDTO dto = service.getSharedChat("tok-123", teammate);
+
+        assertThat(dto.getChatId()).isEqualTo(chatId.toString());
+    }
+
+    @Test
+    void getSharedChat_nonPublicLink_withRecipients_nonRecipientSameTenantIsRejected() {
+        // Once a link has any named recipient, it's no longer workspace-wide — even a same-tenant
+        // user who isn't on the list must be rejected (this is the whole point of narrowing).
+        SharedChatLink link = link(false, tenantA);
+        when(linkRepository.findByToken("tok-123")).thenReturn(Optional.of(link));
+        when(recipientRepository.findByLinkId(link.getId())).thenReturn(List.of(
+            SharedChatRecipient.builder().linkId(link.getId()).userId(UUID.randomUUID()).grantedBy(ownerId).build()));
+
+        UserPrincipal teammate = new UserPrincipal(UUID.randomUUID(), "teammate", "USER", tenantA, false);
+
+        assertThatThrownBy(() -> service.getSharedChat("tok-123", teammate))
+            .isInstanceOf(AccessDeniedException.class);
+    }
+
+    @Test
+    void getSharedChat_nonPublicLink_withRecipients_namedRecipientIsAllowed() {
+        SharedChatLink link = link(false, tenantA);
+        UUID recipientId = UUID.randomUUID();
+        when(linkRepository.findByToken("tok-123")).thenReturn(Optional.of(link));
+        when(recipientRepository.findByLinkId(link.getId())).thenReturn(List.of(
+            SharedChatRecipient.builder().linkId(link.getId()).userId(recipientId).grantedBy(ownerId).build()));
+        when(sessionRepository.findById(chatId)).thenReturn(Optional.of(ownerSession()));
+        when(messageRepository.findByChatIdOrderByCreatedAtAsc(chatId)).thenReturn(List.of());
+        when(userRepository.findById(ownerId)).thenReturn(Optional.empty());
+
+        UserPrincipal recipient = new UserPrincipal(recipientId, "recipient", "USER", tenantA, false);
+
+        SharedChatService.SharedChatViewDTO dto = service.getSharedChat("tok-123", recipient);
 
         assertThat(dto.getChatId()).isEqualTo(chatId.toString());
     }

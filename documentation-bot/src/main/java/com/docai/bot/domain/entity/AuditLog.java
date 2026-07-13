@@ -31,6 +31,10 @@ public class AuditLog {
     @Column(name = "actor_id")
     private UUID actorId;
 
+    /** Nullable — a handful of system-generated entries have no actor to derive it from. */
+    @Column(name = "tenant_id")
+    private UUID tenantId;
+
     @Column(name = "action", nullable = false, length = 100)
     private String action;
 

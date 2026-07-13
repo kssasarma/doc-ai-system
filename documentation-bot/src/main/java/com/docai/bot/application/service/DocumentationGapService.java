@@ -46,16 +46,45 @@ public class DocumentationGapService {
     @Value("${bot.min-similarity-threshold:0.55}")
     private double minSimilarityThreshold;
 
-    /** Runs on the 1st of each month at 03:00 UTC. */
+    /** Runs on the 1st of each month at 03:00 UTC — one report per tenant per product/version,
+     * never blending different tenants' queries into the same gap-topic cluster. */
     @Scheduled(cron = "0 0 3 1 * *")
+    @Transactional
     public void generateMonthlyReport() {
         log.info("DocumentationGapService: generating monthly gap report");
-        generateReport(null, null);
+        LocalDate periodEnd = LocalDate.now();
+        LocalDate periodStart = periodEnd.minusDays(LOOKBACK_DAYS);
+
+        List<QuerySessionGraph> recent = querySessionGraphRepository.findAllSince(
+            LocalDateTime.now().minusDays(LOOKBACK_DAYS));
+        if (recent.isEmpty()) {
+            log.info("DocumentationGapService: no queries found for period, skipping");
+            return;
+        }
+
+        Map<String, List<QuerySessionGraph>> byTenantAndProduct = new LinkedHashMap<>();
+        for (QuerySessionGraph q : recent) {
+            String key = q.getTenantId() + "||" + q.getProduct() + "||" + q.getVersion();
+            byTenantAndProduct.computeIfAbsent(key, k -> new ArrayList<>()).add(q);
+        }
+
+        int reportsGenerated = 0;
+        for (Map.Entry<String, List<QuerySessionGraph>> entry : byTenantAndProduct.entrySet()) {
+            String[] parts = entry.getKey().split("\\|\\|", 3);
+            java.util.UUID tenantId = java.util.UUID.fromString(parts[0]);
+            String product = "null".equals(parts[1]) ? null : parts[1];
+            String version = parts.length > 2 && !"null".equals(parts[2]) ? parts[2] : null;
+
+            if (buildReport(tenantId, entry.getValue(), product, version, periodStart, periodEnd) != null) {
+                reportsGenerated++;
+            }
+        }
+        log.info("DocumentationGapService: generated {} gap reports across all tenants", reportsGenerated);
     }
 
-    /** Allows admins to trigger on-demand for a specific product. */
+    /** Allows admins to trigger on-demand for a specific product, within their own tenant. */
     @Transactional
-    public DocumentationGapReport generateReport(String product, String version) {
+    public DocumentationGapReport generateReport(java.util.UUID tenantId, String product, String version) {
         LocalDate periodEnd = LocalDate.now();
         LocalDate periodStart = periodEnd.minusDays(LOOKBACK_DAYS);
 
@@ -63,59 +92,61 @@ public class DocumentationGapService {
         // query_logs confidence when available — here we use all queries and let LLM judge)
         List<QuerySessionGraph> recent = (product != null)
             ? querySessionGraphRepository.findRecentQueriesForProduct(
-                product, version, LocalDateTime.now().minusDays(LOOKBACK_DAYS),
+                tenantId, product, version, LocalDateTime.now().minusDays(LOOKBACK_DAYS),
                 java.util.UUID.randomUUID())
             : querySessionGraphRepository.findAllSince(
-                LocalDateTime.now().minusDays(LOOKBACK_DAYS));
+                LocalDateTime.now().minusDays(LOOKBACK_DAYS)).stream()
+                .filter(q -> tenantId.equals(q.getTenantId()))
+                .toList();
 
         if (recent.isEmpty()) {
             log.info("DocumentationGapService: no queries found for period, skipping");
             return null;
         }
 
-        // Group by product/version
-        Map<String, List<QuerySessionGraph>> byProduct = new LinkedHashMap<>();
-        for (QuerySessionGraph q : recent) {
-            String key = q.getProduct() + "||" + q.getVersion();
-            byProduct.computeIfAbsent(key, k -> new ArrayList<>()).add(q);
+        DocumentationGapReport report = buildReport(tenantId, recent, product, version, periodStart, periodEnd);
+        if (report == null) {
+            log.info("DocumentationGapService: no gap clusters found for period, skipping");
         }
+        return report;
+    }
 
+    private DocumentationGapReport buildReport(java.util.UUID tenantId, List<QuerySessionGraph> recent,
+                                                String product, String version,
+                                                LocalDate periodStart, LocalDate periodEnd) {
         int totalLow = 0;
         List<Map<String, Object>> gapTopics = new ArrayList<>();
 
-        for (Map.Entry<String, List<QuerySessionGraph>> entry : byProduct.entrySet()) {
-            String[] parts = entry.getKey().split("\\|\\|", 2);
-            String prod = "null".equals(parts[0]) ? null : parts[0];
-            String ver  = parts.length > 1 && !"null".equals(parts[1]) ? parts[1] : null;
+        List<List<QuerySessionGraph>> clusters = cluster(recent);
+        for (List<QuerySessionGraph> cl : clusters) {
+            if (cl.size() < MIN_CLUSTER_SIZE) continue;
+            totalLow += cl.size();
 
-            List<List<QuerySessionGraph>> clusters = cluster(entry.getValue());
-            for (List<QuerySessionGraph> cl : clusters) {
-                if (cl.size() < MIN_CLUSTER_SIZE) continue;
-                totalLow += cl.size();
+            String canonical = pickRepresentative(cl);
+            List<String> examples = cl.stream()
+                .map(QuerySessionGraph::getQueryText)
+                .distinct().limit(5).toList();
+            long uniqueUsers = cl.stream()
+                .map(QuerySessionGraph::getUserId)
+                .filter(u -> u != null).distinct().count();
 
-                String canonical = pickRepresentative(cl);
-                List<String> examples = cl.stream()
-                    .map(QuerySessionGraph::getQueryText)
-                    .distinct().limit(5).toList();
-                long uniqueUsers = cl.stream()
-                    .map(QuerySessionGraph::getUserId)
-                    .filter(u -> u != null).distinct().count();
+            String stub = generateDocumentationStub(canonical, product, version);
 
-                String stub = generateDocumentationStub(canonical, prod, ver);
-
-                Map<String, Object> topic = new java.util.HashMap<>();
-                topic.put("topic", canonical);
-                topic.put("queryCount", cl.size());
-                topic.put("uniqueUsers", uniqueUsers);
-                topic.put("exampleQuestions", examples);
-                topic.put("suggestedDocStub", stub);
-                gapTopics.add(topic);
-            }
+            Map<String, Object> topic = new java.util.HashMap<>();
+            topic.put("topic", canonical);
+            topic.put("queryCount", cl.size());
+            topic.put("uniqueUsers", uniqueUsers);
+            topic.put("exampleQuestions", examples);
+            topic.put("suggestedDocStub", stub);
+            gapTopics.add(topic);
         }
+
+        if (gapTopics.isEmpty()) return null;
 
         String gapTopicsJson = toJson(gapTopics);
 
         DocumentationGapReport report = DocumentationGapReport.builder()
+            .tenantId(tenantId)
             .product(product)
             .version(version)
             .reportPeriodStart(periodStart)

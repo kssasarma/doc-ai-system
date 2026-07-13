@@ -12,7 +12,8 @@ import com.docai.bot.domain.entity.Escalation;
 @Repository
 public interface EscalationRepository extends JpaRepository<Escalation, UUID> {
     List<Escalation> findByCreatedByOrderByCreatedAtDesc(UUID userId);
-    List<Escalation> findAllByOrderByCreatedAtDesc();
+    List<Escalation> findByTenantIdOrderByCreatedAtDesc(UUID tenantId);
     List<Escalation> findByStatusOrderByCreatedAtDesc(Escalation.Status status);
     Optional<Escalation> findByChatMessageId(UUID chatMessageId);
+    Optional<Escalation> findByIdAndTenantId(UUID id, UUID tenantId);
 }

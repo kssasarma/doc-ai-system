@@ -34,6 +34,9 @@ public class AnswerUpvote {
     @Column(name = "user_id", nullable = false)
     private UUID userId;
 
+    @Column(name = "tenant_id", nullable = false)
+    private UUID tenantId;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;

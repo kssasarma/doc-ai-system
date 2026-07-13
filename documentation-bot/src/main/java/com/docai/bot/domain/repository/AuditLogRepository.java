@@ -13,12 +13,13 @@ import com.docai.bot.domain.entity.AuditLog;
 @Repository
 public interface AuditLogRepository extends JpaRepository<AuditLog, UUID> {
 
-    Page<AuditLog> findAllByOrderByCreatedAtDesc(Pageable pageable);
+    Page<AuditLog> findByTenantIdOrderByCreatedAtDesc(UUID tenantId, Pageable pageable);
 
-    Page<AuditLog> findByActionOrderByCreatedAtDesc(String action, Pageable pageable);
+    Page<AuditLog> findByTenantIdAndActionOrderByCreatedAtDesc(UUID tenantId, String action, Pageable pageable);
 
-    Page<AuditLog> findByCreatedAtAfterOrderByCreatedAtDesc(LocalDateTime since, Pageable pageable);
+    Page<AuditLog> findByTenantIdAndCreatedAtAfterOrderByCreatedAtDesc(
+        UUID tenantId, LocalDateTime since, Pageable pageable);
 
-    Page<AuditLog> findByActionAndCreatedAtAfterOrderByCreatedAtDesc(
-        String action, LocalDateTime since, Pageable pageable);
+    Page<AuditLog> findByTenantIdAndActionAndCreatedAtAfterOrderByCreatedAtDesc(
+        UUID tenantId, String action, LocalDateTime since, Pageable pageable);
 }

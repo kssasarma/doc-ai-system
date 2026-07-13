@@ -13,13 +13,15 @@ import com.docai.bot.domain.entity.DocumentationGapReport;
 @Repository
 public interface DocumentationGapReportRepository extends JpaRepository<DocumentationGapReport, UUID> {
 
-    List<DocumentationGapReport> findByProductOrderByReportPeriodEndDesc(String product);
+    List<DocumentationGapReport> findByTenantIdAndProductOrderByReportPeriodEndDesc(UUID tenantId, String product);
 
-    List<DocumentationGapReport> findAllByOrderByReportPeriodEndDesc();
+    List<DocumentationGapReport> findByTenantIdOrderByReportPeriodEndDesc(UUID tenantId);
 
-    Optional<DocumentationGapReport> findTopByProductAndVersionOrderByReportPeriodEndDesc(
-        String product, String version);
+    Optional<DocumentationGapReport> findByIdAndTenantId(UUID id, UUID tenantId);
 
-    boolean existsByProductAndVersionAndReportPeriodEnd(
-        String product, String version, LocalDate reportPeriodEnd);
+    Optional<DocumentationGapReport> findTopByTenantIdAndProductAndVersionOrderByReportPeriodEndDesc(
+        UUID tenantId, String product, String version);
+
+    boolean existsByTenantIdAndProductAndVersionAndReportPeriodEnd(
+        UUID tenantId, String product, String version, LocalDate reportPeriodEnd);
 }

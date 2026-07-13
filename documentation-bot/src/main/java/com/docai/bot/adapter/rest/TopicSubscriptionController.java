@@ -41,7 +41,7 @@ public class TopicSubscriptionController {
             @AuthenticationPrincipal UserPrincipal principal) {
 
         TopicSubscription sub = subscriptionService.subscribe(
-            principal.userId(), request.getTopic(),
+            principal.userId(), principal.tenantId(), request.getTopic(),
             request.getProduct(), request.getVersion()
         );
         return ResponseEntity.ok(sub);

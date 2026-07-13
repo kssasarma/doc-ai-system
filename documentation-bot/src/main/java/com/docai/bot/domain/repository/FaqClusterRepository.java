@@ -12,9 +12,9 @@ import com.docai.bot.domain.entity.FaqCluster;
 @Repository
 public interface FaqClusterRepository extends JpaRepository<FaqCluster, UUID> {
 
-    List<FaqCluster> findByProductAndVersionAndPeriodStartAndPeriodEnd(
-        String product, String version, LocalDate periodStart, LocalDate periodEnd);
+    List<FaqCluster> findByTenantIdAndProductAndVersionAndPeriodStartAndPeriodEnd(
+        UUID tenantId, String product, String version, LocalDate periodStart, LocalDate periodEnd);
 
-    List<FaqCluster> findByProductAndPeriodStartGreaterThanEqualOrderByQueryCountDesc(
-        String product, LocalDate since);
+    List<FaqCluster> findByTenantIdAndProductAndPeriodStartGreaterThanEqualOrderByQueryCountDesc(
+        UUID tenantId, String product, LocalDate since);
 }

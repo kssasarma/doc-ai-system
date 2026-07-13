@@ -6,21 +6,7 @@
     "version": "1.0.0",
     "logo": "MessageCircle"
   },
-  "api": {
-    "endpoint": "/ask",
-    "timeout": 30000
-  },
   "ui": {
-    "theme": {
-      "primary": "#3B82F6",
-      "secondary": "#1E40AF",
-      "success": "#10B981",
-      "warning": "#F59E0B",
-      "error": "#EF4444",
-      "background": "#F8FAFC",
-      "surface": "#FFFFFF",
-      "text": "#1F2937"
-    },
     "sidebar": {
       "width": "320px",
       "collapsedWidth": "64px"

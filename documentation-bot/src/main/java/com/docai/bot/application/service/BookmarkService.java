@@ -1,6 +1,7 @@
 package com.docai.bot.application.service;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -24,6 +25,10 @@ public class BookmarkService {
     public BookmarkDTO createBookmark(UUID userId, UUID chatMessageId, UUID chatId,
                                       String messageExcerpt, String title, String note,
                                       String[] tags) {
+        Optional<Bookmark> existing = bookmarkRepository.findByUserIdAndChatMessageId(userId, chatMessageId);
+        if (existing.isPresent()) {
+            return toDTO(existing.get());
+        }
         Bookmark bookmark = Bookmark.builder()
             .userId(userId)
             .chatMessageId(chatMessageId)
@@ -52,6 +57,15 @@ public class BookmarkService {
             .ifPresent(b -> {
                 bookmarkRepository.delete(b);
                 log.info("Deleted bookmark {} for user {}", bookmarkId, userId);
+            });
+    }
+
+    @Transactional
+    public void deleteBookmarkByMessage(UUID userId, UUID chatMessageId) {
+        bookmarkRepository.findByUserIdAndChatMessageId(userId, chatMessageId)
+            .ifPresent(b -> {
+                bookmarkRepository.delete(b);
+                log.info("Deleted bookmark {} for user {} via message toggle", b.getId(), userId);
             });
     }
 

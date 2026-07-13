@@ -8,6 +8,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.docai.bot.domain.entity.Notification;
 import com.docai.bot.domain.entity.TopicSubscription;
+import com.docai.bot.domain.model.SearchScope;
+import com.docai.bot.domain.repository.DocumentRepository;
 import com.docai.bot.domain.repository.NotificationRepository;
 import com.docai.bot.domain.repository.TopicSubscriptionRepository;
 
@@ -29,14 +31,16 @@ public class TopicSubscriptionService {
     private final TopicSubscriptionRepository subscriptionRepository;
     private final NotificationRepository notificationRepository;
     private final VectorSearchService vectorSearchService;
+    private final DocumentRepository documentRepository;
 
     @Transactional
-    public TopicSubscription subscribe(UUID userId, String topic, String product, String version) {
+    public TopicSubscription subscribe(UUID userId, UUID tenantId, String topic, String product, String version) {
         subscriptionRepository.findByUserIdAndTopicAndProductAndVersion(userId, topic, product, version)
             .ifPresent(existing -> { throw new IllegalStateException("Already subscribed to this topic"); });
 
         TopicSubscription sub = TopicSubscription.builder()
             .userId(userId)
+            .tenantId(tenantId)
             .topic(topic)
             .product(product)
             .version(version)
@@ -64,18 +68,20 @@ public class TopicSubscriptionService {
      * Checks all subscriptions for the product/version and notifies matched users.
      */
     @Transactional
-    public void notifySubscribersForProduct(String product, String version, String documentName) {
+    public void notifySubscribersForProduct(UUID tenantId, String product, String version, String documentName) {
         List<TopicSubscription> subs = version != null
-            ? subscriptionRepository.findByProductAndVersion(product, version)
-            : subscriptionRepository.findByProduct(product);
+            ? subscriptionRepository.findByTenantIdAndProductAndVersion(tenantId, product, version)
+            : subscriptionRepository.findByTenantIdAndProduct(tenantId, product);
 
         if (subs.isEmpty()) return;
 
+        SearchScope scope = new SearchScope(tenantId, documentRepository.findIdsByTenantId(tenantId))
+            .withVersionNarrow(product, version);
         for (TopicSubscription sub : subs) {
             try {
                 // Use vector search to check if new document content is relevant to subscribed topic
                 List<com.docai.bot.domain.model.RetrievedChunk> chunks =
-                    vectorSearchService.search(sub.getTopic(), product, version);
+                    vectorSearchService.search(sub.getTopic(), scope);
 
                 boolean relevant = chunks.stream()
                     .anyMatch(c -> c.getSimilarity() >= NOTIFY_THRESHOLD

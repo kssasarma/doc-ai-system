@@ -206,7 +206,8 @@
 			<scope>test</scope>
 		</dependency>
 
-		<!-- Phase 7: AWS SDK v2 S3 (S3DocumentStorageService) -->
+		<!-- Phase 7: AWS SDK v2 S3 (S3DocumentStorageService) — S3Presigner/GetObjectPresignRequest
+		     for presigned download URLs live in this same artifact, no separate dependency needed. -->
 		<dependency>
 			<groupId>software.amazon.awssdk</groupId>
 			<artifactId>s3</artifactId>

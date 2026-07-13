@@ -1,7 +1,9 @@
 package com.docai.bot.application.service;
 
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,6 +31,7 @@ public class TenantService {
     private final TenantLLMConfigRepository llmConfigRepository;
     private final DataRetentionPolicyRepository retentionRepository;
     private final SharedChatLinkRepository sharedChatLinkRepository;
+    private final List<LLMProvider> llmProviders;
 
     public List<Tenant> listAll() {
         return tenantRepository.findAll();
@@ -104,6 +107,20 @@ public class TenantService {
 
     @Transactional
     public TenantLLMConfig updateLLMConfig(UUID tenantId, TenantLLMConfig update) {
+        // LLMRouter silently falls back to OpenAI for any provider name it doesn't recognize —
+        // reject an unregistered one here instead of letting an admin "configure" a provider
+        // that's actually never used.
+        Set<String> validProviders = llmProviders.stream()
+            .map(LLMProvider::providerName).collect(Collectors.toSet());
+        if (!validProviders.contains(update.getChatProvider())) {
+            throw new IllegalArgumentException(
+                "Unknown chat provider '" + update.getChatProvider() + "' — must be one of " + validProviders);
+        }
+        if (!validProviders.contains(update.getEmbeddingProvider())) {
+            throw new IllegalArgumentException(
+                "Unknown embedding provider '" + update.getEmbeddingProvider() + "' — must be one of " + validProviders);
+        }
+
         TenantLLMConfig config = llmConfigRepository.findByTenantId(tenantId)
             .orElseGet(() -> TenantLLMConfig.builder().tenantId(tenantId).build());
         config.setChatProvider(update.getChatProvider());

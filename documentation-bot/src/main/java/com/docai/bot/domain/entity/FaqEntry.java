@@ -42,6 +42,10 @@ public class FaqEntry {
     @Column(name = "cluster_id")
     private UUID clusterId;
 
+    /** Nullable only for rows generated before tenant scoping existed — see V20 migration. */
+    @Column(name = "tenant_id")
+    private UUID tenantId;
+
     @Column(name = "question", columnDefinition = "TEXT", nullable = false)
     private String question;
 

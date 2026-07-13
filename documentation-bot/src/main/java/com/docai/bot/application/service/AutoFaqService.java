@@ -15,6 +15,8 @@ import com.docai.bot.domain.entity.FaqCluster;
 import com.docai.bot.domain.entity.FaqEntry;
 import com.docai.bot.domain.entity.FaqEntry.Status;
 import com.docai.bot.domain.entity.QuerySessionGraph;
+import com.docai.bot.domain.model.SearchScope;
+import com.docai.bot.domain.repository.DocumentRepository;
 import com.docai.bot.domain.repository.FaqClusterRepository;
 import com.docai.bot.domain.repository.FaqEntryRepository;
 import com.docai.bot.domain.repository.QuerySessionGraphRepository;
@@ -45,6 +47,7 @@ public class AutoFaqService {
     private final FaqEntryRepository faqEntryRepository;
     private final VectorSearchService vectorSearchService;
     private final AnswerGenerationService answerGenerationService;
+    private final DocumentRepository documentRepository;
 
     /** Runs every Sunday at 02:00 UTC. */
     @Scheduled(cron = "0 0 2 * * SUN")
@@ -63,44 +66,46 @@ public class AutoFaqService {
 
         log.info("AutoFaqService: clustering {} queries", recent.size());
 
-        // Group by product/version first to keep clusters semantically coherent
-        Map<String, List<QuerySessionGraph>> byProduct = new LinkedHashMap<>();
+        // Group by tenant + product/version first to keep clusters semantically coherent AND
+        // never blend two tenants' questions into the same generated FAQ entry.
+        Map<String, List<QuerySessionGraph>> byTenantAndProduct = new LinkedHashMap<>();
         for (QuerySessionGraph q : recent) {
-            String key = q.getProduct() + "||" + q.getVersion();
-            byProduct.computeIfAbsent(key, k -> new ArrayList<>()).add(q);
+            String key = q.getTenantId() + "||" + q.getProduct() + "||" + q.getVersion();
+            byTenantAndProduct.computeIfAbsent(key, k -> new ArrayList<>()).add(q);
         }
 
         int totalGenerated = 0;
-        for (Map.Entry<String, List<QuerySessionGraph>> entry : byProduct.entrySet()) {
-            String[] parts = entry.getKey().split("\\|\\|", 2);
-            String product = "null".equals(parts[0]) ? null : parts[0];
-            String version = parts.length > 1 && !"null".equals(parts[1]) ? parts[1] : null;
+        for (Map.Entry<String, List<QuerySessionGraph>> entry : byTenantAndProduct.entrySet()) {
+            String[] parts = entry.getKey().split("\\|\\|", 3);
+            java.util.UUID tenantId = java.util.UUID.fromString(parts[0]);
+            String product = "null".equals(parts[1]) ? null : parts[1];
+            String version = parts.length > 2 && !"null".equals(parts[2]) ? parts[2] : null;
 
             List<List<QuerySessionGraph>> clusters = cluster(entry.getValue());
             for (List<QuerySessionGraph> cluster : clusters) {
                 if (cluster.size() < MIN_CLUSTER_SIZE) continue;
-                totalGenerated += generateFaqForCluster(cluster, product, version, periodStart, periodEnd);
+                totalGenerated += generateFaqForCluster(cluster, tenantId, product, version, periodStart, periodEnd);
             }
         }
 
         log.info("AutoFaqService: generated {} new FAQ entries pending review", totalGenerated);
     }
 
-    /** Allows admins to trigger FAQ generation on demand for a specific product. */
+    /** Allows admins to trigger FAQ generation on demand for a specific product, within their own tenant. */
     @Transactional
-    public int generateForProduct(String product, String version) {
+    public int generateForProduct(java.util.UUID tenantId, String product, String version) {
         LocalDate periodEnd = LocalDate.now();
         LocalDate periodStart = periodEnd.minusDays(LOOKBACK_DAYS);
 
         List<QuerySessionGraph> recent = querySessionGraphRepository
-            .findRecentQueriesForProduct(product, version,
+            .findRecentQueriesForProduct(tenantId, product, version,
                 LocalDateTime.now().minusDays(LOOKBACK_DAYS), java.util.UUID.randomUUID());
 
         List<List<QuerySessionGraph>> clusters = cluster(recent);
         int count = 0;
         for (List<QuerySessionGraph> cl : clusters) {
             if (cl.size() < MIN_CLUSTER_SIZE) continue;
-            count += generateFaqForCluster(cl, product, version, periodStart, periodEnd);
+            count += generateFaqForCluster(cl, tenantId, product, version, periodStart, periodEnd);
         }
         return count;
     }
@@ -134,7 +139,7 @@ public class AutoFaqService {
     // ── FAQ Generation ────────────────────────────────────────────────────────
 
     @Transactional
-    int generateFaqForCluster(List<QuerySessionGraph> cluster, String product, String version,
+    int generateFaqForCluster(List<QuerySessionGraph> cluster, java.util.UUID tenantId, String product, String version,
                                LocalDate periodStart, LocalDate periodEnd) {
         String canonical = pickCanonical(cluster);
         long uniqueUsers = cluster.stream()
@@ -142,13 +147,14 @@ public class AutoFaqService {
 
         // Avoid regenerating the same cluster in the same period
         boolean alreadyExists = faqClusterRepository
-            .findByProductAndVersionAndPeriodStartAndPeriodEnd(product, version, periodStart, periodEnd)
+            .findByTenantIdAndProductAndVersionAndPeriodStartAndPeriodEnd(tenantId, product, version, periodStart, periodEnd)
             .stream()
             .anyMatch(fc -> jaccardSimilarity(tokenize(fc.getCanonicalQuestion()),
                                               tokenize(canonical)) > 0.6);
         if (alreadyExists) return 0;
 
         FaqCluster faqCluster = FaqCluster.builder()
+            .tenantId(tenantId)
             .product(product)
             .version(version)
             .canonicalQuestion(canonical)
@@ -159,14 +165,20 @@ public class AutoFaqService {
             .build();
         faqCluster = faqClusterRepository.save(faqCluster);
 
-        var chunks = vectorSearchService.search(canonical, product, version);
+        // Tenant-scoped: an admin's implicit full-corpus visibility, same as chat retrieval for
+        // an ADMIN caller (see GrantBasedDocumentAccessPolicy) — never the deprecated
+        // all-tenants search, since the generated answer becomes tenant-facing content.
+        SearchScope scope = new SearchScope(tenantId, documentRepository.findIdsByTenantId(tenantId))
+            .withVersionNarrow(product, version);
+        var chunks = vectorSearchService.search(canonical, scope);
         AnswerGenerationService.AnswerResult result =
-            answerGenerationService.generateAnswer(canonical, null, chunks, "BALANCED", "PROSE");
+            answerGenerationService.generateAnswer(canonical, null, chunks, "BALANCED", "PROSE", product, version);
 
         String sourcesJson = buildSourcesJson(chunks);
 
         FaqEntry entry = FaqEntry.builder()
             .clusterId(faqCluster.getId())
+            .tenantId(tenantId)
             .question(canonical)
             .answer(result.answer())
             .product(product)

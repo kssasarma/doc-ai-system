@@ -138,7 +138,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       <div className="flex-1 overflow-y-auto p-2">
         {isCollapsed ? (
           <div className="flex flex-col gap-2">
-            {sessions.slice(0, 5).map(session => (
+            {sortedSessions.slice(0, 5).map(session => (
               <button
                 key={session.chatId}
                 onClick={() => onSelectSession(session.chatId)}

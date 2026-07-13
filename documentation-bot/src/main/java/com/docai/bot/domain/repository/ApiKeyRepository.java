@@ -16,6 +16,8 @@ public interface ApiKeyRepository extends JpaRepository<ApiKey, UUID> {
 
     List<ApiKey> findByUserIdOrderByCreatedAtDesc(UUID userId);
 
+    void deleteByUserId(UUID userId);
+
     @Modifying
     @Query("UPDATE ApiKey k SET k.lastUsedAt = CURRENT_TIMESTAMP WHERE k.id = :id")
     void updateLastUsed(UUID id);

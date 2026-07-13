@@ -27,6 +27,7 @@ import lombok.RequiredArgsConstructor;
 public class SecurityConfig {
 
     private final JwtTokenFilter jwtTokenFilter;
+    private final RequestCorrelationFilter requestCorrelationFilter;
 
     @Value("${app.cors.allowed-origins:http://localhost:5173,http://localhost:3000}")
     private String allowedOrigins;
@@ -51,10 +52,10 @@ public class SecurityConfig {
             )
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(PUBLIC_PATHS).permitAll()
-                .requestMatchers("/api/connectors/**").authenticated()
                 .anyRequest().hasRole("ADMIN")
             )
             .addFilterBefore(jwtTokenFilter, UsernamePasswordAuthenticationFilter.class)
+            .addFilterBefore(requestCorrelationFilter, JwtTokenFilter.class)
             .build();
     }
 

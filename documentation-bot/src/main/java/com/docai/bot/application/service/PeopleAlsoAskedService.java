@@ -9,7 +9,10 @@ import java.util.stream.Collectors;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.event.TransactionPhase;
+import org.springframework.transaction.event.TransactionalEventListener;
 
+import com.docai.bot.application.event.ChatQueryRecordedEvent;
 import com.docai.bot.domain.entity.QuerySessionGraph;
 import com.docai.bot.domain.repository.QuerySessionGraphRepository;
 
@@ -34,17 +37,21 @@ public class PeopleAlsoAskedService {
 
     private final QuerySessionGraphRepository querySessionGraphRepository;
 
+    // Async AND gated on commit — same reasoning as AnalyticsService.onQueryRecorded: this
+    // used to be a plain @Async method called mid-transaction, which could race the owning
+    // session's own INSERT and intermittently fail the FK to chat_sessions.
     @Async
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Transactional
-    public void recordQuery(UUID sessionId, UUID userId, String queryText,
-                            String product, String version) {
+    public void onQueryRecorded(ChatQueryRecordedEvent event) {
         try {
             QuerySessionGraph node = QuerySessionGraph.builder()
-                .sessionId(sessionId)
-                .userId(userId)
-                .queryText(queryText)
-                .product(product)
-                .version(version)
+                .sessionId(event.sessionId())
+                .tenantId(event.tenantId())
+                .userId(event.userId())
+                .queryText(event.question())
+                .product(event.product())
+                .version(event.version())
                 .askedAt(LocalDateTime.now())
                 .build();
             querySessionGraphRepository.save(node);
@@ -59,13 +66,13 @@ public class PeopleAlsoAskedService {
      * (no additional embedding call needed).
      */
     @Transactional(readOnly = true)
-    public List<String> getPeopleAlsoAsked(String currentQuery, UUID currentSessionId,
+    public List<String> getPeopleAlsoAsked(String currentQuery, UUID tenantId, UUID currentSessionId,
                                             String product, String version) {
         if (currentQuery == null || currentQuery.isBlank()) return List.of();
 
         LocalDateTime since = LocalDateTime.now().minusDays(LOOKBACK_DAYS);
         List<QuerySessionGraph> candidates = querySessionGraphRepository
-            .findRecentQueriesForProduct(product, version, since, currentSessionId);
+            .findRecentQueriesForProduct(tenantId, product, version, since, currentSessionId);
 
         if (candidates.size() < 5) {
             // Not enough data yet — caller will use LLM-generated questions instead

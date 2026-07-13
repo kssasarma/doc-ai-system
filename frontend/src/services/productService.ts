@@ -1,6 +1,7 @@
+import { BACKEND_URL } from '../config/backend';
 import { ProductEntry } from '../types';
 
-const BASE = `${import.meta.env.VITE_BACKEND_URL || 'http://localhost:8082'}/api/products`;
+const BASE = `${BACKEND_URL}/api/products`;
 
 /** Distinct product+version pairs the caller can actually search — backs the chat scope chip. */
 export async function fetchAccessibleProducts(token: string): Promise<ProductEntry[]> {

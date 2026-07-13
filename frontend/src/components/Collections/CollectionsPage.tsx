@@ -114,6 +114,7 @@ const CollectionsPage: React.FC = () => {
           <div className="px-4 py-3 border-b border-border space-y-2 bg-primary/10">
             <Input
               type="text"
+              aria-label="Collection name"
               placeholder="Collection name"
               value={newName}
               onChange={e => setNewName(e.target.value)}
@@ -123,6 +124,7 @@ const CollectionsPage: React.FC = () => {
             />
             <Input
               type="text"
+              aria-label="Collection description"
               placeholder="Description (optional)"
               value={newDesc}
               onChange={e => setNewDesc(e.target.value)}

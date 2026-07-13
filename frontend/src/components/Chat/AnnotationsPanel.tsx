@@ -80,6 +80,7 @@ const AnnotationsPanel: React.FC<AnnotationsPanelProps> = ({ chunkId }) => {
                 onChange={e => setNewBody(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleAdd()}
                 autoFocus
+                aria-label="Note text"
                 className="flex-1 px-2 py-1.5 text-xs bg-surface border border-accent/25 rounded-lg text-foreground focus:outline-none focus:ring-1 focus:ring-accent"
               />
               <button

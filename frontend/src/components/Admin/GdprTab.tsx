@@ -13,8 +13,9 @@ import { SkeletonRow } from '../ui/Skeleton';
 import { useToast } from '../ui/Toast';
 import { fadeInUp, staggerContainer } from '../../lib/motion';
 import { cn } from '../../lib/cn';
+import { BACKEND_URL } from '../../config/backend';
 
-const BOT_URL = import.meta.env.VITE_BOT_API_URL ?? 'http://localhost:8082';
+const BOT_URL = BACKEND_URL;
 
 interface DeletionRequest {
   id: string;

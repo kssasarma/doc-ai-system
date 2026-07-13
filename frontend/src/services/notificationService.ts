@@ -1,7 +1,7 @@
-import appConfig from '../config/app.json';
+import { BACKEND_URL } from '../config/backend';
 import { AppNotification } from '../types';
 
-const BASE = appConfig.api.endpoint;
+const BASE = BACKEND_URL;
 
 interface ApiResult<T> { success: boolean; data?: T; error?: string; }
 

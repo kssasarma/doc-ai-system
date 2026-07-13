@@ -32,7 +32,7 @@ public class EscalationController {
 
     @GetMapping
     public ResponseEntity<List<EscalationDTO>> listEscalations(@AuthenticationPrincipal UserPrincipal principal) {
-        return ResponseEntity.ok(escalationService.listEscalations(principal.userId(), principal.isAdmin()));
+        return ResponseEntity.ok(escalationService.listEscalations(principal));
     }
 
     @PostMapping("/messages/{messageId}")
@@ -47,7 +47,7 @@ public class EscalationController {
             request.getAiAnswerText(),
             request.getProduct(),
             request.getVersion(),
-            principal.userId()
+            principal
         ));
     }
 
@@ -58,7 +58,7 @@ public class EscalationController {
             @AuthenticationPrincipal UserPrincipal principal) {
 
         return ResponseEntity.ok(escalationService.answerEscalation(
-            UUID.fromString(id), principal.userId(), request.getExpertAnswer()));
+            UUID.fromString(id), principal, request.getExpertAnswer()));
     }
 
     @PatchMapping("/{id}/status")
@@ -68,7 +68,7 @@ public class EscalationController {
             @AuthenticationPrincipal UserPrincipal principal) {
 
         return ResponseEntity.ok(escalationService.updateStatus(
-            UUID.fromString(id), principal.userId(),
+            UUID.fromString(id), principal,
             Escalation.Status.valueOf(request.getStatus())));
     }
 

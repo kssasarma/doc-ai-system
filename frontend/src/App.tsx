@@ -4,6 +4,7 @@ import { useAuth } from './context/AuthContext';
 import { useChatSessions } from './hooks/useChatSessions';
 import { createMessage } from './utils/chatUtils';
 import { sendChatMessage } from './services/chatService';
+import { BackendChatResponse } from './types';
 import appConfig from './config/app.json';
 import LoginPage from './components/Auth/LoginPage';
 import ChangePasswordPage from './components/Auth/ChangePasswordPage';
@@ -37,6 +38,7 @@ function ChatPage() {
     activeSession,
     activeSessionId,
     isLoading: isLoadingSessions,
+    isLoadingHistory,
     createSession,
     deleteSession,
     updateSession,
@@ -65,9 +67,7 @@ function ChatPage() {
       typingMessage.isTyping = true;
       addMessage(activeSessionId, typingMessage);
 
-      const chatIdToSend = activeSessionId.includes('-') && activeSessionId.length > 40
-        ? undefined
-        : activeSessionId;
+      const chatIdToSend = currentSession.isPersisted ? activeSessionId : undefined;
 
       const response = await sendChatMessage(content, token, chatIdToSend, scope);
 
@@ -120,10 +120,16 @@ function ChatPage() {
     if (session) updateSession(chatId, { pinned: !session.pinned });
   }, [sessions, updateSession]);
 
-  const handleRegeneratedAnswer = useCallback((messageId: string, newAnswer: string, relatedQuestions: string[]) => {
+  const handleRegeneratedAnswer = useCallback((messageId: string, response: BackendChatResponse) => {
     const effectiveChatId = activeSession?.chatId ?? activeSessionId;
     if (!effectiveChatId) return;
-    updateMessage(effectiveChatId, messageId, { content: newAnswer, relatedQuestions });
+    updateMessage(effectiveChatId, messageId, {
+      content: response.answer,
+      sources: response.sources,
+      confidence: response.confidence,
+      relatedQuestions: response.relatedQuestions ?? [],
+      reasoningChain: response.reasoningChain,
+    });
   }, [activeSession, activeSessionId, updateMessage]);
 
   return (
@@ -145,7 +151,7 @@ function ChatPage() {
           onSendMessage={handleSendMessage}
           isLoading={isLoading}
           onCreateSession={createSession}
-          chatNotFound={!isLoadingSessions && !!activeSessionId && !activeSession}
+          chatNotFound={!isLoadingSessions && !isLoadingHistory && !!activeSessionId && !activeSession}
           onRenameSession={handleRenameSession}
           onRegeneratedAnswer={handleRegeneratedAnswer}
         />

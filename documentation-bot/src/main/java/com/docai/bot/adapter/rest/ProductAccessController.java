@@ -50,7 +50,7 @@ public class ProductAccessController {
             request.getVersion(),
             principal.userId()
         );
-        auditLogService.log(principal.userId(), "PRODUCT_ACCESS_GRANT", "USER",
+        auditLogService.log(principal.userId(), principal.tenantId(), "PRODUCT_ACCESS_GRANT", "USER",
             UUID.fromString(request.getUserId()),
             request.getProduct() + " " + request.getVersion(), null);
         return ResponseEntity.ok(grant);
@@ -61,7 +61,7 @@ public class ProductAccessController {
             @PathVariable String id,
             @AuthenticationPrincipal UserPrincipal principal) {
         productAccessService.revokeAccess(UUID.fromString(id), principal.userId());
-        auditLogService.log(principal.userId(), "PRODUCT_ACCESS_REVOKE", "ACCESS_GRANT",
+        auditLogService.log(principal.userId(), principal.tenantId(), "PRODUCT_ACCESS_REVOKE", "ACCESS_GRANT",
             UUID.fromString(id), null, null);
         return ResponseEntity.noContent().build();
     }

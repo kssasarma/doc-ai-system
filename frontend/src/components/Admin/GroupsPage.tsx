@@ -28,7 +28,6 @@ export default function GroupsPage() {
 
   const [newGroupName, setNewGroupName] = useState('');
   const [creating, setCreating] = useState(false);
-  const [createMsg, setCreateMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const [expandedGroupId, setExpandedGroupId] = useState<string | null>(null);
 
@@ -56,15 +55,14 @@ export default function GroupsPage() {
     e.preventDefault();
     if (!token || !newGroupName.trim()) return;
     setCreating(true);
-    setCreateMsg(null);
     try {
       await createGroup(token, newGroupName.trim());
       setNewGroupName('');
-      setCreateMsg({ type: 'success', text: 'Group created.' });
+      toast.success('Group created.');
       await load();
     } catch (e) {
       const detail = (e as { response?: { data?: { error?: string } } })?.response?.data?.error;
-      setCreateMsg({ type: 'error', text: detail || 'Failed to create group.' });
+      toast.error(detail || 'Failed to create group.');
     } finally {
       setCreating(false);
     }
@@ -100,6 +98,7 @@ export default function GroupsPage() {
               <div className="flex-1">
                 <Input
                   type="text"
+                  aria-label="New group name"
                   value={newGroupName}
                   onChange={e => setNewGroupName(e.target.value)}
                   required
@@ -115,18 +114,6 @@ export default function GroupsPage() {
                 {creating ? 'Creating…' : 'Create group'}
               </Button>
             </form>
-            {createMsg && (
-              <div
-                className={
-                  createMsg.type === 'success'
-                    ? 'flex items-center gap-2 text-xs mt-3 rounded-lg px-3 py-2 bg-success/10 text-success'
-                    : 'flex items-center gap-2 text-xs mt-3 rounded-lg px-3 py-2 bg-danger/10 text-danger'
-                }
-              >
-                <AlertCircle size={14} className="flex-shrink-0" />
-                {createMsg.text}
-              </div>
-            )}
           </Card>
         </motion.div>
 
@@ -251,7 +238,6 @@ function GroupMembersPanel({
   const handleAdd = async () => {
     if (!selectedUserId) return;
     setAdding(true);
-    setError('');
     try {
       await addGroupMember(token, groupId, selectedUserId);
       setSelectedUserId('');
@@ -259,7 +245,7 @@ function GroupMembersPanel({
       onMembershipChanged();
       toast.success('Member added.');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to add member');
+      toast.error(e instanceof Error ? e.message : 'Failed to add member.');
     } finally {
       setAdding(false);
     }
@@ -273,7 +259,7 @@ function GroupMembersPanel({
       onMembershipChanged();
       toast.success('Member removed.');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to remove member');
+      toast.error(e instanceof Error ? e.message : 'Failed to remove member.');
     } finally {
       setRemovingUserId(null);
     }
@@ -283,7 +269,7 @@ function GroupMembersPanel({
     <div className="space-y-3">
       <div className="flex flex-col sm:flex-row gap-2">
         <div className="flex-1">
-          <Select value={selectedUserId} onChange={e => setSelectedUserId(e.target.value)}>
+          <Select aria-label="Select a user to add to this group" value={selectedUserId} onChange={e => setSelectedUserId(e.target.value)}>
             <option value="">
               {addableUsers.length === 0 ? 'No more users to add' : 'Select a user to add…'}
             </option>

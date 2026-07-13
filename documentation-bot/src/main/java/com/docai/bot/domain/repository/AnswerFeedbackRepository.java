@@ -13,5 +13,6 @@ public interface AnswerFeedbackRepository extends JpaRepository<AnswerFeedback, 
 
     Optional<AnswerFeedback> findByChatMessageIdAndUserId(UUID chatMessageId, UUID userId);
 
-    long countByRating(short rating);
+    long countByTenantIdAndRating(UUID tenantId, short rating);
+    void deleteByUserId(UUID userId);
 }

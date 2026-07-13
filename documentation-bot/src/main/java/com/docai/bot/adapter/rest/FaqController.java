@@ -32,30 +32,33 @@ public class FaqController {
     private final FaqEntryRepository faqEntryRepository;
     private final AutoFaqService autoFaqService;
 
-    /** Public: browse approved FAQ entries. */
+    /** Authenticated, tenant-scoped: browse approved FAQ entries for the caller's own tenant. */
     @GetMapping
     public ResponseEntity<Page<FaqEntry>> listApproved(
             @RequestParam(required = false) String product,
             @RequestParam(required = false) String version,
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size) {
+            @RequestParam(defaultValue = "20") int size,
+            @AuthenticationPrincipal UserPrincipal principal) {
 
+        UUID tenantId = principal.tenantId();
         PageRequest pageable = PageRequest.of(page, size, Sort.by("helpfulCount").descending());
         Page<FaqEntry> result;
         if (product != null && version != null) {
-            result = faqEntryRepository.findByProductAndVersionAndStatus(product, version, Status.APPROVED, pageable);
+            result = faqEntryRepository.findByTenantIdAndProductAndVersionAndStatus(tenantId, product, version, Status.APPROVED, pageable);
         } else if (product != null) {
-            result = faqEntryRepository.findByProductAndStatus(product, Status.APPROVED, pageable);
+            result = faqEntryRepository.findByTenantIdAndProductAndStatus(tenantId, product, Status.APPROVED, pageable);
         } else {
-            result = faqEntryRepository.findByStatus(Status.APPROVED, pageable);
+            result = faqEntryRepository.findByTenantIdAndStatus(tenantId, Status.APPROVED, pageable);
         }
         return ResponseEntity.ok(result);
     }
 
-    /** Public: view a single FAQ entry (increments view count). */
+    /** Authenticated, tenant-scoped: view a single FAQ entry (increments view count). */
     @GetMapping("/{id}")
-    public ResponseEntity<FaqEntry> getEntry(@PathVariable UUID id) {
-        return faqEntryRepository.findById(id)
+    public ResponseEntity<FaqEntry> getEntry(@PathVariable UUID id,
+                                              @AuthenticationPrincipal UserPrincipal principal) {
+        return faqEntryRepository.findByIdAndTenantId(id, principal.tenantId())
             .filter(e -> e.getStatus() == Status.APPROVED)
             .map(e -> {
                 faqEntryRepository.incrementViewCount(id);
@@ -68,7 +71,7 @@ public class FaqController {
     @PostMapping("/{id}/helpful")
     public ResponseEntity<Void> markHelpful(@PathVariable UUID id,
                                              @AuthenticationPrincipal UserPrincipal principal) {
-        faqEntryRepository.findById(id)
+        faqEntryRepository.findByIdAndTenantId(id, principal.tenantId())
             .filter(e -> e.getStatus() == Status.APPROVED)
             .ifPresent(e -> faqEntryRepository.incrementHelpfulCount(id));
         return ResponseEntity.noContent().build();
@@ -76,7 +79,7 @@ public class FaqController {
 
     // ── Admin endpoints ─────────────────────────────────────────────────────
 
-    /** Admin: list all PENDING entries for review. */
+    /** Admin: list all PENDING entries for their tenant, for review. */
     @GetMapping("/admin/pending")
     public ResponseEntity<Page<FaqEntry>> listPending(
             @RequestParam(defaultValue = "0") int page,
@@ -85,15 +88,15 @@ public class FaqController {
 
         if (!principal.isAdmin()) return ResponseEntity.status(403).build();
         PageRequest pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
-        return ResponseEntity.ok(faqEntryRepository.findByStatus(Status.PENDING, pageable));
+        return ResponseEntity.ok(faqEntryRepository.findByTenantIdAndStatus(principal.tenantId(), Status.PENDING, pageable));
     }
 
-    /** Admin: approve a pending FAQ entry. */
+    /** Admin: approve a pending FAQ entry belonging to their own tenant. */
     @PutMapping("/admin/{id}/approve")
     public ResponseEntity<FaqEntry> approve(@PathVariable UUID id,
                                              @AuthenticationPrincipal UserPrincipal principal) {
         if (!principal.isAdmin()) return ResponseEntity.status(403).build();
-        return faqEntryRepository.findById(id)
+        return faqEntryRepository.findByIdAndTenantId(id, principal.tenantId())
             .map(entry -> {
                 entry.setStatus(Status.APPROVED);
                 entry.setApprovedBy(principal.userId());
@@ -103,12 +106,12 @@ public class FaqController {
             .orElse(ResponseEntity.notFound().build());
     }
 
-    /** Admin: reject a pending FAQ entry. */
+    /** Admin: reject a pending FAQ entry belonging to their own tenant. */
     @PutMapping("/admin/{id}/reject")
     public ResponseEntity<FaqEntry> reject(@PathVariable UUID id,
                                             @AuthenticationPrincipal UserPrincipal principal) {
         if (!principal.isAdmin()) return ResponseEntity.status(403).build();
-        return faqEntryRepository.findById(id)
+        return faqEntryRepository.findByIdAndTenantId(id, principal.tenantId())
             .map(entry -> {
                 entry.setStatus(Status.REJECTED);
                 return ResponseEntity.ok(faqEntryRepository.save(entry));
@@ -116,7 +119,7 @@ public class FaqController {
             .orElse(ResponseEntity.notFound().build());
     }
 
-    /** Admin: trigger FAQ generation on-demand for a product. */
+    /** Admin: trigger FAQ generation on-demand for a product, within their own tenant. */
     @PostMapping("/admin/generate")
     public ResponseEntity<GenerateResponse> triggerGeneration(
             @RequestParam String product,
@@ -124,7 +127,7 @@ public class FaqController {
             @AuthenticationPrincipal UserPrincipal principal) {
 
         if (!principal.isAdmin()) return ResponseEntity.status(403).build();
-        int count = autoFaqService.generateForProduct(product, version);
+        int count = autoFaqService.generateForProduct(principal.tenantId(), product, version);
         return ResponseEntity.ok(new GenerateResponse(count, "FAQ generation complete"));
     }
 

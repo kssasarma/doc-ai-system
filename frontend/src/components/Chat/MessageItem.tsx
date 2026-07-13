@@ -7,10 +7,10 @@ import {
   MessageSquarePlus, Users, GitBranch,
 } from 'lucide-react';
 import MarkdownContent from './MarkdownContent';
-import { ChatMessage } from '../../types';
+import { ChatMessage, BackendChatResponse } from '../../types';
 import { formatTimestamp } from '../../utils/chatUtils';
 import { submitFeedback, regenerateAnswer } from '../../services/chatService';
-import { createBookmark } from '../../services/bookmarkService';
+import { createBookmark, deleteBookmarkByMessage } from '../../services/bookmarkService';
 import { toggleUpvote } from '../../services/upvoteService';
 import { useAuth } from '../../context/AuthContext';
 import { fadeInUp, EASE_OUT } from '../../lib/motion';
@@ -28,7 +28,7 @@ interface MessageItemProps {
   sessionChatId?: string;
   onFeedbackChange?: (messageId: string, rating: 1 | -1) => void;
   onRelatedQuestion?: (question: string) => void;
-  onRegeneratedAnswer?: (messageId: string, newAnswer: string, relatedQuestions: string[]) => void;
+  onRegeneratedAnswer?: (messageId: string, response: BackendChatResponse) => void;
 }
 
 function ConfidenceBadge({ confidence }: { confidence: number }) {
@@ -124,8 +124,13 @@ const MessageItem: React.FC<MessageItemProps> = ({
     if (!message.messageId || !sessionChatId || !token || bookmarkPending) return;
     setBookmarkPending(true);
     try {
-      const result = await createBookmark(token, message.messageId, sessionChatId, message.content.slice(0, 300));
-      if (result.success) setBookmarked(true);
+      if (bookmarked) {
+        const result = await deleteBookmarkByMessage(message.messageId, token);
+        if (result.success) setBookmarked(false);
+      } else {
+        const result = await createBookmark(token, message.messageId, sessionChatId, message.content.slice(0, 300));
+        if (result.success) setBookmarked(true);
+      }
     } catch { /* ignore */ } finally {
       setBookmarkPending(false);
     }
@@ -161,7 +166,7 @@ const MessageItem: React.FC<MessageItemProps> = ({
     try {
       const result = await regenerateAnswer(message.messageId, style, token);
       if (result.success && result.data && onRegeneratedAnswer) {
-        onRegeneratedAnswer(message.messageId, result.data.answer, result.data.relatedQuestions ?? []);
+        onRegeneratedAnswer(message.messageId, result.data);
       }
     } catch { /* ignore */ } finally {
       setRegenPending(false);
@@ -258,6 +263,7 @@ const MessageItem: React.FC<MessageItemProps> = ({
                   size="sm"
                   onClick={handleUpvote}
                   disabled={upvotePending}
+                  aria-pressed={userUpvoted}
                   className={cn('gap-1 w-auto px-1.5', userUpvoted && 'text-accent bg-accent/10 hover:bg-accent/15')}
                 >
                   <ArrowUp size={12} />
@@ -273,12 +279,12 @@ const MessageItem: React.FC<MessageItemProps> = ({
 
               {message.messageId && sessionChatId && (
                 <IconButton
-                  label={bookmarked ? 'Bookmarked' : 'Bookmark this answer'}
+                  label={bookmarked ? 'Remove bookmark' : 'Bookmark this answer'}
                   variant="ghost"
                   size="sm"
                   onClick={handleBookmark}
-                  disabled={bookmarkPending || bookmarked}
-                  className={cn(bookmarked ? 'text-warning' : 'hover:text-warning hover:bg-warning/10')}
+                  disabled={bookmarkPending}
+                  className={cn(bookmarked ? 'text-warning hover:bg-warning/10' : 'hover:text-warning hover:bg-warning/10')}
                 >
                   {bookmarked ? <BookmarkCheck size={13} /> : <Bookmark size={13} />}
                 </IconButton>
@@ -313,9 +319,10 @@ const MessageItem: React.FC<MessageItemProps> = ({
                     size="sm"
                     onClick={() => handleFeedback(1)}
                     disabled={feedbackPending}
+                    aria-pressed={feedback === 1}
                     className={cn(feedback === 1 ? 'text-success bg-success/10' : 'hover:text-success hover:bg-success/10')}
                   >
-                    <ThumbsUp size={13} />
+                    <ThumbsUp size={13} className={feedback === 1 ? 'fill-current' : ''} />
                   </IconButton>
                   <IconButton
                     label="Not helpful"
@@ -323,9 +330,10 @@ const MessageItem: React.FC<MessageItemProps> = ({
                     size="sm"
                     onClick={() => handleFeedback(-1)}
                     disabled={feedbackPending}
+                    aria-pressed={feedback === -1}
                     className={cn(feedback === -1 ? 'text-danger bg-danger/10' : 'hover:text-danger hover:bg-danger/10')}
                   >
-                    <ThumbsDown size={13} />
+                    <ThumbsDown size={13} className={feedback === -1 ? 'fill-current' : ''} />
                   </IconButton>
                 </>
               )}

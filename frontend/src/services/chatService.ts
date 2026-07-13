@@ -7,7 +7,9 @@ import {
   ChatHistoryAPIResponse,
 } from '../types';
 
-const BACKEND_ROOT = `${import.meta.env.VITE_BACKEND_URL || 'http://localhost:8082'}`;
+import { BACKEND_URL } from '../config/backend';
+
+const BACKEND_ROOT = BACKEND_URL;
 const CHAT_BACKEND_ROOT_URL = `${BACKEND_ROOT}/api/chat`;
 const CHAT_BACKEND_QUERY_URL = `${CHAT_BACKEND_ROOT_URL}/query`;
 const CHAT_BACKEND_SESSIONS_URL = `${CHAT_BACKEND_ROOT_URL}/sessions`;

@@ -52,7 +52,7 @@ public class ApiKeyController {
             request.getExpirationDays()
         );
 
-        auditLogService.log(principal.userId(), "API_KEY_CREATE", "API_KEY",
+        auditLogService.log(principal.userId(), principal.tenantId(), "API_KEY_CREATE", "API_KEY",
             UUID.fromString(result.dto().getId()), result.dto().getName(), null);
 
         return ResponseEntity.ok(new CreateKeyResponse(result.dto(), result.rawKey()));
@@ -64,7 +64,7 @@ public class ApiKeyController {
             @AuthenticationPrincipal UserPrincipal principal) {
 
         apiKeyService.revokeKey(UUID.fromString(id), principal.userId());
-        auditLogService.log(principal.userId(), "API_KEY_REVOKE", "API_KEY",
+        auditLogService.log(principal.userId(), principal.tenantId(), "API_KEY_REVOKE", "API_KEY",
             UUID.fromString(id), null, null);
         return ResponseEntity.noContent().build();
     }
@@ -76,7 +76,7 @@ public class ApiKeyController {
             @AuthenticationPrincipal UserPrincipal principal) {
 
         apiKeyService.revokeKeyAsAdmin(UUID.fromString(id));
-        auditLogService.log(principal.userId(), "API_KEY_ADMIN_REVOKE", "API_KEY",
+        auditLogService.log(principal.userId(), principal.tenantId(), "API_KEY_ADMIN_REVOKE", "API_KEY",
             UUID.fromString(id), null, null);
         return ResponseEntity.noContent().build();
     }

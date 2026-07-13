@@ -1,6 +1,7 @@
+import { BACKEND_URL } from '../config/backend';
 import { UserPreference } from '../types';
 
-const BASE = `${import.meta.env.VITE_BACKEND_URL || 'http://localhost:8082'}/api/users/preferences`;
+const BASE = `${BACKEND_URL}/api/users/preferences`;
 
 function authHeader(token: string): Record<string, string> {
   return { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };

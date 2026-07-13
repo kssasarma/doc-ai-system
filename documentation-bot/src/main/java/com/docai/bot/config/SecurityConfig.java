@@ -29,6 +29,7 @@ public class SecurityConfig {
     private final JwtAuthFilter jwtAuthFilter;
     private final ApiKeyAuthFilter apiKeyAuthFilter;
     private final TenantResolutionFilter tenantResolutionFilter;
+    private final RequestCorrelationFilter requestCorrelationFilter;
 
     @Value("${app.cors.allowed-origins:http://localhost:5173,http://localhost:3000}")
     private String allowedOrigins;
@@ -40,8 +41,9 @@ public class SecurityConfig {
                                // Deliberately NOT "/api/share/**": that would also cover
                                // POST /api/share/{token}/fork, which must stay authenticated.
         "/api/v1/**",
-        "/api/faq",           // Phase 6 — public FAQ browsing
-        "/api/faq/{id}",
+        // FAQ browsing requires authentication (see FaqController) — the approved-entries
+        // surface is generated from one tenant's documents and query history, so it's
+        // tenant-scoped content, not public content, even though it's read-only.
         "/api/branding",      // Phase 7 — white-label branding
         "/actuator/health",
         "/actuator/info",
@@ -66,7 +68,14 @@ public class SecurityConfig {
             )
             .addFilterBefore(apiKeyAuthFilter, UsernamePasswordAuthenticationFilter.class)
             .addFilterBefore(jwtAuthFilter, ApiKeyAuthFilter.class)
-            .addFilterBefore(tenantResolutionFilter, JwtAuthFilter.class)
+            // Registered relative to jwtAuthFilter's own (already-established) position rather
+            // than a shared reference class, so it's unambiguously first — every other filter's
+            // log lines, including the auth filters', get the correlation id in MDC.
+            .addFilterBefore(requestCorrelationFilter, JwtAuthFilter.class)
+            // Runs AFTER both auth filters so it can trust the already-authenticated principal's
+            // own tenantId over any client-supplied header — see TenantResolutionFilter for why
+            // that order is load-bearing, not incidental.
+            .addFilterAfter(tenantResolutionFilter, ApiKeyAuthFilter.class)
             .build();
     }
 

@@ -33,6 +33,9 @@ public class Escalation {
     @Column(name = "chat_message_id", nullable = false)
     private UUID chatMessageId;
 
+    @Column(name = "tenant_id", nullable = false)
+    private UUID tenantId;
+
     @Column(name = "question_text", nullable = false, columnDefinition = "TEXT")
     private String questionText;
 

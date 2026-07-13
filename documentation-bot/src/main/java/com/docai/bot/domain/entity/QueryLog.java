@@ -33,6 +33,10 @@ public class QueryLog {
     @Column(name = "user_id")
     private UUID userId;
 
+    /** Nullable only for rows predating this column — see V21 migration. Always set on new writes. */
+    @Column(name = "tenant_id")
+    private UUID tenantId;
+
     @Column(name = "session_id")
     private UUID sessionId;
 

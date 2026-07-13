@@ -17,15 +17,21 @@ public interface QuerySessionGraphRepository extends JpaRepository<QuerySessionG
 
     @Query("""
         SELECT q FROM QuerySessionGraph q
-        WHERE q.product = :product
+        WHERE q.tenantId = :tenantId
+          AND q.product = :product
           AND (:version IS NULL OR q.version = :version)
           AND q.askedAt >= :since
           AND q.sessionId <> :excludeSessionId
         ORDER BY q.askedAt DESC
         """)
     List<QuerySessionGraph> findRecentQueriesForProduct(
-        String product, String version, LocalDateTime since, UUID excludeSessionId);
+        UUID tenantId, String product, String version, LocalDateTime since, UUID excludeSessionId);
 
+    /**
+     * Unscoped on purpose: the weekly cron sweep (no request/tenant context to filter by) has to
+     * see every tenant's queries in one pass, then group by tenantId itself before clustering —
+     * see AutoFaqService.generateWeeklyFaq. Never expose this to a request-scoped caller.
+     */
     @Query("""
         SELECT q FROM QuerySessionGraph q
         WHERE q.askedAt >= :since

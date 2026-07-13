@@ -14,9 +14,9 @@ public interface TopicSubscriptionRepository extends JpaRepository<TopicSubscrip
 
     List<TopicSubscription> findByUserId(UUID userId);
 
-    List<TopicSubscription> findByProductAndVersion(String product, String version);
+    List<TopicSubscription> findByTenantIdAndProductAndVersion(UUID tenantId, String product, String version);
 
-    List<TopicSubscription> findByProduct(String product);
+    List<TopicSubscription> findByTenantIdAndProduct(UUID tenantId, String product);
 
     Optional<TopicSubscription> findByUserIdAndTopicAndProductAndVersion(
         UUID userId, String topic, String product, String version);

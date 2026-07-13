@@ -22,4 +22,6 @@ public interface DocumentAccessRepository extends JpaRepository<DocumentAccess, 
     Set<UUID> findAccessibleDocumentIds(UUID userId, UUID tenantId);
 
     void deleteByDocumentIdAndUserId(UUID documentId, UUID userId);
+
+    void deleteByUserId(UUID userId);
 }

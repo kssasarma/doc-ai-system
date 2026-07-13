@@ -12,4 +12,5 @@ import com.docai.bot.domain.entity.Notification;
 public interface NotificationRepository extends JpaRepository<Notification, UUID> {
     List<Notification> findByUserIdOrderByCreatedAtDesc(UUID userId);
     long countByUserIdAndReadFalse(UUID userId);
+    void deleteByUserId(UUID userId);
 }

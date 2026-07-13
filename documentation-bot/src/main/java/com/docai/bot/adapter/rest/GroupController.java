@@ -48,7 +48,7 @@ public class GroupController {
     public ResponseEntity<GroupDTO> create(@Valid @RequestBody CreateGroupRequest request,
                                             @AuthenticationPrincipal UserPrincipal principal) {
         GroupDTO group = groupService.create(request.getName(), TenantContext.get(), principal.userId());
-        auditLogService.log(principal.userId(), "GROUP_CREATE", "GROUP",
+        auditLogService.log(principal.userId(), principal.tenantId(), "GROUP_CREATE", "GROUP",
             UUID.fromString(group.id()), "name=" + group.name(), null);
         return ResponseEntity.ok(group);
     }
@@ -57,7 +57,7 @@ public class GroupController {
     public ResponseEntity<Void> delete(@PathVariable UUID groupId,
                                         @AuthenticationPrincipal UserPrincipal principal) {
         groupService.delete(groupId, TenantContext.get());
-        auditLogService.log(principal.userId(), "GROUP_DELETE", "GROUP", groupId, null, null);
+        auditLogService.log(principal.userId(), principal.tenantId(), "GROUP_DELETE", "GROUP", groupId, null, null);
         return ResponseEntity.noContent().build();
     }
 
@@ -71,7 +71,7 @@ public class GroupController {
                                                 @Valid @RequestBody AddMemberRequest request,
                                                 @AuthenticationPrincipal UserPrincipal principal) {
         MemberDTO member = groupService.addMember(groupId, request.getUserId(), TenantContext.get());
-        auditLogService.log(principal.userId(), "GROUP_MEMBER_ADD", "GROUP", groupId,
+        auditLogService.log(principal.userId(), principal.tenantId(), "GROUP_MEMBER_ADD", "GROUP", groupId,
             "user=" + request.getUserId(), null);
         return ResponseEntity.ok(member);
     }
@@ -81,7 +81,7 @@ public class GroupController {
                                               @PathVariable UUID userId,
                                               @AuthenticationPrincipal UserPrincipal principal) {
         groupService.removeMember(groupId, userId, TenantContext.get());
-        auditLogService.log(principal.userId(), "GROUP_MEMBER_REMOVE", "GROUP", groupId,
+        auditLogService.log(principal.userId(), principal.tenantId(), "GROUP_MEMBER_REMOVE", "GROUP", groupId,
             "user=" + userId, null);
         return ResponseEntity.noContent().build();
     }

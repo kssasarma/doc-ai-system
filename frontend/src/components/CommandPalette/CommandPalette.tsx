@@ -3,8 +3,8 @@ import { Command } from 'cmdk';
 import { useNavigate } from 'react-router-dom';
 import {
   MessageSquarePlus, Bookmark, Folder, BookOpen, Bell, Key, Settings,
-  BarChart2, FileText, Map, TrendingUp, DollarSign, Users, Shield,
-  HelpCircle, MessageSquare, AlertTriangle, Lock, Sun, Moon, LogOut, Building2,
+  BarChart2, FileText, Map, TrendingUp, DollarSign, Users, UsersRound, Shield,
+  HelpCircle, MessageSquare, AlertTriangle, Lock, ShieldAlert, Sun, Moon, LogOut, Building2,
   type LucideIcon,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
@@ -20,9 +20,10 @@ const ADMIN_PAGES = [
   { to: '/admin/query-intelligence', label: 'Query Intelligence', icon: TrendingUp },
   { to: '/admin/faq', label: 'FAQ Review', icon: MessageSquare },
   { to: '/admin/gap-reports', label: 'Gap Reports', icon: AlertTriangle },
+  { to: '/admin/pii-flags', label: 'PII Review', icon: ShieldAlert },
   { to: '/admin/cost', label: 'Cost', icon: DollarSign },
   { to: '/admin/users', label: 'Users', icon: Users },
-  { to: '/admin/groups', label: 'Groups', icon: Users },
+  { to: '/admin/groups', label: 'Groups', icon: UsersRound },
   { to: '/admin/audit-log', label: 'Audit Log', icon: Shield },
   { to: '/admin/escalations', label: 'Escalations', icon: HelpCircle },
   { to: '/admin/gdpr', label: 'GDPR', icon: Lock },

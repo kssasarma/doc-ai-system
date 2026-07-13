@@ -1,4 +1,6 @@
-const BASE = `${import.meta.env.VITE_BACKEND_URL || 'http://localhost:8082'}/api/faq`;
+import { BACKEND_URL } from '../config/backend';
+
+const BASE = `${BACKEND_URL}/api/faq`;
 
 function authHeader(token: string): Record<string, string> {
   return { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
@@ -25,6 +27,7 @@ export interface PagedFaqEntries {
 }
 
 export async function listApprovedFaq(
+  token: string,
   product?: string,
   version?: string,
   page = 0,
@@ -34,7 +37,7 @@ export async function listApprovedFaq(
     const params = new URLSearchParams({ page: String(page), size: String(size) });
     if (product) params.set('product', product);
     if (version) params.set('version', version);
-    const res = await fetch(`${BASE}?${params}`);
+    const res = await fetch(`${BASE}?${params}`, { headers: authHeader(token) });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return { success: true, data: await res.json() };
   } catch (e) {

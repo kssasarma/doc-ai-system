@@ -74,6 +74,17 @@ public class BookmarkController {
         return ResponseEntity.noContent().build();
     }
 
+    // Lets the chat view toggle a message's bookmark off without first looking up the
+    // bookmark's own id — it only ever knows the chatMessageId it's rendering.
+    @DeleteMapping("/by-message/{chatMessageId}")
+    public ResponseEntity<Void> deleteBookmarkByMessage(
+            @PathVariable UUID chatMessageId,
+            @AuthenticationPrincipal UserPrincipal principal) {
+
+        bookmarkService.deleteBookmarkByMessage(principal.userId(), chatMessageId);
+        return ResponseEntity.noContent().build();
+    }
+
     // ── Request DTOs ──────────────────────────────────────────────────────────
 
     @Data

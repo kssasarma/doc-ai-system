@@ -56,7 +56,7 @@ export default function SubscriptionsPage() {
       setForm({ topic: '', product: '', version: '' });
       toast.success(`Subscribed to "${result.data.topic}"`);
     } else {
-      setFormError(result.error ?? 'Failed to create subscription');
+      toast.error(result.error ?? 'Failed to create subscription.');
     }
     setAdding(false);
   };
@@ -87,6 +87,7 @@ export default function SubscriptionsPage() {
                 <h2 className="text-sm font-semibold text-foreground mb-3">Subscribe to a topic</h2>
                 <form onSubmit={handleAdd} className="space-y-2">
                   <Input
+                    aria-label="Topic"
                     placeholder="Topic (e.g. LDAP authentication, installation)"
                     value={form.topic}
                     onChange={e => setForm(f => ({ ...f, topic: e.target.value }))}
@@ -94,12 +95,14 @@ export default function SubscriptionsPage() {
                   <div className="flex gap-2">
                     <Input
                       className="flex-1"
+                      aria-label="Product (optional)"
                       placeholder="Product (optional)"
                       value={form.product}
                       onChange={e => setForm(f => ({ ...f, product: e.target.value }))}
                     />
                     <Input
                       className="w-32"
+                      aria-label="Version"
                       placeholder="Version"
                       value={form.version}
                       onChange={e => setForm(f => ({ ...f, version: e.target.value }))}

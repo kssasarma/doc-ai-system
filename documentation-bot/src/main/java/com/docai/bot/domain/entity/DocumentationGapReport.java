@@ -33,6 +33,10 @@ public class DocumentationGapReport {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
+    /** Nullable only for rows generated before tenant scoping existed — see V23 migration. */
+    @Column(name = "tenant_id")
+    private UUID tenantId;
+
     @Column(name = "product", length = 100)
     private String product;
 

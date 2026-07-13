@@ -1,0 +1,89 @@
+server {
+    listen 80;
+    root /usr/share/nginx/html;
+    index index.html;
+
+    client_max_body_size 100m;
+    proxy_read_timeout 120s;
+    proxy_connect_timeout 10s;
+    proxy_http_version 1.1;
+
+    location = / {
+        return 301 /docs-inator/;
+    }
+
+    # Liveness/readiness target for orchestrators — avoids probing "/", which 301s.
+    location = /healthz {
+        default_type text/plain;
+        return 200 "ok";
+    }
+
+    # Single-origin reverse proxy onto the two backend services — the frontend bundle talks to
+    # its own origin only, so no CORS-with-credentials configuration is needed in production and
+    # no localhost URL ever gets baked into the build. Each backend owns disjoint parts of the
+    # `/api/` namespace except for two overlaps, which is why the two regex locations below (which
+    # nginx always prefers over a plain prefix match) exist ahead of the general prefix rules.
+
+    # document-ingestor: connector webhook push (overlaps the bot's general /api/v1 namespace)
+    location ~ ^/api/v1/ingest {
+        proxy_pass http://${INGESTOR_UPSTREAM};
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # documentation-bot: per-document access-grant management (overlaps the ingestor's
+    # general /api/documents namespace)
+    location ~ ^/api/documents/[^/]+/access {
+        proxy_pass http://${BOT_UPSTREAM};
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location /api/connectors {
+        proxy_pass http://${INGESTOR_UPSTREAM};
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location /api/documents {
+        proxy_pass http://${INGESTOR_UPSTREAM};
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location /api/ingest {
+        proxy_pass http://${INGESTOR_UPSTREAM};
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Everything else under /api/ (auth, chat, admin/*, faq, branding, etc.) belongs to the bot.
+    location /api/ {
+        proxy_pass http://${BOT_UPSTREAM};
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # alias maps /docs-inator/ → /usr/share/nginx/html/
+    # so /docs-inator/assets/x.js resolves to /usr/share/nginx/html/assets/x.js
+    location /docs-inator/ {
+        alias /usr/share/nginx/html/;
+        try_files $uri $uri/ /index.html;
+    }
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}

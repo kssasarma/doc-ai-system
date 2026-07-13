@@ -23,6 +23,11 @@ public interface DocumentRepository extends JpaRepository<Document, UUID> {
 
     List<Document> findByTenantId(UUID tenantId);
 
+    List<Document> findByTenantIdAndStatus(UUID tenantId, IngestionStatus status);
+
+    /** Excludes FAILED — a failed upload shouldn't permanently eat into the tenant's plan quota. */
+    long countByTenantIdAndStatusNot(UUID tenantId, IngestionStatus status);
+
     boolean existsByFileHash(String fileHash);
 
     boolean existsByFileHashAndStatus(String fileHash, IngestionStatus status);

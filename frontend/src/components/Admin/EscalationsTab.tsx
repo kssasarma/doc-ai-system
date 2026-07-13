@@ -11,6 +11,7 @@ import Button from '../ui/Button';
 import Badge, { type BadgeProps } from '../ui/Badge';
 import Textarea from '../ui/Textarea';
 import EmptyState from '../ui/EmptyState';
+import { SkeletonRow } from '../ui/Skeleton';
 
 const STATUS_BADGE: Record<Escalation['status'], NonNullable<BadgeProps['variant']>> = {
   ANSWERED: 'success',
@@ -22,13 +23,16 @@ const STATUS_BADGE: Record<Escalation['status'], NonNullable<BadgeProps['variant
 export default function EscalationsTab() {
   const { token } = useAuth();
   const [escalations, setEscalations] = useState<Escalation[]>([]);
+  const [loading, setLoading] = useState(true);
   const [answeringId, setAnsweringId] = useState<string | null>(null);
   const [answerDraft, setAnswerDraft] = useState('');
 
   const load = useCallback(async () => {
     if (!token) return;
+    setLoading(true);
     const res = await fetchEscalations(token);
     if (res.success && res.data) setEscalations(res.data);
+    setLoading(false);
   }, [token]);
 
   useEffect(() => { load(); }, [load]);
@@ -60,7 +64,11 @@ export default function EscalationsTab() {
       />
       <motion.div variants={fadeInUp}>
         <Card>
-          {escalations.length === 0 ? (
+          {loading ? (
+            <div className="divide-y divide-border">
+              {Array.from({ length: 4 }).map((_, i) => <SkeletonRow key={i} columns={3} />)}
+            </div>
+          ) : escalations.length === 0 ? (
             <EmptyState
               icon={HelpCircle}
               title="No escalations yet"
@@ -102,6 +110,7 @@ export default function EscalationsTab() {
                     <div className="space-y-2">
                       <Textarea
                         rows={3}
+                        aria-label="Expert answer"
                         value={answerDraft}
                         onChange={ev => setAnswerDraft(ev.target.value)}
                         placeholder="Type your expert answer…"

@@ -4,11 +4,12 @@ import java.io.IOException;
 import java.util.UUID;
 
 import org.springframework.core.annotation.Order;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
-import com.docai.bot.application.service.JwtService;
 import com.docai.bot.domain.repository.TenantRepository;
 
 import jakarta.servlet.FilterChain;
@@ -20,9 +21,15 @@ import lombok.extern.slf4j.Slf4j;
 
 /**
  * Resolves the current tenant from (in priority order):
- * 1. X-Tenant-Id header (UUID) — for inter-service or API-key calls that already know the tenant
- * 2. X-Tenant-Slug header — resolves slug → UUID via DB
- * 3. JWT claim "tenantId" — for browser sessions (null for a SUPER_ADMIN token, which is expected)
+ * 1. The already-authenticated principal's own tenantId (JWT or API key — see SecurityConfig,
+ *    which deliberately runs this filter AFTER both auth filters so their result is available
+ *    here via SecurityContextHolder). Authoritative and never overridden by anything below: an
+ *    authenticated caller cannot pick a different tenant to act as just by sending a header —
+ *    that was a real cross-tenant IDOR (a spoofed X-Tenant-Id let any ADMIN read another
+ *    tenant's whole document corpus via GrantBasedDocumentAccessPolicy).
+ * 2. X-Tenant-Id header (UUID) — only consulted with no authenticated principal, e.g. a
+ *    pre-login public branding/FAQ lookup that needs a tenant hint.
+ * 3. X-Tenant-Slug header — same, resolved via DB.
  *
  * If none resolve, TenantContext is left unset — there is no default/fallback tenant.
  * {@link TenantContext#get()} fails closed for any handler that requires a real tenant;
@@ -34,7 +41,6 @@ import lombok.extern.slf4j.Slf4j;
 @RequiredArgsConstructor
 public class TenantResolutionFilter extends OncePerRequestFilter {
 
-    private final JwtService jwtService;
     private final TenantRepository tenantRepository;
 
     @Override
@@ -54,7 +60,13 @@ public class TenantResolutionFilter extends OncePerRequestFilter {
     }
 
     private UUID resolve(HttpServletRequest request) {
-        // 1. Explicit UUID header
+        UUID fromPrincipal = resolveFromAuthenticatedPrincipal();
+        if (fromPrincipal != null) {
+            return fromPrincipal;
+        }
+
+        // No authenticated identity for this request — safe to take a client-supplied hint,
+        // since there's no real tenant membership here to spoof away from.
         String idHeader = request.getHeader("X-Tenant-Id");
         if (StringUtils.hasText(idHeader)) {
             try {
@@ -62,7 +74,6 @@ public class TenantResolutionFilter extends OncePerRequestFilter {
             } catch (IllegalArgumentException ignored) {}
         }
 
-        // 2. Slug header
         String slugHeader = request.getHeader("X-Tenant-Slug");
         if (StringUtils.hasText(slugHeader)) {
             return tenantRepository.findBySlug(slugHeader.trim())
@@ -70,18 +81,14 @@ public class TenantResolutionFilter extends OncePerRequestFilter {
                 .orElse(null);
         }
 
-        // 3. JWT claim
-        String authHeader = request.getHeader("Authorization");
-        if (StringUtils.hasText(authHeader) && authHeader.startsWith("Bearer ")) {
-            String token = authHeader.substring(7);
-            try {
-                String claim = jwtService.extractAllClaims(token).get("tenantId", String.class);
-                if (StringUtils.hasText(claim)) {
-                    return UUID.fromString(claim);
-                }
-            } catch (Exception ignored) {}
-        }
-
         return null; // unresolved — no default tenant
+    }
+
+    private UUID resolveFromAuthenticatedPrincipal() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.isAuthenticated() && auth.getPrincipal() instanceof UserPrincipal principal) {
+            return principal.tenantId(); // null for SUPER_ADMIN — intentionally platform-wide
+        }
+        return null;
     }
 }

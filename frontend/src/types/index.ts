@@ -29,6 +29,11 @@ export interface ChatSession {
   updatedAt: number;
   pinned?: boolean;
   tags?: string[];
+  /** True once chatId is a real backend session id — false for a client-only id that hasn't
+   * been persisted yet (see createNewSession/updateSessionChatId). Drives whether a query
+   * sends chatId to the backend or lets it create a new session; string-shape guessing at the
+   * id itself is unreliable (client ids and backend UUIDs aren't reliably distinguishable). */
+  isPersisted?: boolean;
 }
 
 export interface AppConfig {
@@ -44,16 +49,6 @@ export interface AppConfig {
     timeout: number;
   };
   ui: {
-    theme: {
-      primary: string;
-      secondary: string;
-      success: string;
-      warning: string;
-      error: string;
-      background: string;
-      surface: string;
-      text: string;
-    };
     sidebar: {
       width: string;
       collapsedWidth: string;
@@ -155,6 +150,7 @@ export interface AuthUser {
 
 export interface AuthResponse {
   token?: string;
+  refreshToken?: string;
   userId?: string;
   username?: string;
   email?: string;
@@ -288,6 +284,15 @@ export interface ShareLink {
   publicAccess: boolean;
   expiresAt?: string;
   createdAt: string;
+  /** How many named recipients this link has — 0 means workspace-visible, >0 means visibility is
+   * narrowed to exactly those people. */
+  recipientCount: number;
+}
+
+export interface ShareRecipient {
+  userId: string;
+  username: string;
+  grantedAt: string;
 }
 
 export interface SharedChatMessage {
@@ -370,5 +375,20 @@ export interface AppNotification {
   body?: string;
   referenceId?: string;
   read: boolean;
+  createdAt: string;
+}
+
+export interface PiiFlag {
+  id: string;
+  documentId: string;
+  tenantId: string;
+  piiType: string;
+  occurrenceCount: number;
+  sampleExcerpt: string | null;
+  riskLevel: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  reviewed: boolean;
+  reviewedBy: string | null;
+  reviewedAt: string | null;
+  actionTaken: string | null;
   createdAt: string;
 }

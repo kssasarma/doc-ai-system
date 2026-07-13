@@ -75,12 +75,14 @@ export default function GapReportTab() {
             <div className="flex gap-2">
               <Input
                 className="flex-1"
+                aria-label="Product (optional — all if blank)"
                 placeholder="Product (optional — all if blank)"
                 value={product}
                 onChange={e => setProduct(e.target.value)}
               />
               <Input
                 className="w-32"
+                aria-label="Version"
                 placeholder="Version"
                 value={version}
                 onChange={e => setVersion(e.target.value)}

@@ -32,11 +32,9 @@ function ScopeBadge({ scope }: { scope: string }) {
 
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
-  const toast = useToast();
   const copy = async () => {
     await navigator.clipboard.writeText(text);
     setCopied(true);
-    toast.success('Copied to clipboard');
     setTimeout(() => setCopied(false), 2000);
   };
   return (
@@ -60,7 +58,6 @@ export default function ApiKeysPage() {
   const [rateLimit, setRateLimit] = useState(60);
   const [expirationDays, setExpirationDays] = useState<number | ''>('');
   const [creating, setCreating] = useState(false);
-  const [createError, setCreateError] = useState('');
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -75,7 +72,6 @@ export default function ApiKeysPage() {
     e.preventDefault();
     if (!token || !name.trim()) return;
     setCreating(true);
-    setCreateError('');
     setNewKeySecret(null);
 
     const res = await createApiKey(token, {
@@ -93,7 +89,7 @@ export default function ApiKeysPage() {
       setExpirationDays('');
       await load();
     } else {
-      setCreateError(res.error ?? 'Failed to create key');
+      toast.error(res.error ?? 'Failed to create key.');
     }
     setCreating(false);
   };
@@ -226,9 +222,6 @@ export default function ApiKeysPage() {
                   />
                 </div>
 
-                {createError && (
-                  <p className="text-xs text-danger bg-danger/10 rounded-lg px-3 py-2">{createError}</p>
-                )}
                 <Button
                   type="submit"
                   variant="primary"

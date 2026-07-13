@@ -1,14 +1,13 @@
 import React, { useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import rehypeHighlight from 'rehype-highlight';
 import { Check, Copy } from 'lucide-react';
+import { rehypeHighlightSubset } from '../../lib/rehypeHighlightSubset';
 
 // A curated language set relevant to the kind of product/install/config docs this app deals
-// with, registered explicitly instead of relying on rehype-highlight's default "common" set —
-// this doesn't reduce bundle size (rehype-highlight imports "common" internally regardless of
-// what's passed here, a limitation of its API), but it does mean only these languages are ever
-// matched/rendered, which is the part actually under this app's control.
+// with — registered on our own lowlight instance (see rehypeHighlightSubset) rather than via
+// rehype-highlight, which unconditionally bundles its full ~35-language "common" set regardless
+// of what's passed to it. Only these languages are ever matched, highlighted, or shipped.
 import javascript from 'highlight.js/lib/languages/javascript';
 import typescript from 'highlight.js/lib/languages/typescript';
 import python from 'highlight.js/lib/languages/python';
@@ -76,11 +75,13 @@ function PreBlock({ children }: { children?: React.ReactNode }) {
  * syntax-highlighted fenced code blocks, and a per-block copy-to-clipboard button — previously
  * every code block rendered as unstyled `<pre><code>` with no way to copy just that snippet.
  */
+const highlightSubset = rehypeHighlightSubset(HIGHLIGHT_LANGUAGES, HIGHLIGHT_ALIASES);
+
 export default function MarkdownContent({ content }: { content: string }) {
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm]}
-      rehypePlugins={[[rehypeHighlight, { languages: HIGHLIGHT_LANGUAGES, aliases: HIGHLIGHT_ALIASES }]]}
+      rehypePlugins={[() => highlightSubset]}
       components={{ pre: PreBlock }}
     >
       {content}

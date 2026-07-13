@@ -1,6 +1,7 @@
+import { BACKEND_URL } from '../config/backend';
 import { AuthResponse, TenantMembership } from '../types';
 
-const BOT_URL = `${import.meta.env.VITE_BACKEND_URL || 'http://localhost:8082'}`;
+const BOT_URL = BACKEND_URL;
 const AUTH_URL = `${BOT_URL}/api/auth`;
 
 export async function login(username: string, password: string): Promise<AuthResponse> {
@@ -47,4 +48,32 @@ export async function switchTenant(token: string, tenantId: string): Promise<Aut
   const data = await res.json();
   if (!res.ok) return { error: data.error || `Switch failed: ${res.status}` };
   return data;
+}
+
+/** Silently renews a session — rotates the refresh token and mints a fresh access token,
+ * without requiring the (possibly already-expired) access token at all. */
+export async function refreshSession(refreshToken: string): Promise<AuthResponse> {
+  const res = await fetch(`${AUTH_URL}/refresh`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refreshToken }),
+  });
+  const data = await res.json();
+  if (!res.ok) return { error: data.error || `Refresh failed: ${res.status}` };
+  return data;
+}
+
+/** Best-effort server-side revocation of the refresh token — logout still clears local state
+ * even if this fails (e.g. the network is already down), since that's what actually ends the
+ * session from the user's point of view. */
+export async function revokeSession(refreshToken: string): Promise<void> {
+  try {
+    await fetch(`${AUTH_URL}/logout`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken }),
+    });
+  } catch {
+    // best-effort
+  }
 }

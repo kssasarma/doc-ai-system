@@ -15,6 +15,26 @@ spec:
       labels:
         app: document-ingestor
     spec:
+      # document-ingestor and documentation-bot share one Postgres database, each running its own
+      # Flyway migrations independently. document-ingestor's V4 migration has a hard FK dependency
+      # on the users(id) table, which documentation-bot's migrations own — on a fresh database,
+      # starting both pods together races document-ingestor's migration against table creation it
+      # depends on and can crash-loop it. This waits for documentation-bot's readiness probe (which
+      # only turns healthy after its own Flyway run completes, since that happens during context
+      # refresh, before the ApplicationReadyEvent readiness probes key off) before document-ingestor
+      # starts its container and runs its own migrations.
+      initContainers:
+        - name: wait-for-bot-migrations
+          image: curlimages/curl:8.11.0
+          command:
+            - sh
+            - -c
+            - |
+              until curl -sf http://documentation-bot-service:8082/actuator/health/readiness; do
+                echo "Waiting for documentation-bot (owns the shared users/tenants tables) to become ready…"
+                sleep 5
+              done
+              echo "documentation-bot is ready — proceeding."
       containers:
         - name: document-ingestor
           image: your-registry/document-ingestor:latest

@@ -1,11 +1,13 @@
 import React, { useEffect, useState } from 'react';
-import { SlidersHorizontal, Check } from 'lucide-react';
+import { SlidersHorizontal, Check, Download, Trash2 } from 'lucide-react';
 import { UserPreference } from '../../types';
 import { fetchPreferences, savePreferences } from '../../services/userPreferenceService';
+import { exportMyData, requestAccountDeletion } from '../../services/gdprService';
 import { useAuth } from '../../context/AuthContext';
 import Modal, { ModalBody, ModalFooter } from '../ui/Modal';
 import Button from '../ui/Button';
 import Spinner from '../ui/Spinner';
+import { useToast } from '../ui/Toast';
 import { cn } from '../../lib/cn';
 
 interface PreferencesModalProps {
@@ -32,6 +34,7 @@ const optionButtonClasses = (active: boolean) =>
 
 const PreferencesModal: React.FC<PreferencesModalProps> = ({ onClose }) => {
   const { token } = useAuth();
+  const toast = useToast();
   const [prefs, setPrefs] = useState<UserPreference>({
     verbosity: 'BALANCED',
     answerFormat: 'PROSE',
@@ -39,6 +42,8 @@ const PreferencesModal: React.FC<PreferencesModalProps> = ({ onClose }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [isRequestingDeletion, setIsRequestingDeletion] = useState(false);
 
   useEffect(() => {
     if (!token) return;
@@ -54,8 +59,37 @@ const PreferencesModal: React.FC<PreferencesModalProps> = ({ onClose }) => {
     if (res.success) {
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
+    } else {
+      toast.error(res.error ?? 'Failed to save preferences.');
     }
     setIsSaving(false);
+  };
+
+  const handleExport = async () => {
+    if (!token) return;
+    setIsExporting(true);
+    const res = await exportMyData(token);
+    if (res.success) {
+      toast.success('Your data export has started downloading.');
+    } else {
+      toast.error(res.error ?? 'Failed to export your data.');
+    }
+    setIsExporting(false);
+  };
+
+  const handleRequestDeletion = async () => {
+    if (!token) return;
+    if (!window.confirm(
+      'Request deletion of your account and personal data? An admin will process this request; it cannot be undone once completed.'
+    )) return;
+    setIsRequestingDeletion(true);
+    const res = await requestAccountDeletion(token);
+    if (res.success) {
+      toast.success('Deletion request submitted. An admin will process it shortly.');
+    } else {
+      toast.error(res.error ?? 'Failed to submit deletion request.');
+    }
+    setIsRequestingDeletion(false);
   };
 
   return (
@@ -87,6 +121,32 @@ const PreferencesModal: React.FC<PreferencesModalProps> = ({ onClose }) => {
                   <span className="text-center opacity-70 leading-tight">{opt.desc}</span>
                 </button>
               ))}
+            </div>
+          </div>
+
+          <div className="pt-2 border-t border-border">
+            <label className="block text-sm font-medium text-foreground mb-2">Privacy & data</label>
+            <div className="flex flex-col gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="justify-start"
+                onClick={handleExport}
+                loading={isExporting}
+                leftIcon={<Download size={14} />}
+              >
+                Export my data
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="justify-start text-danger hover:bg-danger/10 hover:border-danger/30"
+                onClick={handleRequestDeletion}
+                loading={isRequestingDeletion}
+                leftIcon={<Trash2 size={14} />}
+              >
+                Request account deletion
+              </Button>
             </div>
           </div>
         </ModalBody>

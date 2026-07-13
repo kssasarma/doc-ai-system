@@ -56,7 +56,7 @@ public class DocumentAccessController {
                                              @AuthenticationPrincipal UserPrincipal principal) {
         UUID tenantId = TenantContext.get();
         GranteeDTO grant = documentAccessService.grant(documentId, request.getUserId(), tenantId, principal.userId());
-        auditLogService.log(principal.userId(), "DOCUMENT_ACCESS_GRANT", "DOCUMENT",
+        auditLogService.log(principal.userId(), principal.tenantId(), "DOCUMENT_ACCESS_GRANT", "DOCUMENT",
             documentId, "user=" + request.getUserId(), null);
         return ResponseEntity.ok(grant);
     }
@@ -66,7 +66,7 @@ public class DocumentAccessController {
                                         @PathVariable UUID userId,
                                         @AuthenticationPrincipal UserPrincipal principal) {
         documentAccessService.revoke(documentId, userId, TenantContext.get());
-        auditLogService.log(principal.userId(), "DOCUMENT_ACCESS_REVOKE", "DOCUMENT",
+        auditLogService.log(principal.userId(), principal.tenantId(), "DOCUMENT_ACCESS_REVOKE", "DOCUMENT",
             documentId, "user=" + userId, null);
         return ResponseEntity.noContent().build();
     }
@@ -82,7 +82,7 @@ public class DocumentAccessController {
                                                         @AuthenticationPrincipal UserPrincipal principal) {
         UUID tenantId = TenantContext.get();
         GroupGranteeDTO grant = groupDocumentAccessService.grant(documentId, request.getGroupId(), tenantId, principal.userId());
-        auditLogService.log(principal.userId(), "DOCUMENT_ACCESS_GRANT", "DOCUMENT",
+        auditLogService.log(principal.userId(), principal.tenantId(), "DOCUMENT_ACCESS_GRANT", "DOCUMENT",
             documentId, "group=" + request.getGroupId(), null);
         return ResponseEntity.ok(grant);
     }
@@ -92,7 +92,7 @@ public class DocumentAccessController {
                                              @PathVariable UUID groupId,
                                              @AuthenticationPrincipal UserPrincipal principal) {
         groupDocumentAccessService.revoke(documentId, groupId, TenantContext.get());
-        auditLogService.log(principal.userId(), "DOCUMENT_ACCESS_REVOKE", "DOCUMENT",
+        auditLogService.log(principal.userId(), principal.tenantId(), "DOCUMENT_ACCESS_REVOKE", "DOCUMENT",
             documentId, "group=" + groupId, null);
         return ResponseEntity.noContent().build();
     }

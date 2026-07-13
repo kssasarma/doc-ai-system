@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.docai.ingestor.config.TenantContext;
 import com.docai.ingestor.domain.entity.Document;
 import com.docai.ingestor.domain.repository.DocumentRepository;
 
@@ -34,7 +35,7 @@ public class IngestionController {
 
     @GetMapping("/status")
     public ResponseEntity<IngestionStatus> getStatus() {
-        List<Document> allDocs = documentRepository.findAll();
+        List<Document> allDocs = documentRepository.findByTenantId(TenantContext.get());
 
         long completed = allDocs.stream()
             .filter(d -> d.getStatus() == Document.IngestionStatus.COMPLETED).count();
@@ -59,7 +60,7 @@ public class IngestionController {
 
     @GetMapping("/documents")
     public ResponseEntity<List<DocumentInfo>> getAllDocuments() {
-        List<DocumentInfo> docInfos = documentRepository.findAll().stream()
+        List<DocumentInfo> docInfos = documentRepository.findByTenantId(TenantContext.get()).stream()
             .map(doc -> DocumentInfo.builder()
                 .id(doc.getId().toString())
                 .product(doc.getProduct())

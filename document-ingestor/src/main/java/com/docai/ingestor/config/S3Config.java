@@ -20,6 +20,7 @@ import software.amazon.awssdk.services.s3.S3Configuration;
 import software.amazon.awssdk.services.s3.model.CreateBucketRequest;
 import software.amazon.awssdk.services.s3.model.HeadBucketRequest;
 import software.amazon.awssdk.services.s3.model.NoSuchBucketException;
+import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 
 /**
  * S3-compatible client wiring for {@link com.docai.ingestor.application.service.S3DocumentStorageService}.
@@ -52,6 +53,22 @@ public class S3Config {
     @Bean
     public S3Client s3Client() {
         S3ClientBuilder builder = S3Client.builder()
+            .region(Region.of(region))
+            .credentialsProvider(StaticCredentialsProvider.create(
+                AwsBasicCredentials.create(accessKey, secretKey)))
+            .serviceConfiguration(S3Configuration.builder()
+                .pathStyleAccessEnabled(pathStyleAccess)
+                .build());
+
+        if (StringUtils.hasText(endpoint)) {
+            builder.endpointOverride(URI.create(endpoint));
+        }
+        return builder.build();
+    }
+
+    @Bean
+    public S3Presigner s3Presigner() {
+        S3Presigner.Builder builder = S3Presigner.builder()
             .region(Region.of(region))
             .credentialsProvider(StaticCredentialsProvider.create(
                 AwsBasicCredentials.create(accessKey, secretKey)))

@@ -15,30 +15,32 @@ import com.docai.bot.domain.entity.QueryLog;
 @Repository
 public interface QueryLogRepository extends JpaRepository<QueryLog, UUID> {
 
-    long countByCreatedAtAfter(LocalDateTime since);
+    long countByTenantId(UUID tenantId);
 
-    @Query(value = "SELECT COUNT(DISTINCT user_id) FROM query_logs WHERE created_at >= :since", nativeQuery = true)
-    long countDistinctUsersSince(@Param("since") LocalDateTime since);
+    long countByTenantIdAndCreatedAtAfter(UUID tenantId, LocalDateTime since);
+
+    @Query(value = "SELECT COUNT(DISTINCT user_id) FROM query_logs WHERE tenant_id = :tenantId AND created_at >= :since", nativeQuery = true)
+    long countDistinctUsersSince(@Param("tenantId") UUID tenantId, @Param("since") LocalDateTime since);
 
     @Query(value = """
         SELECT DATE(created_at)::TEXT AS day, COUNT(*) AS cnt,
                AVG(confidence) AS avg_conf,
                COALESCE(SUM(estimated_cost_usd), 0) AS daily_cost
         FROM query_logs
-        WHERE created_at >= :since
+        WHERE tenant_id = :tenantId AND created_at >= :since
         GROUP BY DATE(created_at)
         ORDER BY DATE(created_at)
         """, nativeQuery = true)
-    List<Object[]> getDailyStats(@Param("since") LocalDateTime since);
+    List<Object[]> getDailyStats(@Param("tenantId") UUID tenantId, @Param("since") LocalDateTime since);
 
     @Query(value = """
         SELECT question_preview, COUNT(*) AS cnt, product, version
         FROM query_logs
-        WHERE created_at >= :since AND question_preview IS NOT NULL
+        WHERE tenant_id = :tenantId AND created_at >= :since AND question_preview IS NOT NULL
         GROUP BY question_preview, product, version
         ORDER BY cnt DESC
         """, nativeQuery = true)
-    List<Object[]> findTopQuestions(@Param("since") LocalDateTime since, Pageable pageable);
+    List<Object[]> findTopQuestions(@Param("tenantId") UUID tenantId, @Param("since") LocalDateTime since, Pageable pageable);
 
     @Query(value = """
         SELECT product, version,
@@ -46,61 +48,62 @@ public interface QueryLogRepository extends JpaRepository<QueryLog, UUID> {
                AVG(confidence) AS avg_conf,
                SUM(CASE WHEN confidence < 0.6 THEN 1 ELSE 0 END) AS low_conf_count
         FROM query_logs
-        WHERE product IS NOT NULL
+        WHERE tenant_id = :tenantId AND product IS NOT NULL
         GROUP BY product, version
         ORDER BY query_count DESC
         """, nativeQuery = true)
-    List<Object[]> getProductCoverageStats();
+    List<Object[]> getProductCoverageStats(@Param("tenantId") UUID tenantId);
 
     @Query(value = """
         SELECT user_id::TEXT, COUNT(*) AS query_count,
                AVG(confidence) AS avg_conf,
                MAX(created_at)::TEXT AS last_active
         FROM query_logs
+        WHERE tenant_id = :tenantId
         GROUP BY user_id
         ORDER BY query_count DESC
         """, nativeQuery = true)
-    List<Object[]> getUserEngagementStats();
+    List<Object[]> getUserEngagementStats(@Param("tenantId") UUID tenantId);
 
     @Query(value = """
         SELECT user_id::TEXT,
                COALESCE(SUM(estimated_cost_usd), 0) AS total_cost,
                COUNT(*) AS query_count
         FROM query_logs
-        WHERE created_at >= :since
+        WHERE tenant_id = :tenantId AND created_at >= :since
         GROUP BY user_id
         ORDER BY total_cost DESC
         """, nativeQuery = true)
-    List<Object[]> getCostByUser(@Param("since") LocalDateTime since, Pageable pageable);
+    List<Object[]> getCostByUser(@Param("tenantId") UUID tenantId, @Param("since") LocalDateTime since, Pageable pageable);
 
     @Query(value = """
         SELECT product, version,
                COALESCE(SUM(estimated_cost_usd), 0) AS total_cost,
                COUNT(*) AS query_count
         FROM query_logs
-        WHERE created_at >= :since AND product IS NOT NULL
+        WHERE tenant_id = :tenantId AND created_at >= :since AND product IS NOT NULL
         GROUP BY product, version
         ORDER BY total_cost DESC
         """, nativeQuery = true)
-    List<Object[]> getCostByProduct(@Param("since") LocalDateTime since);
+    List<Object[]> getCostByProduct(@Param("tenantId") UUID tenantId, @Param("since") LocalDateTime since);
 
-    @Query(value = "SELECT COALESCE(SUM(estimated_cost_usd), 0) FROM query_logs WHERE created_at >= :since", nativeQuery = true)
-    double sumCostSince(@Param("since") LocalDateTime since);
+    @Query(value = "SELECT COALESCE(SUM(estimated_cost_usd), 0) FROM query_logs WHERE tenant_id = :tenantId AND created_at >= :since", nativeQuery = true)
+    double sumCostSince(@Param("tenantId") UUID tenantId, @Param("since") LocalDateTime since);
 
-    @Query(value = "SELECT COALESCE(SUM(estimated_cost_usd), 0) FROM query_logs", nativeQuery = true)
-    double sumCostAllTime();
+    @Query(value = "SELECT COALESCE(SUM(estimated_cost_usd), 0) FROM query_logs WHERE tenant_id = :tenantId", nativeQuery = true)
+    double sumCostAllTime(@Param("tenantId") UUID tenantId);
 
-    @Query(value = "SELECT AVG(confidence) FROM query_logs WHERE confidence IS NOT NULL AND created_at >= :since", nativeQuery = true)
-    Double avgConfidenceSince(@Param("since") LocalDateTime since);
+    @Query(value = "SELECT AVG(confidence) FROM query_logs WHERE tenant_id = :tenantId AND confidence IS NOT NULL AND created_at >= :since", nativeQuery = true)
+    Double avgConfidenceSince(@Param("tenantId") UUID tenantId, @Param("since") LocalDateTime since);
 
     @Query(value = """
         SELECT question_preview, COUNT(*) AS cnt, product, version
         FROM query_logs
-        WHERE confidence < 0.6 AND created_at >= :since AND question_preview IS NOT NULL
+        WHERE tenant_id = :tenantId AND confidence < 0.6 AND created_at >= :since AND question_preview IS NOT NULL
         GROUP BY question_preview, product, version
         ORDER BY cnt DESC
         """, nativeQuery = true)
-    List<Object[]> findFailedQueries(@Param("since") LocalDateTime since, Pageable pageable);
+    List<Object[]> findFailedQueries(@Param("tenantId") UUID tenantId, @Param("since") LocalDateTime since, Pageable pageable);
 
     @Query(value = """
         SELECT UNNEST(cited_documents) AS doc_name,
@@ -108,10 +111,10 @@ public interface QueryLogRepository extends JpaRepository<QueryLog, UUID> {
                MAX(product) AS product,
                MAX(version) AS version
         FROM query_logs
-        WHERE cited_documents IS NOT NULL AND created_at >= :since
+        WHERE tenant_id = :tenantId AND cited_documents IS NOT NULL AND created_at >= :since
         GROUP BY doc_name
         ORDER BY citations DESC
         LIMIT 30
         """, nativeQuery = true)
-    List<Object[]> getDocumentCitations(@Param("since") LocalDateTime since);
+    List<Object[]> getDocumentCitations(@Param("tenantId") UUID tenantId, @Param("since") LocalDateTime since);
 }

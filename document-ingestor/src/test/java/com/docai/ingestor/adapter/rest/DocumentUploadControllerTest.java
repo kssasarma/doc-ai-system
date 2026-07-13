@@ -30,7 +30,9 @@ import com.docai.ingestor.config.SecurityConfig;
 import com.docai.ingestor.config.TenantContext;
 import com.docai.ingestor.domain.entity.Document;
 import com.docai.ingestor.domain.entity.Document.IngestionStatus;
+import com.docai.ingestor.domain.entity.Tenant;
 import com.docai.ingestor.domain.repository.DocumentRepository;
+import com.docai.ingestor.domain.repository.TenantRepository;
 
 /**
  * Web-layer slice test for DocumentUploadController.
@@ -48,6 +50,7 @@ class DocumentUploadControllerTest {
 
     @Autowired MockMvc mockMvc;
     @MockitoBean DocumentRepository documentRepository;
+    @MockitoBean TenantRepository tenantRepository;
     @MockitoBean IngestionService ingestionService;
     @MockitoBean DocumentStorageService documentStorageService;
 
@@ -56,6 +59,11 @@ class DocumentUploadControllerTest {
     @BeforeEach
     void setUp() {
         TenantContext.set(TENANT_ID);
+        Tenant tenant = new Tenant();
+        tenant.setId(TENANT_ID);
+        tenant.setMaxDocuments(100);
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(documentRepository.countByTenantIdAndStatusNot(TENANT_ID, IngestionStatus.FAILED)).thenReturn(0L);
     }
 
     @AfterEach
@@ -98,11 +106,12 @@ class DocumentUploadControllerTest {
 
     @Test
     void upload_adminInvalidExtension_returns400() throws Exception {
-        MockMultipartFile txtFile = new MockMultipartFile("file", "test.txt",
-            MediaType.TEXT_PLAIN_VALUE, "some content".getBytes());
+        // .docx has no DocumentParser implementation, unlike .pdf/.chm/.html/.htm/.txt/.md.
+        MockMultipartFile docxFile = new MockMultipartFile("file", "test.docx",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "some content".getBytes());
 
         mockMvc.perform(multipart("/api/documents/upload")
-                .file(txtFile)
+                .file(docxFile)
                 .param("product", "prod")
                 .param("version", "1.0")
                 .with(user("admin").roles("ADMIN")))

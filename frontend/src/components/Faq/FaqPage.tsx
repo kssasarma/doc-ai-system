@@ -27,12 +27,13 @@ export default function FaqPage() {
   const [page, setPage] = useState(0);
 
   useEffect(() => {
-    load();
-  }, [product, version, page]);
+    if (token) load();
+  }, [product, version, page, token]);
 
   const load = async () => {
+    if (!token) return;
     setLoading(true);
-    const result = await listApprovedFaq(product || undefined, version || undefined, page, 20);
+    const result = await listApprovedFaq(token, product || undefined, version || undefined, page, 20);
     if (result.success && result.data) {
       setData(result.data);
       setError(null);
@@ -71,6 +72,7 @@ export default function FaqPage() {
               <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
               <Input
                 className="pl-8"
+                aria-label="Search questions"
                 placeholder="Search questions…"
                 value={search}
                 onChange={e => setSearch(e.target.value)}
@@ -78,12 +80,14 @@ export default function FaqPage() {
             </div>
             <Input
               className="w-36"
+              aria-label="Filter by product"
               placeholder="Product"
               value={product}
               onChange={e => { setProduct(e.target.value); setPage(0); }}
             />
             <Input
               className="w-28"
+              aria-label="Filter by version"
               placeholder="Version"
               value={version}
               onChange={e => { setVersion(e.target.value); setPage(0); }}

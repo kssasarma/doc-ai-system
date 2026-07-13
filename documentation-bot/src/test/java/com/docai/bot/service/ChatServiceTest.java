@@ -19,8 +19,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
-import com.docai.bot.application.service.AnalyticsService;
 import com.docai.bot.application.service.AnswerGenerationService;
 import com.docai.bot.application.service.ChatService;
 import com.docai.bot.application.service.ChatService.ChatRequest;
@@ -60,7 +60,7 @@ class ChatServiceTest {
     @Mock PeopleAlsoAskedService peopleAlsoAskedService;
     @Mock QueryAnalyzerService queryAnalyzer;
     @Mock UserPreferenceService preferenceService;
-    @Mock AnalyticsService analyticsService;
+    @Mock ApplicationEventPublisher eventPublisher;
 
     private ChatService chatService;
     private final UUID userId = UUID.randomUUID();
@@ -74,7 +74,7 @@ class ChatServiceTest {
             sessionRepository, messageRepository, summaryRepository,
             upvoteRepository, vectorSearchService, documentAccessPolicy, contextManager,
             summaryService, answerService, multiHopService,
-            peopleAlsoAskedService, queryAnalyzer, preferenceService, analyticsService
+            peopleAlsoAskedService, queryAnalyzer, preferenceService, eventPublisher
         );
     }
 
@@ -159,7 +159,7 @@ class ChatServiceTest {
             .thenReturn(new AnswerGenerationService.AnswerResult("Answer.", List.of(), 10, 5));
         when(answerService.generateSessionTitle(anyString(), anyString())).thenReturn("Title");
         stubMessageSave();
-        when(peopleAlsoAskedService.getPeopleAlsoAsked(any(), any(), any(), any())).thenReturn(List.of());
+        when(peopleAlsoAskedService.getPeopleAlsoAsked(any(), any(), any(), any(), any())).thenReturn(List.of());
 
         ChatRequest req = ChatRequest.builder()
             .question("question?").product("product-a").version("1.0").userId(userId).build();
@@ -190,7 +190,7 @@ class ChatServiceTest {
         when(answerService.generateAnswer(any(), any(), any(), any(), any(), any(), any()))
             .thenReturn(new AnswerGenerationService.AnswerResult(answer, List.of(), 10, 5));
         stubMessageSave();
-        when(peopleAlsoAskedService.getPeopleAlsoAsked(any(), any(), any(), any())).thenReturn(List.of());
+        when(peopleAlsoAskedService.getPeopleAlsoAsked(any(), any(), any(), any(), any())).thenReturn(List.of());
     }
 
     private void stubMessageSave() {

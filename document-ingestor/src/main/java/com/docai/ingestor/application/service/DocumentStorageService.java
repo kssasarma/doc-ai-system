@@ -2,6 +2,7 @@ package com.docai.ingestor.application.service;
 
 import java.io.InputStream;
 import java.nio.file.Path;
+import java.time.Duration;
 
 /**
  * Storage abstraction for ingested document files — the only thing any ingestion code path
@@ -36,4 +37,12 @@ public interface DocumentStorageService {
 
     /** Storage type label written to the documents.storage_type column. */
     String storageType();
+
+    /**
+     * A time-limited URL the caller can download the file from directly, without proxying bytes
+     * through this service. Only meaningful for documents that still have a live storage object —
+     * completed documents' source files are deleted post-ingestion (see IngestionService), so
+     * this throws {@link IllegalStateException} rather than a broken/expired-looking URL.
+     */
+    String presignedDownloadUrl(String storageKey, Duration ttl);
 }

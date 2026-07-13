@@ -16,6 +16,8 @@ public interface DocumentRepository extends JpaRepository<Document, UUID> {
 
     List<Document> findByProductAndVersion(String product, String version);
 
+    List<Document> findByTenantId(UUID tenantId);
+
     Optional<Document> findByIdAndTenantId(UUID id, UUID tenantId);
 
     @Query("SELECT d.id FROM Document d WHERE d.tenantId = :tenantId")

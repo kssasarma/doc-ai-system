@@ -29,6 +29,10 @@ public class FaqCluster {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
+    /** Nullable only for rows generated before tenant scoping existed — see V20 migration. */
+    @Column(name = "tenant_id")
+    private UUID tenantId;
+
     @Column(name = "product", length = 100)
     private String product;
 

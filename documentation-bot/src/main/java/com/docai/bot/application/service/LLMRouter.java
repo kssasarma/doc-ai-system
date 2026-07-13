@@ -37,7 +37,7 @@ public class LLMRouter {
     public LLMRouter(List<LLMProvider> providers,
                      TenantLLMConfigRepository configRepository,
                      @Value("${spring.ai.openai.chat.options.model:gpt-4o-mini}") String defaultChatModel,
-                     @Value("${spring.ai.openai.embedding.options.model:gpt-4o-embedding-4k}") String defaultEmbeddingModel) {
+                     @Value("${spring.ai.openai.embedding.options.model:text-embedding-3-small}") String defaultEmbeddingModel) {
         this.providers           = providers.stream()
             .collect(Collectors.toMap(LLMProvider::providerName, Function.identity()));
         this.configRepository    = configRepository;
@@ -63,6 +63,10 @@ public class LLMRouter {
             model = config != null ? config.getChatModel() : defaultChatModel;
         }
 
+        if (!providers.containsKey(providerName)) {
+            log.warn("LLMRouter: tenant configured unknown chat provider '{}' — falling back to openai. "
+                + "This should be unreachable now that TenantService validates provider names at save time.", providerName);
+        }
         LLMProvider provider = providers.getOrDefault(providerName, providers.get("openai"));
         log.debug("LLMRouter chat provider={} model={} complex={}", providerName, model, complexQuery);
 
@@ -88,6 +92,10 @@ public class LLMRouter {
         String providerName = config != null ? config.getEmbeddingProvider() : "openai";
         String model = config != null ? config.getEmbeddingModel() : defaultEmbeddingModel;
 
+        if (!providers.containsKey(providerName)) {
+            log.warn("LLMRouter: tenant configured unknown embedding provider '{}' — falling back to openai. "
+                + "This should be unreachable now that TenantService validates provider names at save time.", providerName);
+        }
         LLMProvider provider = providers.getOrDefault(providerName, providers.get("openai"));
         try {
             return provider.embed(text, model);

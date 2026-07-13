@@ -30,8 +30,10 @@ public class ChunkAnnotationController {
     private final ChunkAnnotationService annotationService;
 
     @GetMapping("/{chunkId}/annotations")
-    public ResponseEntity<List<AnnotationDTO>> listAnnotations(@PathVariable String chunkId) {
-        return ResponseEntity.ok(annotationService.listAnnotations(UUID.fromString(chunkId)));
+    public ResponseEntity<List<AnnotationDTO>> listAnnotations(
+            @PathVariable String chunkId,
+            @AuthenticationPrincipal UserPrincipal principal) {
+        return ResponseEntity.ok(annotationService.listAnnotations(UUID.fromString(chunkId), principal));
     }
 
     @PostMapping("/{chunkId}/annotations")
@@ -41,7 +43,7 @@ public class ChunkAnnotationController {
             @AuthenticationPrincipal UserPrincipal principal) {
 
         return ResponseEntity.ok(annotationService.createAnnotation(
-            UUID.fromString(chunkId), principal.userId(), request.getBody()));
+            UUID.fromString(chunkId), principal, request.getBody()));
     }
 
     @DeleteMapping("/{chunkId}/annotations/{annotationId}")
@@ -50,8 +52,7 @@ public class ChunkAnnotationController {
             @PathVariable String annotationId,
             @AuthenticationPrincipal UserPrincipal principal) {
 
-        annotationService.deleteAnnotation(
-            UUID.fromString(annotationId), principal.userId(), principal.isAdmin());
+        annotationService.deleteAnnotation(UUID.fromString(annotationId), principal);
         return ResponseEntity.noContent().build();
     }
 

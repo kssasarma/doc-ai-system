@@ -12,6 +12,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.docai.bot.application.service.InvitationService;
 import com.docai.bot.application.service.JwtService;
+import com.docai.bot.application.service.RefreshTokenService;
+import com.docai.bot.application.service.RefreshTokenService.RotationResult;
 import com.docai.bot.application.service.TenantMembershipService;
 import com.docai.bot.application.service.TenantMembershipService.MembershipDTO;
 import com.docai.bot.application.service.UserService;
@@ -45,6 +47,7 @@ public class AuthController {
     private final InvitationService invitationService;
     private final TenantMembershipService tenantMembershipService;
     private final JwtService jwtService;
+    private final RefreshTokenService refreshTokenService;
     private final UserRepository userRepository;
 
     @PostMapping("/accept-invite")
@@ -52,7 +55,8 @@ public class AuthController {
         try {
             User user = invitationService.accept(request.getToken(), request.getUsername(), request.getPassword());
             String token = jwtService.generateToken(user);
-            return ResponseEntity.status(HttpStatus.CREATED).body(AuthResponse.of(user, token));
+            String refreshToken = refreshTokenService.issue(user.getId());
+            return ResponseEntity.status(HttpStatus.CREATED).body(AuthResponse.of(user, token, refreshToken));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(AuthResponse.error(e.getMessage()));
         } catch (IllegalStateException e) {
@@ -65,10 +69,34 @@ public class AuthController {
         try {
             User user = userService.authenticate(request.getUsername(), request.getPassword());
             String token = jwtService.generateToken(user);
-            return ResponseEntity.ok(AuthResponse.of(user, token));
+            String refreshToken = refreshTokenService.issue(user.getId());
+            return ResponseEntity.ok(AuthResponse.of(user, token, refreshToken));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(AuthResponse.error(e.getMessage()));
         }
+    }
+
+    /** Silently renews a session: rotates the refresh token (old one is revoked, reuse is
+     * detected) and mints a fresh access token reflecting the user's current tenant/role. */
+    @PostMapping("/refresh")
+    public ResponseEntity<AuthResponse> refresh(@Valid @RequestBody RefreshRequest request) {
+        try {
+            RotationResult result = refreshTokenService.rotate(request.getRefreshToken());
+            String token = jwtService.generateToken(result.user());
+            return ResponseEntity.ok(AuthResponse.of(result.user(), token, result.rawToken()));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(AuthResponse.error(e.getMessage()));
+        }
+    }
+
+    /** Revokes the refresh token so it can't be used to mint further sessions — the access token
+     * itself remains valid until it naturally expires (it's stateless), same as switch-tenant. */
+    @PostMapping("/logout")
+    public ResponseEntity<Void> logout(@RequestBody(required = false) RefreshRequest request) {
+        if (request != null && request.getRefreshToken() != null) {
+            refreshTokenService.revoke(request.getRefreshToken());
+        }
+        return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/me")
@@ -78,14 +106,18 @@ public class AuthController {
             .orElse(ResponseEntity.notFound().build());
     }
 
-    /** Verifies the current password and sets a new one, clearing any pending forced-reset flag. */
+    /** Verifies the current password and sets a new one, clearing any pending forced-reset flag.
+     * Revokes every refresh token the user holds (a password change is a reasonable moment to
+     * force every other device to re-authenticate) and issues a fresh one for this session. */
     @PostMapping("/change-password")
     public ResponseEntity<AuthResponse> changePassword(@Valid @RequestBody ChangePasswordRequest request,
                                                           @AuthenticationPrincipal UserPrincipal principal) {
         try {
             User user = userService.changePassword(principal.userId(), request.getCurrentPassword(), request.getNewPassword());
+            refreshTokenService.revokeAllForUser(user.getId());
             String token = jwtService.generateToken(user);
-            return ResponseEntity.ok(AuthResponse.of(user, token));
+            String refreshToken = refreshTokenService.issue(user.getId());
+            return ResponseEntity.ok(AuthResponse.of(user, token, refreshToken));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(AuthResponse.error(e.getMessage()));
         }
@@ -129,6 +161,12 @@ public class AuthController {
     }
 
     @Data
+    static class RefreshRequest {
+        @NotBlank
+        private String refreshToken;
+    }
+
+    @Data
     static class AcceptInviteRequest {
         @NotBlank
         private String token;
@@ -144,6 +182,7 @@ public class AuthController {
     @Builder
     public static class AuthResponse {
         private String token;
+        private String refreshToken;
         private String userId;
         private String username;
         private String email;
@@ -152,8 +191,13 @@ public class AuthController {
         private String error;
 
         public static AuthResponse of(User user, String token) {
+            return of(user, token, null);
+        }
+
+        public static AuthResponse of(User user, String token, String refreshToken) {
             return AuthResponse.builder()
                 .token(token)
+                .refreshToken(refreshToken)
                 .userId(user.getId().toString())
                 .username(user.getUsername())
                 .email(user.getEmail())

@@ -35,6 +35,9 @@ public class ChunkAnnotation {
     @Column(name = "user_id", nullable = false)
     private UUID userId;
 
+    @Column(name = "tenant_id", nullable = false)
+    private UUID tenantId;
+
     @Column(nullable = false, columnDefinition = "TEXT")
     private String body;
 

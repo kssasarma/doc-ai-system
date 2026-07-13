@@ -32,11 +32,12 @@ public class AuditLogService {
 
     @Async
     @Transactional
-    public void log(UUID actorId, String action, String targetType, UUID targetId,
+    public void log(UUID actorId, UUID tenantId, String action, String targetType, UUID targetId,
                     String metadata, String ipAddress) {
         try {
             auditLogRepository.save(AuditLog.builder()
                 .actorId(actorId)
+                .tenantId(tenantId)
                 .action(action)
                 .targetType(targetType)
                 .targetId(targetId)
@@ -49,23 +50,23 @@ public class AuditLogService {
     }
 
     @Transactional(readOnly = true)
-    public Page<AuditLogDTO> getAuditLog(int page, int size, String action, String since) {
+    public Page<AuditLogDTO> getAuditLog(UUID tenantId, int page, int size, String action, String since) {
         Pageable pageable = PageRequest.of(page, size);
         LocalDateTime sinceTime = since != null && !since.isBlank()
             ? LocalDateTime.parse(since) : null;
 
         Page<AuditLog> raw;
         if (action != null && !action.isBlank() && sinceTime != null) {
-            raw = auditLogRepository.findByActionAndCreatedAtAfterOrderByCreatedAtDesc(action, sinceTime, pageable);
+            raw = auditLogRepository.findByTenantIdAndActionAndCreatedAtAfterOrderByCreatedAtDesc(tenantId, action, sinceTime, pageable);
         } else if (action != null && !action.isBlank()) {
-            raw = auditLogRepository.findByActionOrderByCreatedAtDesc(action, pageable);
+            raw = auditLogRepository.findByTenantIdAndActionOrderByCreatedAtDesc(tenantId, action, pageable);
         } else if (sinceTime != null) {
-            raw = auditLogRepository.findByCreatedAtAfterOrderByCreatedAtDesc(sinceTime, pageable);
+            raw = auditLogRepository.findByTenantIdAndCreatedAtAfterOrderByCreatedAtDesc(tenantId, sinceTime, pageable);
         } else {
-            raw = auditLogRepository.findAllByOrderByCreatedAtDesc(pageable);
+            raw = auditLogRepository.findByTenantIdOrderByCreatedAtDesc(tenantId, pageable);
         }
 
-        Map<UUID, String> usernameMap = userRepository.findAll().stream()
+        Map<UUID, String> usernameMap = userRepository.findByTenantId(tenantId).stream()
             .collect(Collectors.toMap(User::getId, User::getUsername));
 
         List<AuditLogDTO> dtos = raw.getContent().stream()

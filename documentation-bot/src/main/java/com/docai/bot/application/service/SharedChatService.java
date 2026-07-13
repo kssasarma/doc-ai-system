@@ -13,10 +13,12 @@ import com.docai.bot.config.UserPrincipal;
 import com.docai.bot.domain.entity.ChatMessage;
 import com.docai.bot.domain.entity.ChatSession;
 import com.docai.bot.domain.entity.SharedChatLink;
+import com.docai.bot.domain.entity.SharedChatRecipient;
 import com.docai.bot.domain.entity.User;
 import com.docai.bot.domain.repository.ChatMessageRepository;
 import com.docai.bot.domain.repository.ChatSessionRepository;
 import com.docai.bot.domain.repository.SharedChatLinkRepository;
+import com.docai.bot.domain.repository.SharedChatRecipientRepository;
 import com.docai.bot.domain.repository.UserRepository;
 
 import lombok.RequiredArgsConstructor;
@@ -31,6 +33,7 @@ public class SharedChatService {
     private final ChatSessionRepository sessionRepository;
     private final ChatMessageRepository messageRepository;
     private final UserRepository userRepository;
+    private final SharedChatRecipientRepository recipientRepository;
 
     @Transactional
     public ShareLinkDTO createShareLink(UUID chatId, UserPrincipal creator, boolean publicAccess, Integer expireDays) {
@@ -60,6 +63,26 @@ public class SharedChatService {
         return toDTO(link);
     }
 
+    /**
+     * Updates an existing link's visibility/expiration in place, preserving its token — unlike
+     * {@link #createShareLink}, which mints a fresh token. Editing settings must not invalidate a
+     * URL a creator has already handed out, so this never touches the token.
+     */
+    @Transactional
+    public ShareLinkDTO updateShareLink(UUID chatId, UserPrincipal editor, boolean publicAccess, Integer expireDays) {
+        SharedChatLink link = linkRepository.findByChatId(chatId)
+            .orElseThrow(() -> new IllegalArgumentException("No share link exists for this session"));
+        if (!link.getCreatedBy().equals(editor.userId())) {
+            throw new AccessDeniedException("You do not own this share link");
+        }
+
+        link.setPublicAccess(publicAccess);
+        link.setExpiresAt(expireDays != null ? LocalDateTime.now().plusDays(expireDays) : null);
+        link = linkRepository.save(link);
+        log.info("Updated share link {} for session {}", link.getToken(), chatId);
+        return toDTO(link);
+    }
+
     @Transactional(readOnly = true)
     public ShareLinkDTO getShareLink(UUID chatId, UUID userId) {
         return linkRepository.findByChatId(chatId)
@@ -76,6 +99,58 @@ public class SharedChatService {
                 log.info("Deleted share link for session {}", chatId);
             }
         });
+    }
+
+    /**
+     * Grants a specific same-tenant user view access to a non-public share link. Once a link has
+     * at least one named recipient, {@link #verifyViewAccess} stops falling back to "anyone in
+     * the tenant" for it and restricts viewing to exactly the owner, SUPER_ADMIN, and the
+     * recipients explicitly listed here — mirrors the per-document access grant model.
+     */
+    @Transactional
+    public RecipientDTO addRecipient(UUID chatId, UserPrincipal owner, UUID recipientUserId) {
+        SharedChatLink link = ownedLink(chatId, owner.userId());
+
+        User recipient = userRepository.findById(recipientUserId)
+            .orElseThrow(() -> new IllegalArgumentException("User not found"));
+        if (link.getTenantId() == null || !link.getTenantId().equals(recipient.getTenantId())) {
+            throw new IllegalArgumentException("User must be in the same tenant as this chat");
+        }
+        if (recipientRepository.existsByLinkIdAndUserId(link.getId(), recipientUserId)) {
+            return toRecipientDTO(recipientRepository.findByLinkIdAndUserId(link.getId(), recipientUserId).get(), recipient);
+        }
+
+        SharedChatRecipient saved = recipientRepository.save(SharedChatRecipient.builder()
+            .linkId(link.getId())
+            .userId(recipientUserId)
+            .grantedBy(owner.userId())
+            .build());
+        log.info("Granted user {} access to shared chat {}", recipientUserId, chatId);
+        return toRecipientDTO(saved, recipient);
+    }
+
+    @Transactional
+    public void removeRecipient(UUID chatId, UserPrincipal owner, UUID recipientUserId) {
+        SharedChatLink link = ownedLink(chatId, owner.userId());
+        recipientRepository.deleteByLinkIdAndUserId(link.getId(), recipientUserId);
+        log.info("Revoked user {}'s access to shared chat {}", recipientUserId, chatId);
+    }
+
+    @Transactional(readOnly = true)
+    public List<RecipientDTO> listRecipients(UUID chatId, UserPrincipal owner) {
+        SharedChatLink link = ownedLink(chatId, owner.userId());
+        return recipientRepository.findByLinkId(link.getId()).stream()
+            .map(r -> toRecipientDTO(r, userRepository.findById(r.getUserId()).orElse(null)))
+            .collect(Collectors.toList());
+    }
+
+    private SharedChatLink ownedLink(UUID chatId, UUID ownerId) {
+        SharedChatLink link = linkRepository.findByChatId(chatId)
+            .orElseThrow(() -> new IllegalArgumentException("No share link exists for this session"));
+        if (!link.getCreatedBy().equals(ownerId)) {
+            throw new AccessDeniedException("You do not own this share link");
+        }
+        return link;
     }
 
     @Transactional(readOnly = true)
@@ -150,11 +225,21 @@ public class SharedChatService {
     }
 
     /**
-     * A public link is viewable by anyone. A non-public ("team only") link is viewable only by
-     * its creator, a SUPER_ADMIN, or a signed-in member of the same tenant as the chat's owner —
-     * never by an anonymous caller. A null {@code link.tenantId} (pre-migration data whose owning
-     * session's own tenant was unresolvable) denies rather than wildcards: it falls through to
-     * "owner or SUPER_ADMIN only", the safe default for this codebase's fail-closed tenant model.
+     * A public link is viewable by anyone. A non-public link is viewable by its creator or a
+     * SUPER_ADMIN always; beyond that, it falls into one of two tiers depending on whether the
+     * owner has granted any named recipients (see {@link #addRecipient}):
+     * <ul>
+     *   <li>No recipients configured — visible to any signed-in member of the chat's tenant (the
+     *       original "workspace" behavior, preserved so every pre-existing link keeps working
+     *       exactly as before).
+     *   <li>One or more recipients configured — visible <em>only</em> to those specific users,
+     *       not the whole tenant; adding the first recipient narrows an already-shared link from
+     *       workspace-wide down to named individuals.
+     * </ul>
+     * Never viewable by an anonymous caller either way. A null {@code link.tenantId}
+     * (pre-migration data whose owning session's own tenant was unresolvable) denies rather than
+     * wildcards: it falls through to "owner or SUPER_ADMIN only", the safe default for this
+     * codebase's fail-closed tenant model.
      */
     private void verifyViewAccess(SharedChatLink link, UserPrincipal viewer) {
         if (link.isPublicAccess()) {
@@ -164,8 +249,18 @@ public class SharedChatService {
             throw new AccessDeniedException("Sign in to view this shared chat");
         }
         boolean isOwner = viewer.userId().equals(link.getCreatedBy());
-        boolean sameTenant = link.getTenantId() != null && link.getTenantId().equals(viewer.tenantId());
-        if (!isOwner && !viewer.isSuperAdmin() && !sameTenant) {
+        if (isOwner || viewer.isSuperAdmin()) {
+            return;
+        }
+
+        List<SharedChatRecipient> recipients = recipientRepository.findByLinkId(link.getId());
+        boolean allowed;
+        if (!recipients.isEmpty()) {
+            allowed = recipients.stream().anyMatch(r -> r.getUserId().equals(viewer.userId()));
+        } else {
+            allowed = link.getTenantId() != null && link.getTenantId().equals(viewer.tenantId());
+        }
+        if (!allowed) {
             throw new AccessDeniedException("You do not have access to this shared chat");
         }
     }
@@ -177,6 +272,15 @@ public class SharedChatService {
             .publicAccess(link.isPublicAccess())
             .expiresAt(link.getExpiresAt())
             .createdAt(link.getCreatedAt())
+            .recipientCount(recipientRepository.findByLinkId(link.getId()).size())
+            .build();
+    }
+
+    private RecipientDTO toRecipientDTO(SharedChatRecipient recipient, User user) {
+        return RecipientDTO.builder()
+            .userId(recipient.getUserId().toString())
+            .username(user != null ? user.getUsername() : "unknown")
+            .grantedAt(recipient.getGrantedAt())
             .build();
     }
 
@@ -189,6 +293,16 @@ public class SharedChatService {
         private boolean publicAccess;
         private LocalDateTime expiresAt;
         private LocalDateTime createdAt;
+        /** How many named recipients this link has — 0 means "workspace-visible" (the default),
+         * >0 means visibility is narrowed to exactly those people (see verifyViewAccess). */
+        private int recipientCount;
+    }
+
+    @lombok.Data @lombok.Builder
+    public static class RecipientDTO {
+        private String userId;
+        private String username;
+        private LocalDateTime grantedAt;
     }
 
     @lombok.Data @lombok.Builder

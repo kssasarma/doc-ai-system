@@ -2,11 +2,11 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { useAuth } from '../../context/AuthContext';
 import { DocumentInfo, IngestionStatus, TenantUser, Group } from '../../types';
-import { fetchDocuments, fetchIngestionStatus, uploadDocument, retriggerDocument } from '../../services/adminService';
+import { fetchDocuments, fetchIngestionStatus, uploadDocument, retriggerDocument, reprocessFailedDocuments, getDocumentDownloadUrl } from '../../services/adminService';
 import { getTenantUsers } from '../../services/tenantService';
 import { listGroups } from '../../services/groupService';
 import DocumentAccessManager from './DocumentAccessManager';
-import { Upload, RefreshCw, AlertCircle, CheckCircle, Clock, XCircle, Lock, X, FileText } from 'lucide-react';
+import { Upload, RefreshCw, RotateCcw, Download, AlertCircle, CheckCircle, Clock, XCircle, Lock, X, FileText } from 'lucide-react';
 import { fadeInUp, staggerContainer } from '../../lib/motion';
 import { cn } from '../../lib/cn';
 import PageHeader from '../ui/PageHeader';
@@ -46,7 +46,8 @@ export default function DocumentsTab() {
   const [version, setVersion] = useState('');
   const [docName, setDocName] = useState('');
   const [isUploading, setIsUploading] = useState(false);
-  const [uploadError, setUploadError] = useState('');
+  const [isBulkReprocessing, setIsBulkReprocessing] = useState(false);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [tenantUsers, setTenantUsers] = useState<TenantUser[]>([]);
@@ -88,7 +89,6 @@ export default function DocumentsTab() {
     e.preventDefault();
     if (!uploadFile || !token) return;
     setIsUploading(true);
-    setUploadError('');
     try {
       const created = await uploadDocument(token, uploadFile, product, version, docName || undefined);
       setJustUploaded(created);
@@ -97,7 +97,7 @@ export default function DocumentsTab() {
       if (fileInputRef.current) fileInputRef.current.value = '';
       loadData();
     } catch (e) {
-      setUploadError(e instanceof Error ? e.message : 'Upload failed');
+      toast.error(e instanceof Error ? e.message : 'Upload failed.');
     } finally {
       setIsUploading(false);
     }
@@ -111,6 +111,38 @@ export default function DocumentsTab() {
       toast.success(`Retriggered processing for "${doc.documentName}"`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Retrigger failed');
+    }
+  };
+
+  const handleReprocessFailed = async () => {
+    if (!token) return;
+    setIsBulkReprocessing(true);
+    try {
+      const result = await reprocessFailedDocuments(token);
+      loadData();
+      if (result.started > 0) {
+        toast.success(`Restarted processing for ${result.started} of ${result.totalFailed} failed document${result.totalFailed !== 1 ? 's' : ''}.`);
+      }
+      if (result.skipped.length > 0) {
+        toast.error(`${result.skipped.length} document${result.skipped.length !== 1 ? 's' : ''} could not be restarted — see server logs.`);
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Bulk reprocess failed.');
+    } finally {
+      setIsBulkReprocessing(false);
+    }
+  };
+
+  const handleDownload = async (doc: DocumentInfo) => {
+    if (!token) return;
+    setDownloadingId(doc.id);
+    try {
+      const url = await getDocumentDownloadUrl(token, doc.id);
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not get download link.');
+    } finally {
+      setDownloadingId(null);
     }
   };
 
@@ -152,14 +184,14 @@ export default function DocumentsTab() {
                 <Input label="Version *" type="text" value={version} onChange={e => setVersion(e.target.value)} required placeholder="e.g. 23.4" />
                 <Input label="Document Name (optional)" type="text" value={docName} onChange={e => setDocName(e.target.value)} placeholder="Defaults to filename" />
                 <div>
-                  <label className="block text-sm font-medium text-foreground mb-1">File * (.pdf or .chm)</label>
+                  <label htmlFor="upload-file" className="block text-sm font-medium text-foreground mb-1">File * (.pdf, .chm, .html, .htm, .txt, or .md)</label>
                   <input
-                    ref={fileInputRef} type="file" accept=".pdf,.chm" onChange={e => setUploadFile(e.target.files?.[0] || null)} required
+                    id="upload-file"
+                    ref={fileInputRef} type="file" accept=".pdf,.chm,.html,.htm,.txt,.md" onChange={e => setUploadFile(e.target.files?.[0] || null)} required
                     className="w-full px-3 py-2 border border-border bg-surface rounded-lg text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary file:mr-3 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:bg-primary/10 file:text-primary"
                   />
                 </div>
               </div>
-              {uploadError && <div className="flex items-center gap-2 text-sm text-danger bg-danger/10 rounded-lg px-3 py-2"><AlertCircle className="w-4 h-4 flex-shrink-0" />{uploadError}</div>}
               <Button type="submit" loading={isUploading} disabled={!uploadFile} leftIcon={!isUploading ? <Upload className="w-4 h-4" /> : undefined}>
                 {isUploading ? 'Uploading…' : 'Upload & Process'}
               </Button>
@@ -182,9 +214,22 @@ export default function DocumentsTab() {
 
         {/* Document list */}
         <Card>
-          <CardHeader className="flex items-center justify-between">
+          <CardHeader className="flex items-center justify-between gap-2">
             <h2 className="text-base font-semibold text-foreground">Documents</h2>
-            <Button variant="ghost" size="sm" onClick={loadData} leftIcon={<RefreshCw className="w-3.5 h-3.5" />}>Refresh</Button>
+            <div className="flex items-center gap-2">
+              {!!status?.failed && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleReprocessFailed}
+                  loading={isBulkReprocessing}
+                  leftIcon={!isBulkReprocessing ? <RotateCcw className="w-3.5 h-3.5" /> : undefined}
+                >
+                  {isBulkReprocessing ? 'Reprocessing…' : `Reprocess ${status.failed} failed`}
+                </Button>
+              )}
+              <Button variant="ghost" size="sm" onClick={loadData} leftIcon={<RefreshCw className="w-3.5 h-3.5" />}>Refresh</Button>
+            </div>
           </CardHeader>
           {isLoading ? (
             <div className="divide-y divide-border">{[0, 1, 2].map(i => <SkeletonRow key={i} columns={5} />)}</div>
@@ -225,6 +270,17 @@ export default function DocumentsTab() {
                           <Button variant="secondary" size="sm" onClick={() => setManagingDoc(doc)} leftIcon={<Lock className="w-3.5 h-3.5" />}>Access</Button>
                           {(doc.status === 'FAILED' || doc.status === 'PENDING') && (
                             <Button variant="outline" size="sm" onClick={() => handleRetrigger(doc)} leftIcon={<RefreshCw className="w-3.5 h-3.5" />}>Retry</Button>
+                          )}
+                          {doc.status !== 'COMPLETED' && (
+                            <IconButton
+                              label="Download original file"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDownload(doc)}
+                              disabled={downloadingId === doc.id}
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                            </IconButton>
                           )}
                         </div>
                       </td>

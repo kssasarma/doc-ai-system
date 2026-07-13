@@ -10,7 +10,8 @@ export function createNewSession(chatId?: string): ChatSession {
     title: 'New Chat',
     messages: [],
     createdAt: Date.now(),
-    updatedAt: Date.now()
+    updatedAt: Date.now(),
+    isPersisted: !!chatId,
   };
 }
 

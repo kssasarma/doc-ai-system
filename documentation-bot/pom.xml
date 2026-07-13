@@ -184,10 +184,16 @@
 			<version>2.8.4</version>
 		</dependency>
 
-		<!-- Per-user rate limiting -->
+		<!-- Per-user rate limiting — bucket4j-redis backs it with a shared Redis store so limits
+		     are enforced correctly across replicas, not per-instance (see RateLimitConfig). -->
 		<dependency>
 			<groupId>com.bucket4j</groupId>
 			<artifactId>bucket4j-core</artifactId>
+			<version>8.10.1</version>
+		</dependency>
+		<dependency>
+			<groupId>com.bucket4j</groupId>
+			<artifactId>bucket4j-redis</artifactId>
 			<version>8.10.1</version>
 		</dependency>
 

@@ -92,7 +92,7 @@ class ChatControllerTest {
 
     @Test
     void getSessions_authenticated_returns200() throws Exception {
-        when(chatService.getAllChatSessions(any(), any(Boolean.class)))
+        when(chatService.getAllChatSessions(any()))
             .thenReturn(AllChatsResponse.builder().totalChats(0).sessions(List.of()).build());
 
         mockMvc.perform(get("/api/chat/sessions")

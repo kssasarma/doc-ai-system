@@ -325,7 +325,10 @@ The main API service. Handles all user interactions, authentication, chat, and A
 The ingestion pipeline service. Processes raw documents into searchable vector embeddings.
 
 **Key responsibilities:**
-- Document parsing: PDF, CHM, HTML, plain text
+- Document parsing: PDF, CHM, HTML, plain text/Markdown (`.pdf`, `.chm`, `.html`/`.htm`, `.txt`/`.md`).
+  Structure-preserving extraction (headings, tables, code blocks) is fully effective for CHM and
+  HTML; for PDF it's partial — PDF is fixed-layout, so PDFBox-based extraction recovers accurate
+  paragraph text and boundaries but not reconstructed headings/tables the way native markup does.
 - Chunking strategies: fixed-size (512 tokens, 50-token overlap) and embedding-based semantic
 - OpenAI embedding generation and storage into pgvector
 - PII detection and flagging before storage (SSN, credit cards, AWS keys, email, phone, IP)
@@ -353,7 +356,7 @@ All configuration is environment-variable-driven. Defaults work out of the box f
 | `REDIS_PORT` | `6379` | Redis port |
 | `REDIS_PASSWORD` | *(none)* | Redis auth password |
 | `OPENAI_CHAT_MODEL` | `gpt-4o-mini` | Default chat model |
-| `OPENAI_EMBEDDING_MODEL` | `gpt-4o-embedding-4k` | Embedding model |
+| `OPENAI_EMBEDDING_MODEL` | `text-embedding-3-small` | Embedding model |
 | `ANTHROPIC_CHAT_MODEL` | `claude-sonnet-4-6` | Anthropic model (when `ANTHROPIC_API_KEY` is set) |
 | `CORS_ALLOWED_ORIGINS` | `http://localhost:5173,...` | Comma-separated allowed CORS origins |
 | `RATE_LIMIT_PER_MINUTE` | `30` | Max requests per minute per user |

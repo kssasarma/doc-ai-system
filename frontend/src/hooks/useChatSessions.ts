@@ -18,6 +18,7 @@ function convertBackendSession(backendSession: BackendSession): ChatSession {
     updatedAt: new Date(backendSession.lastActiveAt).getTime(),
     pinned: backendSession.pinned ?? false,
     tags: backendSession.tags ?? [],
+    isPersisted: true,
   };
 }
 
@@ -166,7 +167,7 @@ export function useChatSessions(token: string) {
   const updateSessionChatId = useCallback((oldChatId: string, newChatId: string) => {
     setSessions(prev => prev.map(session =>
       session.chatId === oldChatId
-        ? { ...session, chatId: newChatId, updatedAt: Date.now() }
+        ? { ...session, chatId: newChatId, updatedAt: Date.now(), isPersisted: true }
         : session
     ));
     if (activeSessionId === oldChatId) {

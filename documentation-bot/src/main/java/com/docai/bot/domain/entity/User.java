@@ -69,6 +69,11 @@ public class User {
     @Column(name = "avatar_url", length = 500)
     private String avatarUrl;
 
+    /** Set once by GdprErasureService — the account is anonymized and can no longer log in, but
+     * the row itself is kept so shared/collaborative content elsewhere still resolves. */
+    @Column(name = "deleted_at")
+    private LocalDateTime deletedAt;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;

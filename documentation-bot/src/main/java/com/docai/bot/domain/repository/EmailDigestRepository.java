@@ -12,4 +12,5 @@ import com.docai.bot.domain.entity.EmailDigest;
 public interface EmailDigestRepository extends JpaRepository<EmailDigest, UUID> {
     Optional<EmailDigest> findByUserId(UUID userId);
     List<EmailDigest> findByEnabledTrueAndNextSendAtBefore(Instant threshold);
+    void deleteByUserId(UUID userId);
 }

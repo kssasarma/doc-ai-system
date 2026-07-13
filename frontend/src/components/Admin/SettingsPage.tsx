@@ -8,6 +8,7 @@ import {
 } from '../../services/tenantService';
 import { getTenantBranding, updateBranding, type TenantBranding } from '../../services/brandingService';
 import { useAuth } from '../../context/AuthContext';
+import { useBranding } from '../../context/BrandingContext';
 import { fadeInUp, staggerContainer } from '../../lib/motion';
 import PageHeader from '../ui/PageHeader';
 import { Card, CardBody } from '../ui/Card';
@@ -15,6 +16,7 @@ import Button from '../ui/Button';
 import Input from '../ui/Input';
 import Select from '../ui/Select';
 import { SkeletonCard } from '../ui/Skeleton';
+import { useToast } from '../ui/Toast';
 
 type Section = 'llm' | 'retention' | 'branding';
 
@@ -33,6 +35,8 @@ function SectionCard({ title, icon: Icon, children }: { title: string; icon: Rea
 
 export default function SettingsPage() {
   const { token, user } = useAuth();
+  const { refreshBranding } = useBranding();
+  const toast = useToast();
   const tenantId = user?.tenantId ?? '';
 
   const [llmConfig, setLlmConfig] = useState<TenantLLMConfig | null>(null);
@@ -41,7 +45,6 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState<Section | null>(null);
-  const [saved, setSaved] = useState<Section | null>(null);
 
   useEffect(() => {
     if (!token || !tenantId) return;
@@ -61,17 +64,14 @@ export default function SettingsPage() {
       .finally(() => setLoading(false));
   }, [token, tenantId]);
 
-  const flashSaved = (section: Section) => {
-    setSaved(section);
-    setTimeout(() => setSaved(prev => (prev === section ? null : prev)), 2500);
-  };
-
   const saveLLM = async () => {
     if (!llmConfig || !token) return;
     setSaving('llm');
     try {
       setLlmConfig(await updateTenantLLMConfig(token, tenantId, llmConfig));
-      flashSaved('llm');
+      toast.success('LLM configuration saved.');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to save LLM configuration.');
     } finally {
       setSaving(null);
     }
@@ -82,7 +82,9 @@ export default function SettingsPage() {
     setSaving('retention');
     try {
       setRetention(await updateRetentionPolicy(token, tenantId, retention));
-      flashSaved('retention');
+      toast.success('Data retention policy saved.');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to save data retention policy.');
     } finally {
       setSaving(null);
     }
@@ -93,7 +95,10 @@ export default function SettingsPage() {
     setSaving('branding');
     try {
       setBranding(await updateBranding(tenantId, branding, token));
-      flashSaved('branding');
+      toast.success('Branding saved.');
+      await refreshBranding();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to save branding.');
     } finally {
       setSaving(null);
     }
@@ -137,7 +142,6 @@ export default function SettingsPage() {
                   >
                     <option value="openai">OpenAI</option>
                     <option value="anthropic">Anthropic</option>
-                    <option value="azure_openai">Azure OpenAI</option>
                   </Select>
                   <Input
                     label="Chat Model"
@@ -181,7 +185,6 @@ export default function SettingsPage() {
                 )}
                 <div className="flex items-center gap-3">
                   <Button onClick={saveLLM} loading={saving === 'llm'} leftIcon={<Save size={14} />}>Save</Button>
-                  {saved === 'llm' && <span className="text-xs text-success">Saved.</span>}
                 </div>
               </div>
             </SectionCard>
@@ -212,7 +215,6 @@ export default function SettingsPage() {
                 </div>
                 <div className="flex items-center gap-3">
                   <Button onClick={saveRetention} loading={saving === 'retention'} leftIcon={<Save size={14} />}>Save</Button>
-                  {saved === 'retention' && <span className="text-xs text-success">Saved.</span>}
                 </div>
               </div>
             </SectionCard>
@@ -246,9 +248,10 @@ export default function SettingsPage() {
                     onChange={e => setBranding(b => b ? { ...b, faviconUrl: e.target.value } : b)}
                   />
                   <div>
-                    <label className="block text-sm font-medium text-foreground mb-1">Primary color</label>
+                    <label htmlFor="branding-primary-color" className="block text-sm font-medium text-foreground mb-1">Primary color</label>
                     <div className="flex items-center gap-2">
                       <input
+                        id="branding-primary-color"
                         type="color"
                         className="h-9 w-12 rounded border border-border"
                         value={branding.primaryColor}
@@ -256,15 +259,17 @@ export default function SettingsPage() {
                       />
                       <Input
                         className="flex-1"
+                        aria-label="Primary color hex value"
                         value={branding.primaryColor}
                         onChange={e => setBranding(b => b ? { ...b, primaryColor: e.target.value } : b)}
                       />
                     </div>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-foreground mb-1">Accent color</label>
+                    <label htmlFor="branding-accent-color" className="block text-sm font-medium text-foreground mb-1">Accent color</label>
                     <div className="flex items-center gap-2">
                       <input
+                        id="branding-accent-color"
                         type="color"
                         className="h-9 w-12 rounded border border-border"
                         value={branding.accentColor}
@@ -272,6 +277,7 @@ export default function SettingsPage() {
                       />
                       <Input
                         className="flex-1"
+                        aria-label="Accent color hex value"
                         value={branding.accentColor}
                         onChange={e => setBranding(b => b ? { ...b, accentColor: e.target.value } : b)}
                       />
@@ -285,7 +291,6 @@ export default function SettingsPage() {
                 />
                 <div className="flex items-center gap-3">
                   <Button onClick={saveBranding} loading={saving === 'branding'} leftIcon={<Save size={14} />}>Save</Button>
-                  {saved === 'branding' && <span className="text-xs text-success">Saved.</span>}
                 </div>
               </div>
             </SectionCard>

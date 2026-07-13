@@ -139,9 +139,12 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      # Left empty on purpose: the built-in nginx reverse proxy (BOT_UPSTREAM/INGESTOR_UPSTREAM
+      # below, defaulted in the Dockerfile to the compose service names) makes the frontend
+      # single-origin, so the bundle should call relative /api paths, not an absolute URL.
       args:
-        VITE_BACKEND_URL: ${VITE_BACKEND_URL:-http://localhost:8082}
-        VITE_INGESTOR_URL: ${VITE_INGESTOR_URL:-http://localhost:8081}
+        VITE_BACKEND_URL: ${VITE_BACKEND_URL:-}
+        VITE_INGESTOR_URL: ${VITE_INGESTOR_URL:-}
     container_name: docai-frontend
     ports:
       - "3000:80"

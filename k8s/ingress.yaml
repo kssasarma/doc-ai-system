@@ -1,5 +1,12 @@
 # Requires: nginx ingress controller (kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/cloud/deploy.yaml)
 # and cert-manager for TLS (https://cert-manager.io)
+#
+# Everything is routed to the frontend Service, including /api/**: the frontend's own nginx
+# (see frontend/templates/default.conf.template) is the single-origin reverse proxy that splits
+# /api/** between documentation-bot-service and document-ingestor-service, including the two
+# path prefixes each backend borrows from the other (/api/documents/{id}/access on the bot,
+# /api/v1/ingest on the ingestor). Duplicating that split here would just be a second place to
+# keep in sync — one router, not two.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -13,30 +20,16 @@ spec:
   ingressClassName: nginx
   tls:
     - hosts:
-        - api.your-domain.com
+        - your-domain.com
       secretName: doc-ai-tls
   rules:
-    - host: api.your-domain.com
+    - host: your-domain.com
       http:
         paths:
-          - path: /api/ingest
-            pathType: Prefix
-            backend:
-              service:
-                name: document-ingestor-service
-                port:
-                  number: 8081
-          - path: /api/documents
-            pathType: Prefix
-            backend:
-              service:
-                name: document-ingestor-service
-                port:
-                  number: 8081
           - path: /
             pathType: Prefix
             backend:
               service:
-                name: documentation-bot-service
+                name: frontend-service
                 port:
-                  number: 8082
+                  number: 80

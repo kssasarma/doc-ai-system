@@ -1,5 +1,6 @@
 package com.docai.bot.domain.repository;
 
+import java.time.LocalDateTime;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -11,4 +12,6 @@ import com.docai.bot.domain.entity.InvitationToken;
 @Repository
 public interface InvitationTokenRepository extends JpaRepository<InvitationToken, UUID> {
     Optional<InvitationToken> findByToken(String token);
+
+    long countByTenantIdAndAcceptedAtIsNullAndExpiresAtAfter(UUID tenantId, LocalDateTime now);
 }

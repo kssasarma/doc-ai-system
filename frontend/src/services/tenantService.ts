@@ -1,7 +1,8 @@
 import axios from 'axios';
+import { BACKEND_URL } from '../config/backend';
 import type { Tenant, TenantUser } from '../types';
 
-const BOT_URL = import.meta.env.VITE_BOT_API_URL ?? 'http://localhost:8082';
+const BOT_URL = BACKEND_URL;
 
 export type { Tenant };
 

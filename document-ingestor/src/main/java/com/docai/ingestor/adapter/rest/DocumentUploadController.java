@@ -1,6 +1,8 @@
 package com.docai.ingestor.adapter.rest;
 
 import java.security.DigestInputStream;
+import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -22,7 +24,9 @@ import com.docai.ingestor.application.service.IngestionService;
 import com.docai.ingestor.config.TenantContext;
 import com.docai.ingestor.domain.entity.Document;
 import com.docai.ingestor.domain.entity.Document.IngestionStatus;
+import com.docai.ingestor.domain.entity.Tenant;
 import com.docai.ingestor.domain.repository.DocumentRepository;
+import com.docai.ingestor.domain.repository.TenantRepository;
 
 import lombok.Builder;
 import lombok.Data;
@@ -37,10 +41,14 @@ import lombok.extern.slf4j.Slf4j;
 public class DocumentUploadController {
 
     private final DocumentRepository documentRepository;
+    private final TenantRepository tenantRepository;
     private final IngestionService ingestionService;
     private final DocumentStorageService documentStorageService;
 
-    private static final List<String> ALLOWED_EXTENSIONS = List.of("pdf", "chm");
+    // Must match exactly what DocumentParser has a real implementation for (PdfParser,
+    // ChmParser, HtmlParser, PlainTextParser) — this allowlist previously only listed pdf/chm,
+    // silently blocking html/htm/txt/md uploads the backend could already parse correctly.
+    private static final List<String> ALLOWED_EXTENSIONS = List.of("pdf", "chm", "html", "htm", "txt", "md");
 
     @PostMapping("/upload")
     public ResponseEntity<DocumentResponse> upload(
@@ -72,6 +80,14 @@ public class DocumentUploadController {
 
         try {
             UUID tenantId = TenantContext.get();
+
+            Tenant tenant = tenantRepository.findById(tenantId)
+                .orElseThrow(() -> new IllegalStateException("Tenant not found: " + tenantId));
+            long currentDocuments = documentRepository.countByTenantIdAndStatusNot(tenantId, IngestionStatus.FAILED);
+            if (currentDocuments >= tenant.getMaxDocuments()) {
+                return ResponseEntity.status(HttpStatus.CONFLICT).body(DocumentResponse.error(
+                    "This tenant has reached its plan limit of " + tenant.getMaxDocuments() + " documents"));
+            }
 
             // Hash while streaming straight into storage — the file never touches this
             // container's disk, not even transiently.
@@ -154,6 +170,64 @@ public class DocumentUploadController {
         }
     }
 
+    /** A time-limited direct-download link for a document's original file. Only available for
+     * documents that still have one in storage — completed documents' source files are deleted
+     * once ingestion succeeds (see IngestionService), so there's nothing left to download for
+     * those; re-upload is the only way to get the original back. */
+    @GetMapping("/{id}/download-url")
+    public ResponseEntity<DownloadUrlResponse> downloadUrl(@PathVariable UUID id) {
+        UUID tenantId = TenantContext.get();
+        Document doc = documentRepository.findById(id)
+            .filter(d -> tenantId.equals(d.getTenantId()))
+            .orElse(null);
+        if (doc == null) {
+            return ResponseEntity.notFound().build();
+        }
+        if (doc.getStorageKey() == null) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(DownloadUrlResponse.builder()
+                .error("This document's original file is no longer available — it was removed after successful processing. Re-upload to get a new copy.")
+                .build());
+        }
+        try {
+            String url = documentStorageService.presignedDownloadUrl(doc.getStorageKey(), Duration.ofMinutes(15));
+            return ResponseEntity.ok(DownloadUrlResponse.builder().url(url).expiresInSeconds(900).build());
+        } catch (IllegalStateException e) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(DownloadUrlResponse.builder().error(e.getMessage()).build());
+        }
+    }
+
+    /** Retriggers every FAILED document for this tenant in one action — the per-document endpoint
+     * above required opening each failed row individually, tedious after a bulk-upload batch hits
+     * a transient issue (e.g. the embedding provider was briefly unavailable). Skips (rather than
+     * fails the whole request over) documents that individually can't be retriggered — same
+     * validation as the single-document path — reporting why in the response. */
+    @PostMapping("/reprocess-failed")
+    public ResponseEntity<BulkReprocessResponse> reprocessFailed() {
+        UUID tenantId = TenantContext.get();
+        List<Document> failed = documentRepository.findByTenantIdAndStatus(tenantId, IngestionStatus.FAILED);
+
+        int started = 0;
+        List<String> skipped = new ArrayList<>();
+        for (Document doc : failed) {
+            try {
+                // prepareRetrigger commits the PROCESSING state before async starts
+                ingestionService.prepareRetrigger(doc.getId());
+                // Start async processing after the transaction committed
+                ingestionService.ingestUploadedFile(doc.getId());
+                started++;
+            } catch (IllegalArgumentException | IllegalStateException e) {
+                skipped.add(doc.getDocumentName() + ": " + e.getMessage());
+            }
+        }
+
+        log.info("Bulk reprocess for tenant {}: {} of {} failed documents restarted", tenantId, started, failed.size());
+        return ResponseEntity.ok(BulkReprocessResponse.builder()
+            .totalFailed(failed.size())
+            .started(started)
+            .skipped(skipped)
+            .build());
+    }
+
     @GetMapping
     public ResponseEntity<List<DocumentResponse>> getAllDocuments() {
         return ResponseEntity.ok(documentRepository.findByTenantId(TenantContext.get()).stream()
@@ -169,6 +243,22 @@ public class DocumentUploadController {
     private String stripExtension(String filename) {
         int dot = filename.lastIndexOf('.');
         return dot >= 0 ? filename.substring(0, dot) : filename;
+    }
+
+    @Data
+    @Builder
+    public static class DownloadUrlResponse {
+        private String url;
+        private Integer expiresInSeconds;
+        private String error;
+    }
+
+    @Data
+    @Builder
+    public static class BulkReprocessResponse {
+        private int totalFailed;
+        private int started;
+        private List<String> skipped;
     }
 
     @Data

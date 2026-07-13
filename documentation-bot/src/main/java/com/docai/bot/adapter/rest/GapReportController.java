@@ -40,8 +40,8 @@ public class GapReportController {
         if (!principal.isAdmin()) return ResponseEntity.status(403).build();
 
         List<DocumentationGapReport> reports = product != null
-            ? reportRepository.findByProductOrderByReportPeriodEndDesc(product)
-            : reportRepository.findAllByOrderByReportPeriodEndDesc();
+            ? reportRepository.findByTenantIdAndProductOrderByReportPeriodEndDesc(principal.tenantId(), product)
+            : reportRepository.findByTenantIdOrderByReportPeriodEndDesc(principal.tenantId());
 
         return ResponseEntity.ok(reports);
     }
@@ -52,12 +52,12 @@ public class GapReportController {
             @AuthenticationPrincipal UserPrincipal principal) {
 
         if (!principal.isAdmin()) return ResponseEntity.status(403).build();
-        return reportRepository.findById(id)
+        return reportRepository.findByIdAndTenantId(id, principal.tenantId())
             .map(ResponseEntity::ok)
             .orElse(ResponseEntity.notFound().build());
     }
 
-    /** Trigger on-demand gap report generation. */
+    /** Trigger on-demand gap report generation, within the caller's own tenant. */
     @PostMapping("/generate")
     public ResponseEntity<DocumentationGapReport> generate(
             @RequestParam(required = false) String product,
@@ -66,7 +66,7 @@ public class GapReportController {
 
         if (!principal.isAdmin()) return ResponseEntity.status(403).build();
 
-        DocumentationGapReport report = gapService.generateReport(product, version);
+        DocumentationGapReport report = gapService.generateReport(principal.tenantId(), product, version);
         if (report == null) {
             return ResponseEntity.noContent().build();
         }
@@ -81,7 +81,7 @@ public class GapReportController {
 
         if (!principal.isAdmin()) return ResponseEntity.status(403).build();
 
-        return reportRepository.findById(id)
+        return reportRepository.findByIdAndTenantId(id, principal.tenantId())
             .map(report -> {
                 // Mark exported
                 report.setExportedAt(LocalDateTime.now());

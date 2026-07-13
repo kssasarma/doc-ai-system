@@ -39,6 +39,9 @@ public class AnswerFeedback {
     @Column(name = "user_id", nullable = false)
     private UUID userId;
 
+    @Column(name = "tenant_id", nullable = false)
+    private UUID tenantId;
+
     /** 1 = helpful, -1 = not helpful */
     @Column(nullable = false)
     private short rating;

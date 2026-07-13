@@ -10,7 +10,10 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.event.TransactionPhase;
+import org.springframework.transaction.event.TransactionalEventListener;
 
+import com.docai.bot.application.event.ChatQueryRecordedEvent;
 import com.docai.bot.domain.entity.QueryLog;
 import com.docai.bot.domain.entity.User;
 import com.docai.bot.domain.repository.AnswerFeedbackRepository;
@@ -31,28 +34,31 @@ public class AnalyticsService {
     private final AnswerFeedbackRepository feedbackRepository;
     private final ChatSessionRepository sessionRepository;
 
-    // ── Query logging (called async from ChatService) ─────────────────────────
+    // ── Query logging ────────────────────────────────────────────────────────
+    // Async AND gated on the publishing transaction having committed — the session this query
+    // log's foreign key points at may have been created in that same transaction, so running
+    // this any earlier (as a plain @Async method called mid-transaction, which is what this used
+    // to be) could race the session's own INSERT and intermittently fail query_logs_session_id_fkey.
 
     @Async
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Transactional
-    public void logQuery(UUID userId, UUID sessionId, String question,
-                         String product, String version, double confidence,
-                         long latencyMs, int promptTokens, int completionTokens,
-                         String[] citedDocuments, double estimatedCostUsd) {
+    public void onQueryRecorded(ChatQueryRecordedEvent event) {
         try {
             QueryLog entry = QueryLog.builder()
-                .userId(userId)
-                .sessionId(sessionId)
-                .questionPreview(question != null
-                    ? question.substring(0, Math.min(200, question.length())) : null)
-                .product(product)
-                .version(version)
-                .confidence(confidence)
-                .latencyMs((int) Math.min(latencyMs, Integer.MAX_VALUE))
-                .promptTokens(promptTokens)
-                .completionTokens(completionTokens)
-                .estimatedCostUsd(estimatedCostUsd)
-                .citedDocuments(citedDocuments)
+                .userId(event.userId())
+                .tenantId(event.tenantId())
+                .sessionId(event.sessionId())
+                .questionPreview(event.question() != null
+                    ? event.question().substring(0, Math.min(200, event.question().length())) : null)
+                .product(event.product())
+                .version(event.version())
+                .confidence(event.confidence())
+                .latencyMs((int) Math.min(event.latencyMs(), Integer.MAX_VALUE))
+                .promptTokens(event.promptTokens())
+                .completionTokens(event.completionTokens())
+                .estimatedCostUsd(event.estimatedCostUsd())
+                .citedDocuments(event.citedDocuments())
                 .build();
             queryLogRepository.save(entry);
         } catch (Exception e) {
@@ -63,27 +69,27 @@ public class AnalyticsService {
     // ── Overview ──────────────────────────────────────────────────────────────
 
     @Transactional(readOnly = true)
-    public OverviewDTO getOverview() {
+    public OverviewDTO getOverview(UUID tenantId) {
         LocalDateTime dayAgo   = LocalDateTime.now().minusDays(1);
         LocalDateTime weekAgo  = LocalDateTime.now().minusDays(7);
         LocalDateTime monthAgo = LocalDateTime.now().minusDays(30);
 
-        long totalAll      = queryLogRepository.count();
-        long today         = queryLogRepository.countByCreatedAtAfter(dayAgo);
-        long thisWeek      = queryLogRepository.countByCreatedAtAfter(weekAgo);
-        long thisMonth     = queryLogRepository.countByCreatedAtAfter(monthAgo);
-        long dau           = queryLogRepository.countDistinctUsersSince(dayAgo);
-        long wau           = queryLogRepository.countDistinctUsersSince(weekAgo);
-        long mau           = queryLogRepository.countDistinctUsersSince(monthAgo);
+        long totalAll      = queryLogRepository.countByTenantId(tenantId);
+        long today         = queryLogRepository.countByTenantIdAndCreatedAtAfter(tenantId, dayAgo);
+        long thisWeek      = queryLogRepository.countByTenantIdAndCreatedAtAfter(tenantId, weekAgo);
+        long thisMonth     = queryLogRepository.countByTenantIdAndCreatedAtAfter(tenantId, monthAgo);
+        long dau           = queryLogRepository.countDistinctUsersSince(tenantId, dayAgo);
+        long wau           = queryLogRepository.countDistinctUsersSince(tenantId, weekAgo);
+        long mau           = queryLogRepository.countDistinctUsersSince(tenantId, monthAgo);
 
-        double avgSessionLength = sessionRepository.findAll().stream()
+        double avgSessionLength = sessionRepository.findByTenantIdOrderByPinnedDescLastActiveAtDesc(tenantId).stream()
             .mapToInt(s -> s.getMessageCount() != null ? s.getMessageCount() : 0)
             .average().orElse(0.0);
 
-        long positive = feedbackRepository.countByRating((short) 1);
-        long negative = feedbackRepository.countByRating((short) -1);
+        long positive = feedbackRepository.countByTenantIdAndRating(tenantId, (short) 1);
+        long negative = feedbackRepository.countByTenantIdAndRating(tenantId, (short) -1);
 
-        Double avgConf = queryLogRepository.avgConfidenceSince(monthAgo);
+        Double avgConf = queryLogRepository.avgConfidenceSince(tenantId, monthAgo);
 
         return OverviewDTO.builder()
             .totalQueriesAllTime(totalAll)
@@ -103,9 +109,9 @@ public class AnalyticsService {
     // ── Daily stats (queries/day + cost trend) ─────────────────────────────
 
     @Transactional(readOnly = true)
-    public List<DailyStatDTO> getDailyStats(int days) {
+    public List<DailyStatDTO> getDailyStats(UUID tenantId, int days) {
         LocalDateTime since = LocalDateTime.now().minusDays(days);
-        return queryLogRepository.getDailyStats(since).stream()
+        return queryLogRepository.getDailyStats(tenantId, since).stream()
             .map(row -> DailyStatDTO.builder()
                 .date(str(row[0]))
                 .queryCount(toLong(row[1]))
@@ -118,9 +124,9 @@ public class AnalyticsService {
     // ── Top questions ─────────────────────────────────────────────────────────
 
     @Transactional(readOnly = true)
-    public List<TopQuestionDTO> getTopQuestions(int limit) {
+    public List<TopQuestionDTO> getTopQuestions(UUID tenantId, int limit) {
         LocalDateTime since = LocalDateTime.now().minusDays(30);
-        return queryLogRepository.findTopQuestions(since, PageRequest.of(0, limit)).stream()
+        return queryLogRepository.findTopQuestions(tenantId, since, PageRequest.of(0, limit)).stream()
             .map(row -> TopQuestionDTO.builder()
                 .questionPreview(str(row[0]))
                 .count(toLong(row[1]))
@@ -133,8 +139,8 @@ public class AnalyticsService {
     // ── Product coverage ──────────────────────────────────────────────────────
 
     @Transactional(readOnly = true)
-    public List<ProductCoverageDTO> getProductCoverage() {
-        return queryLogRepository.getProductCoverageStats().stream()
+    public List<ProductCoverageDTO> getProductCoverage(UUID tenantId) {
+        return queryLogRepository.getProductCoverageStats(tenantId).stream()
             .map(row -> {
                 long queryCount    = toLong(row[2]);
                 double avgConf     = toDouble(row[3]);
@@ -155,12 +161,12 @@ public class AnalyticsService {
     // ── User engagement ───────────────────────────────────────────────────────
 
     @Transactional(readOnly = true)
-    public List<UserEngagementDTO> getUserEngagement() {
-        // Build userId→username map
-        Map<String, String> usernameMap = userRepository.findAll().stream()
+    public List<UserEngagementDTO> getUserEngagement(UUID tenantId) {
+        // Build userId→username map, scoped to this tenant's own users
+        Map<String, String> usernameMap = userRepository.findByTenantId(tenantId).stream()
             .collect(Collectors.toMap(u -> u.getId().toString(), User::getUsername));
 
-        return queryLogRepository.getUserEngagementStats().stream()
+        return queryLogRepository.getUserEngagementStats(tenantId).stream()
             .map(row -> {
                 String uid = str(row[0]);
                 return UserEngagementDTO.builder()
@@ -177,20 +183,20 @@ public class AnalyticsService {
     // ── Cost summary ──────────────────────────────────────────────────────────
 
     @Transactional(readOnly = true)
-    public CostSummaryDTO getCostSummary() {
+    public CostSummaryDTO getCostSummary(UUID tenantId) {
         LocalDateTime monthAgo = LocalDateTime.now().minusDays(30);
-        Map<String, String> usernameMap = userRepository.findAll().stream()
+        Map<String, String> usernameMap = userRepository.findByTenantId(tenantId).stream()
             .collect(Collectors.toMap(u -> u.getId().toString(), User::getUsername));
 
-        double totalThisMonth = queryLogRepository.sumCostSince(monthAgo);
-        double totalAllTime   = queryLogRepository.sumCostAllTime();
-        long   queryCountMonth = queryLogRepository.countByCreatedAtAfter(monthAgo);
+        double totalThisMonth = queryLogRepository.sumCostSince(tenantId, monthAgo);
+        double totalAllTime   = queryLogRepository.sumCostAllTime(tenantId);
+        long   queryCountMonth = queryLogRepository.countByTenantIdAndCreatedAtAfter(tenantId, monthAgo);
         double avgCost = queryCountMonth > 0 ? totalThisMonth / queryCountMonth : 0.0;
 
-        List<DailyStatDTO> daily = getDailyStats(30);
+        List<DailyStatDTO> daily = getDailyStats(tenantId, 30);
 
         List<UserCostDTO> costByUser = queryLogRepository
-            .getCostByUser(monthAgo, PageRequest.of(0, 10)).stream()
+            .getCostByUser(tenantId, monthAgo, PageRequest.of(0, 10)).stream()
             .map(row -> {
                 String uid = str(row[0]);
                 return UserCostDTO.builder()
@@ -202,7 +208,7 @@ public class AnalyticsService {
             })
             .collect(Collectors.toList());
 
-        List<ProductCostDTO> costByProduct = queryLogRepository.getCostByProduct(monthAgo).stream()
+        List<ProductCostDTO> costByProduct = queryLogRepository.getCostByProduct(tenantId, monthAgo).stream()
             .map(row -> ProductCostDTO.builder()
                 .product(str(row[0]))
                 .version(str(row[1]))
@@ -224,9 +230,9 @@ public class AnalyticsService {
     // ── Document coverage ─────────────────────────────────────────────────────
 
     @Transactional(readOnly = true)
-    public List<DocumentCoverageDTO> getDocumentCoverage() {
+    public List<DocumentCoverageDTO> getDocumentCoverage(UUID tenantId) {
         LocalDateTime since = LocalDateTime.now().minusDays(30);
-        return queryLogRepository.getDocumentCitations(since).stream()
+        return queryLogRepository.getDocumentCitations(tenantId, since).stream()
             .map(row -> DocumentCoverageDTO.builder()
                 .documentName(str(row[0]))
                 .citationCount(toLong(row[1]))
@@ -239,9 +245,9 @@ public class AnalyticsService {
     // ── Failed queries ────────────────────────────────────────────────────────
 
     @Transactional(readOnly = true)
-    public List<FailedQueryDTO> getFailedQueries(int limit) {
+    public List<FailedQueryDTO> getFailedQueries(UUID tenantId, int limit) {
         LocalDateTime since = LocalDateTime.now().minusDays(30);
-        return queryLogRepository.findFailedQueries(since, PageRequest.of(0, limit)).stream()
+        return queryLogRepository.findFailedQueries(tenantId, since, PageRequest.of(0, limit)).stream()
             .map(row -> FailedQueryDTO.builder()
                 .questionPreview(str(row[0]))
                 .count(toLong(row[1]))

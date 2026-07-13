@@ -8,10 +8,14 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.docai.bot.application.event.ChatQueryRecordedEvent;
 import com.docai.bot.config.TenantContext;
+import com.docai.bot.config.UserPrincipal;
 import com.docai.bot.domain.entity.ChatMessage;
 import com.docai.bot.domain.entity.ChatSession;
 import com.docai.bot.domain.entity.UserPreference;
@@ -44,7 +48,7 @@ public class ChatService {
     private final PeopleAlsoAskedService peopleAlsoAskedService;
     private final QueryAnalyzerService queryAnalyzer;
     private final UserPreferenceService preferenceService;
-    private final AnalyticsService analyticsService;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Value("${bot.cost.input-per-1k-tokens:0.00015}")
     private double costPerKInput;
@@ -136,7 +140,9 @@ public class ChatService {
         double confidence = calculateConfidence(relevantChunks, version);
         List<SourceReference> sources = buildSources(relevantChunks);
 
-        // Async: log query to session graph + analytics
+        // Published now, handled after this transaction commits (see ChatQueryRecordedEvent) —
+        // both downstream writes have a foreign key to this possibly-brand-new session row, so
+        // they must not run until it's actually committed.
         long latencyMs = System.currentTimeMillis() - startMs;
         String[] citedDocs = relevantChunks.stream()
             .map(RetrievedChunk::getDocumentName)
@@ -144,18 +150,15 @@ public class ChatService {
             .toArray(String[]::new);
         double estimatedCost = (promptTokens / 1000.0 * costPerKInput)
             + (completionTokens / 1000.0 * costPerKOutput);
-        analyticsService.logQuery(
-            request.getUserId(), session.getId(), request.getQuestion(),
+        eventPublisher.publishEvent(new ChatQueryRecordedEvent(
+            request.getUserId(), session.getTenantId(), session.getId(), request.getQuestion(),
             product, version, confidence, latencyMs,
             promptTokens, completionTokens, citedDocs, estimatedCost
-        );
-        peopleAlsoAskedService.recordQuery(
-            session.getId(), request.getUserId(), request.getQuestion(), product, version
-        );
+        ));
 
         // "People Also Asked" from real query data; fall back to LLM-generated if sparse
         List<String> realAlsoAsked = peopleAlsoAskedService.getPeopleAlsoAsked(
-            request.getQuestion(), session.getId(), product, version
+            request.getQuestion(), session.getTenantId(), session.getId(), product, version
         );
         List<String> relatedQuestions = realAlsoAsked.isEmpty() ? relatedQuestionsFromLlm : realAlsoAsked;
 
@@ -184,10 +187,14 @@ public class ChatService {
     }
 
     @Transactional
-    public ChatResponse regenerateAnswer(String messageIdStr, UUID userId, String style) {
+    public ChatResponse regenerateAnswer(String messageIdStr, UserPrincipal principal, String style) {
         UUID messageId = UUID.fromString(messageIdStr);
         ChatMessage assistantMsg = messageRepository.findById(messageId)
             .orElseThrow(() -> new IllegalArgumentException("Message not found"));
+
+        ChatSession session = sessionRepository.findById(assistantMsg.getChatId())
+            .orElseThrow(() -> new IllegalArgumentException("Session not found"));
+        assertSessionAccess(session, principal);
 
         // Find the preceding user message
         List<ChatMessage> messages = messageRepository.findByChatIdOrderByCreatedAtAsc(assistantMsg.getChatId());
@@ -200,9 +207,6 @@ public class ChatService {
         }
         if (question == null) throw new IllegalArgumentException("Original question not found");
 
-        ChatSession session = sessionRepository.findById(assistantMsg.getChatId())
-            .orElseThrow(() -> new IllegalArgumentException("Session not found"));
-
         String verbosity = switch (style) {
             case "CONCISE" -> "CONCISE";
             case "DETAILED" -> "DETAILED";
@@ -210,7 +214,7 @@ public class ChatService {
         };
         String format = "CODE_FIRST".equals(style) ? "CODE_FIRST" : "PROSE";
 
-        SearchScope scope = documentAccessPolicy.resolveScope(userId, TenantContext.get());
+        SearchScope scope = documentAccessPolicy.resolveScope(principal.userId(), TenantContext.get());
         List<RetrievedChunk> chunks = vectorSearchService.search(question, scope);
         AnswerGenerationService.AnswerResult result = answerService.generateAnswer(
             question, null, chunks, verbosity, format, session.getProduct(), session.getVersion()
@@ -228,18 +232,19 @@ public class ChatService {
     }
 
     @Transactional
-    public SessionUpdateResponse updateSession(String chatIdStr, UUID userId,
+    public SessionUpdateResponse updateSession(String chatIdStr, UserPrincipal principal,
                                                String title, Boolean pinned, String[] tags) {
         UUID chatId = UUID.fromString(chatIdStr);
         ChatSession session = sessionRepository.findById(chatId)
             .orElseThrow(() -> new IllegalArgumentException("Session not found"));
+        assertSessionAccess(session, principal);
 
         if (title != null) session.setTitle(title.isBlank() ? null : title);
         if (pinned != null) session.setPinned(pinned);
         if (tags != null) session.setTags(tags);
 
         ChatSession saved = sessionRepository.save(session);
-        log.info("Updated session {} for user {}", chatId, userId);
+        log.info("Updated session {} for user {}", chatId, principal.userId());
 
         return SessionUpdateResponse.builder()
             .chatId(saved.getId().toString())
@@ -250,10 +255,11 @@ public class ChatService {
     }
 
     @Transactional(readOnly = true)
-    public String exportSession(String chatIdStr, String format) {
+    public String exportSession(String chatIdStr, UserPrincipal principal, String format) {
         UUID chatId = UUID.fromString(chatIdStr);
         ChatSession session = sessionRepository.findById(chatId)
             .orElseThrow(() -> new IllegalArgumentException("Session not found"));
+        assertSessionAccess(session, principal);
         List<ChatMessage> messages = messageRepository.findByChatIdOrderByCreatedAtAsc(chatId);
 
         if ("json".equalsIgnoreCase(format)) {
@@ -371,8 +377,12 @@ public class ChatService {
     }
 
     @Transactional(readOnly = true)
-    public ChatHistoryResponse getChatHistory(String chatIdStr, UUID userId) {
+    public ChatHistoryResponse getChatHistory(String chatIdStr, UserPrincipal principal) {
         UUID chatId = UUID.fromString(chatIdStr);
+        ChatSession session = sessionRepository.findById(chatId)
+            .orElseThrow(() -> new IllegalArgumentException("Session not found"));
+        assertSessionAccess(session, principal);
+        UUID userId = principal.userId();
         List<ChatMessage> messages = messageRepository.findByChatIdOrderByCreatedAtAsc(chatId);
         List<ChatMessageDTO> messageDTOs = messages.stream()
             .map(msg -> {
@@ -401,10 +411,12 @@ public class ChatService {
     }
 
     @Transactional(readOnly = true)
-    public AllChatsResponse getAllChatSessions(UUID userId, boolean isAdmin) {
-        List<ChatSession> sessions = isAdmin
+    public AllChatsResponse getAllChatSessions(UserPrincipal principal) {
+        List<ChatSession> sessions = principal.isSuperAdmin()
             ? sessionRepository.findAllByOrderByLastActiveAtDesc()
-            : sessionRepository.findByUserIdOrderByPinnedDescLastActiveAtDesc(userId);
+            : principal.isAdmin()
+                ? sessionRepository.findByTenantIdOrderByPinnedDescLastActiveAtDesc(principal.tenantId())
+                : sessionRepository.findByUserIdOrderByPinnedDescLastActiveAtDesc(principal.userId());
 
         List<ChatSessionDTO> sessionDTOs = sessions.stream()
             .map(session -> ChatSessionDTO.builder()
@@ -427,12 +439,26 @@ public class ChatService {
     }
 
     @Transactional
-    public void deleteChatSession(String chatIdStr) {
+    public void deleteChatSession(String chatIdStr, UserPrincipal principal) {
         UUID chatId = UUID.fromString(chatIdStr);
+        ChatSession session = sessionRepository.findById(chatId)
+            .orElseThrow(() -> new IllegalArgumentException("Session not found"));
+        assertSessionAccess(session, principal);
+
         messageRepository.deleteByChatId(chatId);
         summaryRepository.deleteById(chatId);
         sessionRepository.deleteById(chatId);
-        log.info("Deleted chat session: {}", chatId);
+        log.info("Deleted chat session {} by user {}", chatId, principal.userId());
+    }
+
+    /** Owner, or an admin/super-admin from the session's own tenant (super-admins have no tenant, so they pass for any session). */
+    private void assertSessionAccess(ChatSession session, UserPrincipal principal) {
+        boolean isOwner = principal.userId().equals(session.getUserId());
+        boolean isTenantAdmin = principal.isSuperAdmin()
+            || (principal.isAdmin() && principal.tenantId() != null && principal.tenantId().equals(session.getTenantId()));
+        if (!isOwner && !isTenantAdmin) {
+            throw new AccessDeniedException("You do not have access to this chat session");
+        }
     }
 
     // ── DTOs ──────────────────────────────────────────────────────────────────

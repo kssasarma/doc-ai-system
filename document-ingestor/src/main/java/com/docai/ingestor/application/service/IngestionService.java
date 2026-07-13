@@ -31,6 +31,7 @@ public class IngestionService {
     private final TextChunker textChunker;
     private final SemanticChunker semanticChunker;
     private final EmbeddingService embeddingService;
+    private final PiiDetectionService piiDetectionService;
 
     /**
      * Ingest an uploaded file with explicit metadata. Downloads a working copy from storage for
@@ -106,6 +107,16 @@ public class IngestionService {
 
         if (content == null || content.isBlank()) {
             throw new IllegalStateException("Parsed content is empty for: " + file.getName());
+        }
+
+        try {
+            boolean needsReview = piiDetectionService.scanAndFlag(document.getId(), document.getTenantId(), content);
+            if (needsReview) {
+                log.warn("Document {} flagged for PII review (HIGH/CRITICAL match)", document.getId());
+            }
+        } catch (Exception e) {
+            // Never fail ingestion over the PII scan itself — flagging is best-effort.
+            log.warn("PII scan failed for document {}: {}", document.getId(), e.getMessage());
         }
 
         List<SemanticChunk> semanticChunks = semanticChunker.chunk(content);

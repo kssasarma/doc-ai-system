@@ -1,6 +1,6 @@
 import React, { Suspense, lazy, useState, useCallback, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { ChatSession } from '../../types';
+import { ChatSession, BackendChatResponse } from '../../types';
 import { MessageSquarePlus, SearchX, Download, Pencil, Check, X, Share2, MessageCircle } from 'lucide-react';
 import { exportConversation } from '../../services/chatService';
 import { useAuth } from '../../context/AuthContext';
@@ -29,7 +29,7 @@ interface ChatAreaProps {
   onCreateSession?: () => void;
   chatNotFound?: boolean;
   onRenameSession?: (title: string) => void;
-  onRegeneratedAnswer?: (messageId: string, newAnswer: string, relatedQuestions: string[]) => void;
+  onRegeneratedAnswer?: (messageId: string, response: BackendChatResponse) => void;
 }
 
 const ChatArea: React.FC<ChatAreaProps> = ({
@@ -140,6 +140,7 @@ const ChatArea: React.FC<ChatAreaProps> = ({
                     if (e.key === 'Enter') handleCommitTitle();
                     else if (e.key === 'Escape') handleCancelTitle();
                   }}
+                  aria-label="Conversation title"
                   className="text-lg font-semibold text-foreground bg-muted border border-primary rounded px-2 py-0.5 focus:outline-none flex-1 min-w-0"
                 />
                 <IconButton label="Save title" variant="ghost" size="sm" onClick={handleCommitTitle} className="text-success hover:bg-success/10">

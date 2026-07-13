@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { Sparkles } from 'lucide-react';
-import { ChatMessage } from '../../types';
+import { ChatMessage, BackendChatResponse } from '../../types';
 import MessageItem from './MessageItem';
 import { staggerContainer, scaleIn } from '../../lib/motion';
 
@@ -9,7 +9,7 @@ interface MessageListProps {
   messages: ChatMessage[];
   sessionChatId?: string;
   onRelatedQuestion?: (question: string) => void;
-  onRegeneratedAnswer?: (messageId: string, newAnswer: string, relatedQuestions: string[]) => void;
+  onRegeneratedAnswer?: (messageId: string, response: BackendChatResponse) => void;
 }
 
 const MessageList: React.FC<MessageListProps> = ({

@@ -1,6 +1,7 @@
+import { BACKEND_URL } from '../config/backend';
 import { ApiResult } from '../types';
 
-const BOT_URL = `${import.meta.env.VITE_BOT_URL || 'http://localhost:8082'}`;
+const BOT_URL = BACKEND_URL;
 
 function authHeaders(token: string) {
   return { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };

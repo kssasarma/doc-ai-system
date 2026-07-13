@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { GitCompare, History, AlertTriangle } from 'lucide-react';
+import { GitCompare, History } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import {
   getVersionDiff, getEvolutionTimeline,
@@ -10,6 +10,7 @@ import Button from '../ui/Button';
 import Input from '../ui/Input';
 import Select from '../ui/Select';
 import { cn } from '../../lib/cn';
+import { useToast } from '../ui/Toast';
 
 interface VersionCompareModalProps {
   product: string;
@@ -39,6 +40,7 @@ function DiffSection({ label, content, tone }: { label: string; content: string 
 
 export default function VersionCompareModal({ product, versions, onClose }: VersionCompareModalProps) {
   const { token } = useAuth();
+  const toast = useToast();
   const [mode, setMode] = useState<Mode>('diff');
 
   const [topic, setTopic] = useState('');
@@ -50,17 +52,15 @@ export default function VersionCompareModal({ product, versions, onClose }: Vers
   const [timeline, setTimeline] = useState<EvolutionTimeline | null>(null);
 
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
 
   const runDiff = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!token || !topic.trim()) return;
     setLoading(true);
-    setError('');
     setDiffResult(null);
     const res = await getVersionDiff(token, topic.trim(), product, versionA, versionB);
     if (res.success && res.data) setDiffResult(res.data);
-    else setError(res.error ?? 'Failed to compare versions');
+    else toast.error(res.error ?? 'Failed to compare versions.');
     setLoading(false);
   };
 
@@ -68,11 +68,10 @@ export default function VersionCompareModal({ product, versions, onClose }: Vers
     e.preventDefault();
     if (!token || !question.trim()) return;
     setLoading(true);
-    setError('');
     setTimeline(null);
     const res = await getEvolutionTimeline(token, question.trim(), product);
     if (res.success && res.data) setTimeline(res.data);
-    else setError(res.error ?? 'Failed to build evolution timeline');
+    else toast.error(res.error ?? 'Failed to build evolution timeline.');
     setLoading(false);
   };
 
@@ -117,12 +116,6 @@ export default function VersionCompareModal({ product, versions, onClose }: Vers
               </Button>
             </form>
 
-            {error && (
-              <div className="flex items-center gap-2 text-sm text-danger bg-danger/10 rounded-lg px-3 py-2 mb-4">
-                <AlertTriangle size={14} className="flex-shrink-0" />{error}
-              </div>
-            )}
-
             {diffResult && (
               <div className="space-y-3">
                 <p className="text-sm text-foreground bg-primary/5 border border-primary/15 rounded-lg p-3">{diffResult.summary}</p>
@@ -141,12 +134,6 @@ export default function VersionCompareModal({ product, versions, onClose }: Vers
                 {loading ? 'Building timeline…' : `Show across all ${versions.length} versions`}
               </Button>
             </form>
-
-            {error && (
-              <div className="flex items-center gap-2 text-sm text-danger bg-danger/10 rounded-lg px-3 py-2 mb-4">
-                <AlertTriangle size={14} className="flex-shrink-0" />{error}
-              </div>
-            )}
 
             {timeline && (
               <div className="space-y-3">

@@ -62,12 +62,12 @@ public class ChatController {
     public ResponseEntity<ChatHistoryResponse> getChatHistory(
             @PathVariable String chatId,
             @AuthenticationPrincipal UserPrincipal principal) {
-        return ResponseEntity.ok(chatService.getChatHistory(chatId, principal != null ? principal.userId() : null));
+        return ResponseEntity.ok(chatService.getChatHistory(chatId, principal));
     }
 
     @GetMapping("/sessions")
     public ResponseEntity<AllChatsResponse> getAllChats(@AuthenticationPrincipal UserPrincipal principal) {
-        return ResponseEntity.ok(chatService.getAllChatSessions(principal.userId(), principal.isAdmin()));
+        return ResponseEntity.ok(chatService.getAllChatSessions(principal));
     }
 
     @PatchMapping("/sessions/{chatId}")
@@ -77,23 +77,26 @@ public class ChatController {
             @AuthenticationPrincipal UserPrincipal principal) {
 
         return ResponseEntity.ok(chatService.updateSession(
-            chatId, principal.userId(),
+            chatId, principal,
             request.getTitle(), request.getPinned(), request.getTags()
         ));
     }
 
     @DeleteMapping("/sessions/{chatId}")
-    public ResponseEntity<Void> deleteChatSession(@PathVariable String chatId) {
-        chatService.deleteChatSession(chatId);
+    public ResponseEntity<Void> deleteChatSession(
+            @PathVariable String chatId,
+            @AuthenticationPrincipal UserPrincipal principal) {
+        chatService.deleteChatSession(chatId, principal);
         return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/sessions/{chatId}/export")
     public ResponseEntity<String> exportSession(
             @PathVariable String chatId,
-            @RequestParam(defaultValue = "markdown") String format) {
+            @RequestParam(defaultValue = "markdown") String format,
+            @AuthenticationPrincipal UserPrincipal principal) {
 
-        String content = chatService.exportSession(chatId, format);
+        String content = chatService.exportSession(chatId, principal, format);
         boolean isJson = "json".equalsIgnoreCase(format);
         String filename = "chat-" + chatId.substring(0, 8) + (isJson ? ".json" : ".md");
 
@@ -114,7 +117,7 @@ public class ChatController {
 
         feedbackService.submitFeedback(
             UUID.fromString(messageId),
-            principal.userId(),
+            principal,
             request.getRating(),
             request.getFeedbackText()
         );
@@ -128,7 +131,7 @@ public class ChatController {
             @AuthenticationPrincipal UserPrincipal principal) {
 
         String style = request != null && request.getStyle() != null ? request.getStyle() : "BALANCED";
-        return ResponseEntity.ok(chatService.regenerateAnswer(messageId, principal.userId(), style));
+        return ResponseEntity.ok(chatService.regenerateAnswer(messageId, principal, style));
     }
 
     // ── Request DTOs ──────────────────────────────────────────────────────────

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ArrowLeft, GitFork, User, Bot, AlertTriangle } from 'lucide-react';
@@ -13,6 +13,9 @@ import Button from '../ui/Button';
 import IconButton from '../ui/IconButton';
 import Spinner from '../ui/Spinner';
 import EmptyState from '../ui/EmptyState';
+import AccountMenu from '../ui/AccountMenu';
+
+const PreferencesModal = lazy(() => import('../Settings/PreferencesModal'));
 
 const SharedChatView: React.FC = () => {
   const { token: shareToken } = useParams<{ token: string }>();
@@ -24,6 +27,7 @@ const SharedChatView: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [isForking, setIsForking] = useState(false);
   const [forked, setForked] = useState(false);
+  const [prefsOpen, setPrefsOpen] = useState(false);
 
   useEffect(() => {
     if (!shareToken) return;
@@ -99,14 +103,16 @@ const SharedChatView: React.FC = () => {
           </div>
 
           {isAuthenticated && (
-            <Button
-              onClick={handleFork}
-              disabled={isForking || forked}
-              leftIcon={<GitFork size={14} />}
-              className="flex-shrink-0"
-            >
-              {forked ? 'Forked! Redirecting…' : isForking ? 'Forking…' : 'Continue conversation'}
-            </Button>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <Button
+                onClick={handleFork}
+                disabled={isForking || forked}
+                leftIcon={<GitFork size={14} />}
+              >
+                {forked ? 'Forked! Redirecting…' : isForking ? 'Forking…' : 'Continue conversation'}
+              </Button>
+              <AccountMenu onOpenPreferences={() => setPrefsOpen(true)} compact />
+            </div>
           )}
         </div>
       </div>
@@ -161,6 +167,12 @@ const SharedChatView: React.FC = () => {
           </motion.div>
         )}
       </motion.div>
+
+      {prefsOpen && (
+        <Suspense fallback={null}>
+          <PreferencesModal onClose={() => setPrefsOpen(false)} />
+        </Suspense>
+      )}
     </div>
   );
 };

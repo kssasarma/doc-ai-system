@@ -2,7 +2,7 @@ import React, { Suspense, lazy } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import {
   BarChart2, FileText, Map, TrendingUp, DollarSign, Users, UsersRound, Shield,
-  HelpCircle, MessageSquare, AlertTriangle, Lock, Settings as SettingsIcon,
+  HelpCircle, MessageSquare, AlertTriangle, Lock, Settings as SettingsIcon, ShieldAlert,
 } from 'lucide-react';
 import AdminLayout, { AdminNavItem } from './AdminLayout';
 
@@ -18,6 +18,7 @@ const EscalationsTab = lazy(() => import('./EscalationsTab'));
 const FaqManagementTab = lazy(() => import('./FaqManagementTab'));
 const GapReportTab = lazy(() => import('./GapReportTab'));
 const GdprTab = lazy(() => import('./GdprTab'));
+const PiiFlagsTab = lazy(() => import('./PiiFlagsTab'));
 const SettingsPage = lazy(() => import('./SettingsPage'));
 
 const NAV_ITEMS: AdminNavItem[] = [
@@ -27,6 +28,7 @@ const NAV_ITEMS: AdminNavItem[] = [
   { to: '/admin/query-intelligence', label: 'Query Intel', icon: TrendingUp },
   { to: '/admin/faq', label: 'FAQ Review', icon: MessageSquare },
   { to: '/admin/gap-reports', label: 'Gap Reports', icon: AlertTriangle },
+  { to: '/admin/pii-flags', label: 'PII Review', icon: ShieldAlert },
   { to: '/admin/cost', label: 'Cost', icon: DollarSign },
   { to: '/admin/users', label: 'Users', icon: Users },
   { to: '/admin/groups', label: 'Groups', icon: UsersRound },
@@ -47,6 +49,7 @@ export default function TenantAdminConsole() {
         <Route path="query-intelligence" element={<Suspense fallback={null}><QueryIntelligenceTab /></Suspense>} />
         <Route path="faq" element={<Suspense fallback={null}><FaqManagementTab /></Suspense>} />
         <Route path="gap-reports" element={<Suspense fallback={null}><GapReportTab /></Suspense>} />
+        <Route path="pii-flags" element={<Suspense fallback={null}><PiiFlagsTab /></Suspense>} />
         <Route path="cost" element={<Suspense fallback={null}><CostTrackingTab /></Suspense>} />
         <Route path="users" element={<Suspense fallback={null}><UsersPage /></Suspense>} />
         <Route path="groups" element={<Suspense fallback={null}><GroupsPage /></Suspense>} />

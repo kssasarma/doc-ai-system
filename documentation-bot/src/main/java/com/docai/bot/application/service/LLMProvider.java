@@ -9,7 +9,8 @@ import java.util.List;
  */
 public interface LLMProvider {
 
-    /** Returns the provider name, e.g. "openai", "anthropic", "azure_openai". */
+    /** Returns the provider name, e.g. "openai", "anthropic" — must match a registered bean's
+     * name for {@link LLMRouter}/{@link TenantService#updateLLMConfig} to accept it. */
     String providerName();
 
     /**

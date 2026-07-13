@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Users, UserPlus, Shield, AlertCircle, CheckCircle } from 'lucide-react';
+import { Users, UserPlus, Shield, AlertCircle } from 'lucide-react';
 import { getTenantUsers } from '../../services/tenantService';
 import { inviteUser } from '../../services/invitationService';
 import type { TenantUser } from '../../types';
@@ -13,9 +13,11 @@ import Input from '../ui/Input';
 import Badge from '../ui/Badge';
 import EmptyState from '../ui/EmptyState';
 import { SkeletonRow } from '../ui/Skeleton';
+import { useToast } from '../ui/Toast';
 
 export default function UsersPage() {
   const { token, user } = useAuth();
+  const toast = useToast();
   const tenantId = user?.tenantId ?? '';
 
   const [users, setUsers] = useState<TenantUser[]>([]);
@@ -24,7 +26,6 @@ export default function UsersPage() {
 
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviting, setInviting] = useState(false);
-  const [inviteMsg, setInviteMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const load = useCallback(async () => {
     if (!token || !tenantId) return;
@@ -45,14 +46,13 @@ export default function UsersPage() {
     e.preventDefault();
     if (!token || !inviteEmail) return;
     setInviting(true);
-    setInviteMsg(null);
     try {
       await inviteUser(token, inviteEmail);
-      setInviteMsg({ type: 'success', text: `Invitation sent to ${inviteEmail}.` });
+      toast.success(`Invitation sent to ${inviteEmail}.`);
       setInviteEmail('');
     } catch (e) {
       const detail = (e as { response?: { data?: { error?: string } } })?.response?.data?.error;
-      setInviteMsg({ type: 'error', text: detail || 'Failed to send invitation.' });
+      toast.error(detail || 'Failed to send invitation.');
     } finally {
       setInviting(false);
     }
@@ -75,6 +75,7 @@ export default function UsersPage() {
                 <div className="flex-1">
                   <Input
                     type="email"
+                    aria-label="Email address to invite"
                     value={inviteEmail}
                     onChange={e => setInviteEmail(e.target.value)}
                     required
@@ -85,12 +86,6 @@ export default function UsersPage() {
                   {inviting ? 'Sending…' : 'Send invite'}
                 </Button>
               </form>
-              {inviteMsg && (
-                <div className={`flex items-center gap-2 text-xs mt-3 rounded-lg px-3 py-2 ${inviteMsg.type === 'success' ? 'text-success bg-success/10' : 'text-danger bg-danger/10'}`}>
-                  {inviteMsg.type === 'success' ? <CheckCircle size={14} className="flex-shrink-0" /> : <AlertCircle size={14} className="flex-shrink-0" />}
-                  {inviteMsg.text}
-                </div>
-              )}
             </CardBody>
           </Card>
         </motion.div>

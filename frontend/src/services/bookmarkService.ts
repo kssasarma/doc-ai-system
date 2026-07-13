@@ -1,6 +1,7 @@
+import { BACKEND_URL } from '../config/backend';
 import { Bookmark } from '../types';
 
-const BASE = `${import.meta.env.VITE_BACKEND_URL || 'http://localhost:8082'}/api/bookmarks`;
+const BASE = `${BACKEND_URL}/api/bookmarks`;
 
 function authHeader(token: string): Record<string, string> {
   return { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
@@ -43,6 +44,19 @@ export async function deleteBookmark(
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const res = await fetch(`${BASE}/${bookmarkId}`, { method: 'DELETE', headers: authHeader(token) });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : 'Unknown error' };
+  }
+}
+
+export async function deleteBookmarkByMessage(
+  chatMessageId: string,
+  token: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const res = await fetch(`${BASE}/by-message/${chatMessageId}`, { method: 'DELETE', headers: authHeader(token) });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return { success: true };
   } catch (e) {

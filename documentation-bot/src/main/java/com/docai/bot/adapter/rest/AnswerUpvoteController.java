@@ -27,6 +27,6 @@ public class AnswerUpvoteController {
             @PathVariable String messageId,
             @AuthenticationPrincipal UserPrincipal principal) {
 
-        return ResponseEntity.ok(upvoteService.toggleUpvote(UUID.fromString(messageId), principal.userId()));
+        return ResponseEntity.ok(upvoteService.toggleUpvote(UUID.fromString(messageId), principal));
     }
 }

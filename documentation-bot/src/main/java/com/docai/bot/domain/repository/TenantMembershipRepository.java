@@ -14,4 +14,6 @@ public interface TenantMembershipRepository extends JpaRepository<TenantMembersh
     List<TenantMembership> findByUserId(UUID userId);
     Optional<TenantMembership> findByUserIdAndTenantId(UUID userId, UUID tenantId);
     boolean existsByUserIdAndTenantId(UUID userId, UUID tenantId);
+    void deleteByUserId(UUID userId);
+    long countByTenantId(UUID tenantId);
 }

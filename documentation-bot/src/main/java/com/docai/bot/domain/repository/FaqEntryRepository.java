@@ -1,6 +1,6 @@
 package com.docai.bot.domain.repository;
 
-import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.data.domain.Page;
@@ -16,14 +16,17 @@ import com.docai.bot.domain.entity.FaqEntry.Status;
 @Repository
 public interface FaqEntryRepository extends JpaRepository<FaqEntry, UUID> {
 
-    Page<FaqEntry> findByStatus(Status status, Pageable pageable);
+    Page<FaqEntry> findByTenantIdAndStatus(UUID tenantId, Status status, Pageable pageable);
 
-    Page<FaqEntry> findByProductAndVersionAndStatus(
-        String product, String version, Status status, Pageable pageable);
+    Page<FaqEntry> findByTenantIdAndProductAndVersionAndStatus(
+        UUID tenantId, String product, String version, Status status, Pageable pageable);
 
-    Page<FaqEntry> findByProductAndStatus(String product, Status status, Pageable pageable);
+    Page<FaqEntry> findByTenantIdAndProductAndStatus(
+        UUID tenantId, String product, Status status, Pageable pageable);
 
-    List<FaqEntry> findByStatus(Status status);
+    /** Also tenant-scoped: {@code findById} on its own would let a caller who already knows an
+     *  id from another tenant read/act on it, since JPA's generated finder has no such filter. */
+    Optional<FaqEntry> findByIdAndTenantId(UUID id, UUID tenantId);
 
     @Modifying
     @Query("UPDATE FaqEntry f SET f.viewCount = f.viewCount + 1 WHERE f.id = :id")

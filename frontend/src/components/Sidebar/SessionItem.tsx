@@ -60,10 +60,13 @@ const SessionItem: React.FC<SessionItemProps> = ({
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.18 }}
       className={cn(
-        'group relative p-3 rounded-lg cursor-pointer transition-colors',
-        isActive ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-surface-hover hover:text-foreground',
+        'group relative p-3 rounded-lg cursor-pointer transition-colors border-l-2',
+        isActive
+          ? 'bg-primary text-primary-foreground border-l-primary-foreground/60'
+          : 'text-muted-foreground border-l-transparent hover:bg-surface-hover hover:text-foreground',
       )}
       onClick={!isRenaming ? onSelect : undefined}
+      aria-current={isActive ? 'true' : undefined}
     >
       <div className="flex items-start gap-2">
         <div className="mt-0.5 flex-shrink-0 flex items-center gap-1">
@@ -81,6 +84,7 @@ const SessionItem: React.FC<SessionItemProps> = ({
                 value={renameValue}
                 onChange={e => setRenameValue(e.target.value)}
                 onKeyDown={handleKeyDown}
+                aria-label="Rename conversation"
                 className="flex-1 text-xs bg-surface text-foreground rounded px-1.5 py-0.5 border border-primary focus:outline-none"
               />
               <button onClick={e => { e.stopPropagation(); commitRename(); }} aria-label="Save name" className="text-success hover:opacity-80">

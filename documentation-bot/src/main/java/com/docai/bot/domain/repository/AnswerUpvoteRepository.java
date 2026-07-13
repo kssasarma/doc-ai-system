@@ -14,4 +14,5 @@ public interface AnswerUpvoteRepository extends JpaRepository<AnswerUpvote, UUID
     boolean existsByChatMessageIdAndUserId(UUID chatMessageId, UUID userId);
     Optional<AnswerUpvote> findByChatMessageIdAndUserId(UUID chatMessageId, UUID userId);
     void deleteByChatMessageIdAndUserId(UUID chatMessageId, UUID userId);
+    void deleteByUserId(UUID userId);
 }

@@ -1,4 +1,6 @@
-const BASE = `${import.meta.env.VITE_BACKEND_URL || 'http://localhost:8082'}/api/subscriptions`;
+import { BACKEND_URL } from '../config/backend';
+
+const BASE = `${BACKEND_URL}/api/subscriptions`;
 
 function authHeader(token: string): Record<string, string> {
   return { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };

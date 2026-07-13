@@ -68,6 +68,17 @@ management:
   endpoint:
     health:
       show-details: when-authorized
+      # Explicit rather than relying on Spring Boot's Kubernetes auto-detection (which only
+      # enables these when KUBERNETES_SERVICE_HOST is present) — the split liveness/readiness
+      # groups below must respond the same way everywhere the k8s manifests point probes at
+      # them, and this makes that independent of the deployment platform.
+      probes:
+        enabled: true
+  health:
+    livenessState:
+      enabled: true
+    readinessState:
+      enabled: true
   prometheus:
     metrics:
       export:

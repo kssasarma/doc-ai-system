@@ -1,6 +1,6 @@
+import { INGESTOR_URL } from '../config/backend';
 import { DocumentInfo, IngestionStatus } from '../types';
 
-const INGESTOR_URL = `${import.meta.env.VITE_INGESTOR_URL || 'http://localhost:8081'}`;
 const DOCS_URL = `${INGESTOR_URL}/api/documents`;
 const INGEST_URL = `${INGESTOR_URL}/api/ingest`;
 
@@ -56,4 +56,33 @@ export async function retriggerDocument(token: string, documentId: string): Prom
     throw new Error(data.error || `Retrigger failed: ${res.status}`);
   }
   return data;
+}
+
+export interface BulkReprocessResult {
+  totalFailed: number;
+  started: number;
+  skipped: string[];
+}
+
+export async function reprocessFailedDocuments(token: string): Promise<BulkReprocessResult> {
+  const res = await fetch(`${DOCS_URL}/reprocess-failed`, {
+    method: 'POST',
+    headers: authHeaders(token),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || `Bulk reprocess failed: ${res.status}`);
+  }
+  return data;
+}
+
+/** Only available for documents that still have their original file in storage — completed
+ * documents' source files are deleted once ingestion succeeds. */
+export async function getDocumentDownloadUrl(token: string, documentId: string): Promise<string> {
+  const res = await fetch(`${DOCS_URL}/${documentId}/download-url`, { headers: authHeaders(token) });
+  const data = await res.json();
+  if (!res.ok || !data.url) {
+    throw new Error(data.error || `Could not get download link: ${res.status}`);
+  }
+  return data.url;
 }

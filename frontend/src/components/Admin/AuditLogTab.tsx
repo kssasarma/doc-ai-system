@@ -76,6 +76,7 @@ export default function AuditLogTab() {
           <span className="text-sm font-medium text-muted-foreground">Filter by action:</span>
           <div className="w-52">
             <Select
+              aria-label="Filter by action"
               value={actionFilter}
               onChange={e => { setActionFilter(e.target.value); setPage(0); }}
             >
