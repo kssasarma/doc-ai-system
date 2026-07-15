@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Send, Loader2 } from 'lucide-react';
+import { Send, Loader2, Square } from 'lucide-react';
 import { cn } from '../../lib/cn';
 import IconButton from '../ui/IconButton';
 import appConfig from '../../config/app.json';
@@ -10,14 +10,40 @@ const MAX_MESSAGE_LENGTH = appConfig.ui.chat.maxMessageLength;
 interface MessageInputProps {
   onSendMessage: (message: string) => void;
   disabled?: boolean;
+  /** True while an answer is actively streaming in — swaps the send button for a stop button. */
+  isStreaming?: boolean;
+  onStop?: () => void;
   prefillValue?: string;
+  /** The active chat's id — drafts are persisted per chat (sessionStorage) so an unsent draft
+   * survives a reload and doesn't leak into whichever chat you switch to next (Phase 6.6). Pass
+   * undefined to opt out of persistence entirely (no chat to key it against yet). */
+  draftKey?: string;
+  /** ArrowUp in an empty composer edits the last message (Phase 6.7) — pulls its text back into
+   * the composer via the same `prefillValue` mechanism regenerate/related-questions already use. */
+  onEditLast?: () => void;
 }
 
-const MessageInput: React.FC<MessageInputProps> = ({ onSendMessage, disabled, prefillValue }) => {
-  const [message, setMessage] = useState('');
+function draftStorageKey(draftKey: string) {
+  return `docai_draft_${draftKey}`;
+}
+
+const MessageInput: React.FC<MessageInputProps> = ({ onSendMessage, disabled, isStreaming, onStop, prefillValue, draftKey, onEditLast }) => {
+  const [message, setMessage] = useState(() => (draftKey ? sessionStorage.getItem(draftStorageKey(draftKey)) ?? '' : ''));
   const [focused, setFocused] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const overLimit = message.length > MAX_MESSAGE_LENGTH;
+
+  // Switching chats — load that chat's own draft rather than carrying over whatever was typed
+  // in the previous one.
+  useEffect(() => {
+    setMessage(draftKey ? sessionStorage.getItem(draftStorageKey(draftKey)) ?? '' : '');
+  }, [draftKey]);
+
+  useEffect(() => {
+    if (!draftKey) return;
+    if (message) sessionStorage.setItem(draftStorageKey(draftKey), message);
+    else sessionStorage.removeItem(draftStorageKey(draftKey));
+  }, [draftKey, message]);
 
   useEffect(() => {
     if (prefillValue) {
@@ -25,6 +51,23 @@ const MessageInput: React.FC<MessageInputProps> = ({ onSendMessage, disabled, pr
       textareaRef.current?.focus();
     }
   }, [prefillValue]);
+
+  // "/" focuses the composer from anywhere on the page — skipped while already typing into some
+  // other field (this app's own inputs, or a browser-native one) so a literal "/" still types
+  // normally there.
+  useEffect(() => {
+    function handleGlobalKeyDown(e: KeyboardEvent) {
+      if (e.key !== '/' || e.metaKey || e.ctrlKey || e.altKey) return;
+      const active = document.activeElement;
+      const isEditable = active instanceof HTMLElement
+        && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable);
+      if (isEditable) return;
+      e.preventDefault();
+      textareaRef.current?.focus();
+    }
+    document.addEventListener('keydown', handleGlobalKeyDown);
+    return () => document.removeEventListener('keydown', handleGlobalKeyDown);
+  }, []);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -39,6 +82,12 @@ const MessageInput: React.FC<MessageInputProps> = ({ onSendMessage, disabled, pr
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSubmit(e);
+    } else if (e.key === 'Escape' && isStreaming && onStop) {
+      e.preventDefault();
+      onStop();
+    } else if (e.key === 'ArrowUp' && !message.trim() && onEditLast) {
+      e.preventDefault();
+      onEditLast();
     }
   };
 
@@ -76,27 +125,40 @@ const MessageInput: React.FC<MessageInputProps> = ({ onSendMessage, disabled, pr
           />
         </div>
 
-        <IconButton
-          type="submit"
-          label={disabled ? 'Sending…' : 'Send message'}
-          variant="primary"
-          size="lg"
-          disabled={!message.trim() || disabled || overLimit}
-          className="h-[48px] w-[48px] flex-shrink-0"
-        >
-          <AnimatePresence mode="wait" initial={false}>
-            <motion.span
-              key={disabled ? 'loading' : 'send'}
-              initial={{ opacity: 0, scale: 0.6, rotate: -30 }}
-              animate={{ opacity: 1, scale: 1, rotate: 0 }}
-              exit={{ opacity: 0, scale: 0.6 }}
-              transition={{ duration: 0.15 }}
-              className="inline-flex"
-            >
-              {disabled ? <Loader2 size={19} className="animate-spin" /> : <Send size={19} />}
-            </motion.span>
-          </AnimatePresence>
-        </IconButton>
+        {isStreaming ? (
+          <IconButton
+            type="button"
+            label="Stop generating"
+            variant="danger"
+            size="lg"
+            onClick={onStop}
+            className="h-[48px] w-[48px] flex-shrink-0"
+          >
+            <Square size={16} fill="currentColor" />
+          </IconButton>
+        ) : (
+          <IconButton
+            type="submit"
+            label={disabled ? 'Sending…' : 'Send message'}
+            variant="primary"
+            size="lg"
+            disabled={!message.trim() || disabled || overLimit}
+            className="h-[48px] w-[48px] flex-shrink-0"
+          >
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.span
+                key={disabled ? 'loading' : 'send'}
+                initial={{ opacity: 0, scale: 0.6, rotate: -30 }}
+                animate={{ opacity: 1, scale: 1, rotate: 0 }}
+                exit={{ opacity: 0, scale: 0.6 }}
+                transition={{ duration: 0.15 }}
+                className="inline-flex"
+              >
+                {disabled ? <Loader2 size={19} className="animate-spin" /> : <Send size={19} />}
+              </motion.span>
+            </AnimatePresence>
+          </IconButton>
+        )}
       </div>
 
       {(overLimit || message.length > MAX_MESSAGE_LENGTH * 0.9) && (

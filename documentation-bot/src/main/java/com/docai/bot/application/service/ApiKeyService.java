@@ -91,9 +91,11 @@ public class ApiKeyService {
 
     @Transactional(readOnly = true)
     public Optional<ApiKey> validateKey(String rawToken) {
-        // Linear scan through active keys matching by BCrypt
-        // In production with many keys, cache the prefix lookup
-        return apiKeyRepository.findAll().stream()
+        if (rawToken == null || rawToken.length() < 12) return Optional.empty();
+        // Narrow to the (indexed) key_prefix match first — at most a handful of candidates even
+        // with many keys in the table — then BCrypt-compare only those, instead of every row.
+        String prefix = rawToken.substring(0, 12);
+        return apiKeyRepository.findByKeyPrefix(prefix).stream()
             .filter(k -> k.isActive() && passwordEncoder.matches(rawToken, k.getKeyHash()))
             .findFirst();
     }

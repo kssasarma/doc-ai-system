@@ -65,8 +65,11 @@ public class GroupService {
     }
 
     @Transactional(readOnly = true)
-    public List<GroupDTO> list(UUID tenantId) {
-        return groupRepository.findByTenantId(tenantId).stream()
+    public List<GroupDTO> list(UUID tenantId, String q) {
+        List<Group> groups = (q == null || q.isBlank())
+            ? groupRepository.findByTenantId(tenantId)
+            : groupRepository.findByTenantIdAndNameContainingIgnoreCase(tenantId, q.trim());
+        return groups.stream()
             .map(g -> toDTO(g, membershipRepository.countByGroupId(g.getId())))
             .toList();
     }

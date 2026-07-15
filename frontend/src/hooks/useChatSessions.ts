@@ -1,7 +1,7 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ChatSession, ChatMessage, BackendSession, BackendHistoryMessage } from '../types';
-import { generateId, createNewSession } from '../utils/chatUtils';
+import { createNewSession } from '../utils/chatUtils';
 import { fetchChatSessions, fetchChatHistory, deleteChatSession, updateChatSession } from '../services/chatService';
 
 function convertBackendSession(backendSession: BackendSession): ChatSession {
@@ -40,6 +40,14 @@ export function useChatSessions(token: string) {
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Guards two related races on fast chat switching: (1) the URL-driven effect and
+  // selectSession() could both fire a fetchChatHistory for the same session concurrently — this
+  // set de-dupes that; (2) a slow/duplicate fetch resolving after the user already sent a new
+  // message in that session (while it was mid-fetch) must not clobber that locally-added message
+  // by blindly replacing the messages array — the setSessions callback below re-checks
+  // messages.length === 0 against the *current* state at apply-time, not the stale closure.
+  const fetchingHistoryRef = useRef<Set<string>>(new Set());
+
   const activeSessionId = urlChatId || '';
 
   const loadSessions = useCallback(async () => {
@@ -68,19 +76,26 @@ export function useChatSessions(token: string) {
   useEffect(() => {
     if (urlChatId && !isLoading) {
       const existingSession = sessions.find(s => s.chatId === urlChatId);
-      if (existingSession && existingSession.messages.length === 0) {
+      if (existingSession && existingSession.messages.length === 0 && !fetchingHistoryRef.current.has(urlChatId)) {
+        fetchingHistoryRef.current.add(urlChatId);
         setIsLoadingHistory(true);
         fetchChatHistory(urlChatId, token)
           .then(response => {
             if (response.success && response.data) {
               const messages = response.data.messages.map(convertBackendMessage);
+              // Re-check messages.length === 0 against the *current* state, not the closure's
+              // (possibly stale) `sessions` — if the user already sent a message in this session
+              // while this fetch was in flight, this late response must not wipe it out.
               setSessions(prev => prev.map(s =>
-                s.chatId === urlChatId ? { ...s, messages } : s
+                s.chatId === urlChatId && s.messages.length === 0 ? { ...s, messages } : s
               ));
             }
           })
           .catch(err => console.error('Failed to load chat history:', err))
-          .finally(() => setIsLoadingHistory(false));
+          .finally(() => {
+            fetchingHistoryRef.current.delete(urlChatId);
+            setIsLoadingHistory(false);
+          });
       }
     }
   }, [urlChatId, isLoading, sessions, token]);
@@ -153,13 +168,16 @@ export function useChatSessions(token: string) {
     }));
   }, []);
 
-  const removeTypingIndicators = useCallback((chatId: string) => {
+  /** Same as updateMessage, but matches the client-generated `id` rather than the backend
+   * `messageId` — needed while a message is still streaming in and has no messageId yet. */
+  const updateMessageByLocalId = useCallback((chatId: string, localId: string, patch: Partial<ChatMessage>) => {
     setSessions(prev => prev.map(session => {
       if (session.chatId !== chatId) return session;
       return {
         ...session,
-        messages: session.messages.filter(msg => !msg.isTyping),
-        updatedAt: Date.now(),
+        messages: session.messages.map(m =>
+          m.id === localId ? { ...m, ...patch } : m
+        ),
       };
     }));
   }, []);
@@ -179,19 +197,24 @@ export function useChatSessions(token: string) {
     navigate(`/chat/${sessionId}`);
     const session = sessions.find(s => s.chatId === sessionId);
     if (session && session.messages.length > 0) return;
+    if (fetchingHistoryRef.current.has(sessionId)) return;
 
+    fetchingHistoryRef.current.add(sessionId);
     setIsLoadingHistory(true);
     try {
       const response = await fetchChatHistory(sessionId, token);
       if (response.success && response.data) {
         const messages = response.data.messages.map(convertBackendMessage);
+        // See the URL-driven effect above for why this re-checks messages.length === 0 at
+        // apply-time instead of trusting the session/messages.length checked before the await.
         setSessions(prev => prev.map(s =>
-          s.chatId === sessionId ? { ...s, messages } : s
+          s.chatId === sessionId && s.messages.length === 0 ? { ...s, messages } : s
         ));
       }
     } catch (err) {
       console.error('Failed to load chat history:', err);
     } finally {
+      fetchingHistoryRef.current.delete(sessionId);
       setIsLoadingHistory(false);
     }
   }, [navigate, sessions, token]);
@@ -208,8 +231,8 @@ export function useChatSessions(token: string) {
     updateSession,
     updateSessionTitle,
     updateMessage,
+    updateMessageByLocalId,
     addMessage,
-    removeTypingIndicators,
     updateSessionChatId,
     selectSession,
     refetchSessions: loadSessions,

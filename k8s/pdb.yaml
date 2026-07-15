@@ -1,0 +1,25 @@
+# Ensures at least one pod of each multi-replica service stays up during voluntary disruptions
+# (node drains, cluster upgrades) — without this, a drain can take every replica down at once,
+# which for document-ingestor also compounds with 2.5's stuck-PROCESSING recovery (an in-flight
+# ingestion loses its pod mid-parse with nothing left running to eventually reap it).
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: documentation-bot-pdb
+  namespace: doc-ai
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: documentation-bot
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: document-ingestor-pdb
+  namespace: doc-ai
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: document-ingestor

@@ -11,11 +11,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.client.ChatClient.CallResponseSpec;
-import org.springframework.ai.chat.client.ChatClient.ChatClientRequestSpec;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import com.docai.bot.application.service.LLMRouter;
 import com.docai.bot.application.service.ReRankingService;
 import com.docai.bot.application.service.ReRankingService.ScoredCandidate;
 import com.docai.bot.domain.model.RetrievedChunk;
@@ -28,10 +26,7 @@ import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
 @ExtendWith(MockitoExtension.class)
 class ReRankingServiceTest {
 
-    @Mock ChatClient.Builder chatClientBuilder;
-    @Mock ChatClient chatClient;
-    @Mock ChatClientRequestSpec requestSpec;
-    @Mock CallResponseSpec callSpec;
+    @Mock LLMRouter llmRouter;
 
     private ReRankingService service;
 
@@ -39,7 +34,7 @@ class ReRankingServiceTest {
     void setUp() {
         CircuitBreaker cb = CircuitBreaker.of("test", CircuitBreakerConfig.ofDefaults());
         Bulkhead bh = Bulkhead.of("test", BulkheadConfig.ofDefaults());
-        service = new ReRankingService(chatClientBuilder, cb, bh);
+        service = new ReRankingService(llmRouter, cb, bh);
     }
 
     // ── MMR (diversity) ─────────────────────────────────────────────────────
@@ -132,7 +127,7 @@ class ReRankingServiceTest {
             .slidingWindowSize(1).failureRateThreshold(0.01f).build());
         openCb.transitionToOpenState();
         Bulkhead bh = Bulkhead.of("test2", BulkheadConfig.ofDefaults());
-        ReRankingService serviceWithOpenBreaker = new ReRankingService(chatClientBuilder, openCb, bh);
+        ReRankingService serviceWithOpenBreaker = new ReRankingService(llmRouter, openCb, bh);
 
         float[] query = {1f, 0f};
         List<ScoredCandidate> candidates = List.of(
@@ -158,10 +153,6 @@ class ReRankingServiceTest {
     }
 
     private void stubLlmResponse(String content) {
-        when(chatClientBuilder.build()).thenReturn(chatClient);
-        when(chatClient.prompt()).thenReturn(requestSpec);
-        when(requestSpec.user(any(String.class))).thenReturn(requestSpec);
-        when(requestSpec.call()).thenReturn(callSpec);
-        when(callSpec.content()).thenReturn(content);
+        when(llmRouter.chat(any(String.class), org.mockito.ArgumentMatchers.anyBoolean())).thenReturn(content);
     }
 }

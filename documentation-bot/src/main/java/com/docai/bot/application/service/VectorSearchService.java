@@ -5,9 +5,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-import org.springframework.ai.embedding.EmbeddingModel;
-import org.springframework.ai.embedding.EmbeddingRequest;
-import org.springframework.ai.embedding.EmbeddingResponse;
+import java.util.Optional;
+
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -17,8 +17,8 @@ import com.docai.bot.domain.model.RankFusion;
 import com.docai.bot.domain.model.RetrievedChunk;
 import com.docai.bot.domain.model.SearchScope;
 import com.docai.bot.domain.repository.DocumentChunkRepository;
-import com.docai.bot.domain.repository.DocumentChunkRepository.ChunkSearchResult;
 import com.docai.bot.domain.repository.DocumentChunkRepository.HybridCandidate;
+import com.docai.bot.domain.repository.DocumentRepository;
 import com.pgvector.PGvector;
 
 import lombok.RequiredArgsConstructor;
@@ -46,8 +46,14 @@ import lombok.extern.slf4j.Slf4j;
 public class VectorSearchService {
 
     private final DocumentChunkRepository chunkRepository;
-    private final EmbeddingModel embeddingModel;
+    private final DocumentRepository documentRepository;
+    private final LLMRouter llmRouter;
     private final ReRankingService reRankingService;
+
+    /** Only present when Redis is configured (see EmbeddingCacheService's @ConditionalOnProperty)
+     * — absent otherwise, same optional-dependency pattern as RateLimitFilter's ProxyManager. */
+    @Autowired(required = false)
+    private EmbeddingCacheService embeddingCacheService;
 
     @Value("${bot.top-k-results:7}")
     private int topK;
@@ -67,7 +73,7 @@ public class VectorSearchService {
 
         log.info("Hybrid search for: {} within {} accessible document(s)", query, scope.documentIds().size());
 
-        PGvector queryVector = generateEmbedding(query);
+        PGvector queryVector = generateEmbedding(query, scope);
         String embeddingStr = pgVectorToString(queryVector);
 
         List<HybridCandidate> denseResults = chunkRepository.findTopNDenseAccessible(
@@ -110,6 +116,7 @@ public class VectorSearchService {
                 RetrievedChunk chunk = RetrievedChunk.builder()
                     .chunkId(c.getChunkId())
                     .content(c.getContent())
+                    .documentId(c.getDocumentId())
                     .documentName(c.getDocumentName())
                     .product(c.getProduct())
                     .version(c.getVersion())
@@ -121,54 +128,60 @@ public class VectorSearchService {
     }
 
     /**
-     * @deprecated Pre-dates per-document access control and does not filter by tenant or by
-     * anyone's access grants — it exists only for the handful of admin/system-facing services
-     * (corpus-wide analysis, scheduled jobs) not yet retrofitted with tenant scoping. Do not use
-     * this for any request made on behalf of a specific end user; use {@link #search(String, SearchScope)}.
+     * Embeds the query using the model that actually produced the *documents in scope's*
+     * embeddings — not blindly the tenant's current embedding config, which may have changed
+     * since those documents were ingested (see {@link com.docai.bot.domain.entity.Document#getEmbeddingModel()}).
+     * Falls back to the tenant's current config when no document in scope recorded a model
+     * (ingested before that column existed). If documents in scope carry more than one distinct
+     * model — a tenant mid-migration between embedding configs — also falls back to the tenant's
+     * current config and logs a warning, rather than picking one arbitrarily: neither past model
+     * is uniquely "correct" for the whole scope.
      */
-    @Deprecated
-    public List<RetrievedChunk> search(String query, String product, String version) {
-        log.info("Searching for: {} in product: {} version: {}", query, product, version);
-
-        String embeddingStr = pgVectorToString(generateEmbedding(query));
-
-        List<ChunkSearchResult> results;
-        if (product != null && version != null) {
-            results = chunkRepository.findTopKSimilar(product, version, embeddingStr, topK);
-        } else if (product != null) {
-            results = chunkRepository.findTopKSimilarByProduct(product, embeddingStr, topK);
-        } else {
-            results = chunkRepository.findTopKSimilarAll(embeddingStr, topK);
-        }
-
-        List<RetrievedChunk> chunks = results.stream()
-            .map(row -> RetrievedChunk.builder()
-                .chunkId(row.getChunkId())
-                .content(row.getContent())
-                .documentName(row.getDocumentName())
-                .similarity(row.getSimilarity())
-                .product(row.getProduct())
-                .version(row.getVersion())
-                .build())
-            .toList();
-        log.info("Found {} relevant chunks", chunks.size());
-        return chunks;
-    }
-
-    private PGvector generateEmbedding(String text) {
+    private PGvector generateEmbedding(String text, SearchScope scope) {
         try {
-            EmbeddingRequest request = new EmbeddingRequest(List.of(text), null);
-            EmbeddingResponse response = embeddingModel.call(request);
+            List<String> modelsInScope = documentRepository
+                .findDistinctEmbeddingModelsAccessible(scope.tenantId(), scope.documentIds());
 
-            if (response.getResults().isEmpty()) {
-                throw new RuntimeException("No embedding generated");
+            List<Double> embedding;
+            if (modelsInScope.size() == 1) {
+                String model = modelsInScope.get(0);
+                embedding = cachedEmbed(text, model);
+            } else {
+                if (modelsInScope.size() > 1) {
+                    log.warn("Search scope for tenant {} spans {} distinct embedding models {} — "
+                        + "falling back to the tenant's current embedding config for the query",
+                        scope.tenantId(), modelsInScope.size(), modelsInScope);
+                }
+                embedding = llmRouter.embed(text);
             }
-
-            return new PGvector(response.getResult().getOutput());
+            return new PGvector(toFloatArray(embedding));
         } catch (Exception e) {
             log.error("Failed to generate embedding", e);
             throw new RuntimeException("Failed to generate embedding", e);
         }
+    }
+
+    /** Cache is keyed on (text, model) — same text+model always yields the same vector regardless
+     * of tenant (see EmbeddingCacheService), so a repeated question anywhere costs one embedding
+     * API call instead of one per ask. No-ops gracefully to a plain {@link LLMRouter} call when
+     * Redis isn't configured. */
+    private List<Double> cachedEmbed(String text, String model) {
+        if (embeddingCacheService == null) {
+            return llmRouter.embed(text, model);
+        }
+        Optional<List<Double>> cached = embeddingCacheService.get(text, model);
+        if (cached.isPresent()) {
+            return cached.get();
+        }
+        List<Double> embedding = llmRouter.embed(text, model);
+        embeddingCacheService.put(text, model, embedding);
+        return embedding;
+    }
+
+    private static float[] toFloatArray(List<Double> values) {
+        float[] result = new float[values.size()];
+        for (int i = 0; i < values.size(); i++) result[i] = values.get(i).floatValue();
+        return result;
     }
 
     private String pgVectorToString(PGvector vector) {

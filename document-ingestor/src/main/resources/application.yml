@@ -36,7 +36,11 @@ spring:
       api-key: ${OPENAI_API_KEY}
       embedding:
         options:
-          model: ${OPENAI_EMBEDDING_MODEL:gpt-4o-embedding-4k}
+          # Was "gpt-4o-embedding-4k" — not a real OpenAI model name; this default silently broke
+          # any deployment that didn't override it via OPENAI_EMBEDDING_MODEL (dev compose already
+          # did, masking the bug there). text-embedding-3-small matches the bot service's default
+          # and is what documentation-bot's query-side embedding actually expects to match against.
+          model: ${OPENAI_EMBEDDING_MODEL:text-embedding-3-small}
           encodingFormat: float
 
   servlet:
@@ -54,11 +58,12 @@ app:
     secret: ${JWT_SECRET:bXktc2VjcmV0LWtleS1mb3ItZG9jYWktc3lzdGVtLWp3dC10b2tlbnMtMjAyNA==}
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:3000}
-  # Phase 7.5 — AWS credentials (used when ingestor.storage.type=s3)
-  aws:
-    region: ${AWS_REGION:us-east-1}
-    access-key: ${AWS_ACCESS_KEY_ID:}
-    secret-key: ${AWS_SECRET_ACCESS_KEY:}
+  secrets:
+    # AES-256 key (base64, 32 bytes) for encrypting Confluence/Notion integration tokens at rest.
+    # Shared with documentation-bot's SECRETS_ENCRYPTION_KEY (same key, same scheme) — same
+    # sharing convention already used for JWT_SECRET. Optional here (dev generates an ephemeral
+    # key); required in prod — see application-prod.yml. Generate with: openssl rand -base64 32
+    encryption-key: ${SECRETS_ENCRYPTION_KEY:}
 
 management:
   endpoints:
@@ -96,6 +101,10 @@ ingestor:
   chunk-overlap: 100
   parallel-processing: true
   max-threads: 4
+  # A document stuck in PROCESSING longer than this (pod died mid-ingestion, etc.) is reaped —
+  # marked FAILED so it becomes eligible for retrigger/reprocess-failed instead of stuck forever.
+  stuck-processing-timeout-minutes: ${STUCK_PROCESSING_TIMEOUT_MINUTES:30}
+  stuck-processing-check-interval-ms: ${STUCK_PROCESSING_CHECK_INTERVAL_MS:300000}
   # Phase 3 — files live on S3-compatible storage (MinIO in this deployment), never on this
   # container's own disk. "s3" is the only supported backend (see DocumentStorageService); a
   # future backend is a new implementation gated the same way, not a config toggle back to disk.
@@ -110,4 +119,23 @@ ingestor:
       # MinIO needs path-style (http://host:port/bucket/key); real AWS S3 uses virtual-hosted
       # style (https://bucket.s3.amazonaws.com/key) — set this to false there.
       path-style-access: ${S3_PATH_STYLE_ACCESS:true}
+  security:
+    # SSRF guard (SafeUrlValidator) for server-side fetches of caller-supplied URLs (webhook
+    # download URLs, Confluence API calls). https-only by default; these hosts are additionally
+    # allowed over plain http (dev/test convenience only — never add a real external host here).
+    http-allowed-hosts: ${SSRF_HTTP_ALLOWED_HOSTS:localhost,127.0.0.1}
+    # Confluence site URLs (registered via POST /api/connectors/confluence/token) must resolve to
+    # a host ending in one of these suffixes, closing the SSRF risk of a malicious/compromised
+    # admin pointing sync at an arbitrary internal host with the stored bearer token attached.
+    confluence-host-allowlist: ${CONFLUENCE_HOST_ALLOWLIST:.atlassian.net}
+  webhook:
+    # Shared secret CI/CD systems use to sign POST /api/v1/ingest/webhook request bodies
+    # (X-Webhook-Signature: sha256=<hmac>) — see WebhookHmacAuthFilter. Unset in dev disables
+    # signature verification (falls back to requiring an ADMIN JWT); set in prod.
+    hmac-secret: ${WEBHOOK_HMAC_SECRET:}
+  internal:
+    # Shared secret documentation-bot signs its server-to-server calls with (currently just the
+    # "open citation" download-url lookup) — see InternalServiceAuthFilter. Must match the same
+    # env var configured on documentation-bot. Unset disables the internal API entirely.
+    service-secret: ${INTERNAL_SERVICE_SECRET:}
 

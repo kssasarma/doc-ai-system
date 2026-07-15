@@ -9,9 +9,12 @@ import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.http.MediaType;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import com.docai.bot.application.event.ChatQueryRecordedEvent;
 import com.docai.bot.config.TenantContext;
@@ -186,6 +189,220 @@ public class ChatService {
             .build();
     }
 
+    /**
+     * Streaming counterpart of {@link #processQuery} — same retrieval/persistence pipeline, but
+     * the answer is forwarded to the client token-by-token over Server-Sent Events instead of
+     * being assembled and returned in one blocking response. {@code @Async} so the controller can
+     * return the {@link SseEmitter} immediately while this method does the actual work on a pool
+     * thread (the {@code AsyncConfig} TaskDecorator propagates {@code TenantContext} onto that
+     * thread, which retrieval/LLM routing both depend on).
+     *
+     * Event contract: {@code sources} (once, before generation) → any number of {@code token}
+     * deltas → {@code done} (final metadata) — or {@code error} if generation fails outright.
+     *
+     * Scoping decision: only the common (non-multi-hop) path streams real tokens. A complex query
+     * (see {@link MultiHopReasoningService#isComplexQuery}) still runs the existing blocking
+     * multi-hop pipeline — reworking multi-step decomposition/synthesis for token streaming is a
+     * separate, larger change — and is delivered as a single flushed {@code token} event so the
+     * frontend's event contract doesn't need to special-case query complexity.
+     */
+    @Async
+    public void processQueryStream(ChatRequest request, SseEmitter emitter) {
+        long startMs = System.currentTimeMillis();
+        try {
+            log.info("Processing streaming query: {}", request.getQuestion());
+            ChatSession session = getOrCreateSession(request.getChatId(), request.getProduct(),
+                    request.getVersion(), request.getUserId());
+            boolean isFirstExchange = session.getMessageCount() == 0;
+
+            QueryAnalyzerService.QueryContext queryContext =
+                    queryAnalyzer.analyzeQuery(request.getQuestion(), request.getChatId());
+            String product = queryContext.getProduct() != null ? queryContext.getProduct()
+                    : (request.getProduct() != null ? request.getProduct() : session.getProduct());
+            String version = queryContext.getVersion() != null ? queryContext.getVersion()
+                    : (request.getVersion() != null ? request.getVersion() : session.getVersion());
+
+            SearchScope scope = documentAccessPolicy.resolveScope(request.getUserId(), TenantContext.get());
+            if (request.getProduct() != null || request.getVersion() != null) {
+                scope = scope.withVersionNarrow(request.getProduct(), request.getVersion());
+            }
+
+            UserPreference prefs = preferenceService.getPreferences(request.getUserId());
+            String chatContext = contextManager.buildContextPrompt(session.getId());
+            String enhancedQuery = enhanceQueryWithContext(request.getQuestion(), chatContext);
+
+            String finalAnswer;
+            List<String> relatedQuestionsFromLlm;
+            List<RetrievedChunk> relevantChunks;
+            List<MultiHopReasoningService.HopResult> reasoningChain = null;
+            int promptTokens, completionTokens;
+
+            if (multiHopService.isComplexQuery(request.getQuestion())) {
+                log.info("Complex query detected — using multi-hop reasoning (not token-streamed, see method javadoc)");
+                MultiHopReasoningService.MultiHopAnswer multiHop = multiHopService.reason(
+                    request.getQuestion(), chatContext, scope, product, version,
+                    prefs.getVerbosity(), prefs.getAnswerFormat()
+                );
+                relevantChunks = multiHop.hops().stream()
+                    .flatMap(h -> h.chunks().stream()).distinct().toList();
+                sendEvent(emitter, "sources", buildSources(relevantChunks));
+                sendToken(emitter, multiHop.answer());
+                finalAnswer = multiHop.answer();
+                relatedQuestionsFromLlm = multiHop.relatedQuestions();
+                reasoningChain = multiHop.hops();
+                promptTokens = multiHop.promptTokens();
+                completionTokens = multiHop.completionTokens();
+            } else {
+                relevantChunks = vectorSearchService.search(enhancedQuery, scope);
+                sendEvent(emitter, "sources", buildSources(relevantChunks));
+
+                String prompt = answerService.promptForStreaming(request.getQuestion(), chatContext,
+                    relevantChunks, prefs.getVerbosity(), prefs.getAnswerFormat(), product, version);
+
+                if (prompt == null) {
+                    finalAnswer = answerService.emptyStateMessage(request.getQuestion());
+                    sendToken(emitter, finalAnswer);
+                    relatedQuestionsFromLlm = Collections.emptyList();
+                    promptTokens = 0;
+                    completionTokens = 0;
+                } else {
+                    String rawOutput = streamAndAccumulate(emitter, prompt);
+                    AnswerGenerationService.AnswerResult parsed = answerService.parseStreamedOutput(rawOutput);
+                    finalAnswer = parsed.answer();
+                    relatedQuestionsFromLlm = parsed.relatedQuestions();
+                    promptTokens = estimateTokens(prompt);
+                    completionTokens = estimateTokens(rawOutput);
+                }
+            }
+
+            saveMessage(session.getId(), ChatMessage.Role.USER, request.getQuestion());
+            ChatMessage assistantMessage = saveMessage(session.getId(), ChatMessage.Role.ASSISTANT, finalAnswer);
+
+            if (session.getProduct() == null && product != null) session.setProduct(product);
+            if (session.getVersion() == null && version != null) session.setVersion(version);
+            session.setMessageCount(session.getMessageCount() + 2);
+
+            String sessionTitle = null;
+            if (isFirstExchange) {
+                sessionTitle = answerService.generateSessionTitle(request.getQuestion(), finalAnswer);
+                session.setTitle(sessionTitle);
+            }
+
+            sessionRepository.save(session);
+            summaryService.summarizeIfNeeded(session.getId());
+
+            double confidence = calculateConfidence(relevantChunks, version);
+
+            long latencyMs = System.currentTimeMillis() - startMs;
+            String[] citedDocs = relevantChunks.stream()
+                .map(RetrievedChunk::getDocumentName)
+                .distinct()
+                .toArray(String[]::new);
+            double estimatedCost = (promptTokens / 1000.0 * costPerKInput)
+                + (completionTokens / 1000.0 * costPerKOutput);
+            eventPublisher.publishEvent(new ChatQueryRecordedEvent(
+                request.getUserId(), session.getTenantId(), session.getId(), request.getQuestion(),
+                product, version, confidence, latencyMs,
+                promptTokens, completionTokens, citedDocs, estimatedCost
+            ));
+
+            List<String> realAlsoAsked = peopleAlsoAskedService.getPeopleAlsoAsked(
+                request.getQuestion(), session.getTenantId(), session.getId(), product, version
+            );
+            List<String> relatedQuestions = realAlsoAsked.isEmpty() ? relatedQuestionsFromLlm : realAlsoAsked;
+
+            List<ReasoningStep> chain = null;
+            if (reasoningChain != null) {
+                chain = reasoningChain.stream()
+                    .map(h -> ReasoningStep.builder()
+                        .subQuestion(h.subQuestion())
+                        .chunksFound(h.chunks().size())
+                        .maxSimilarity(h.maxSimilarity())
+                        .build())
+                    .toList();
+            }
+
+            sendEvent(emitter, "done", StreamDoneEvent.builder()
+                .chatId(session.getId().toString())
+                .messageId(assistantMessage.getId().toString())
+                .confidence(confidence)
+                .sessionTitle(sessionTitle)
+                .relatedQuestions(relatedQuestions)
+                .reasoningChain(chain)
+                .build());
+            emitter.complete();
+        } catch (ClientDisconnectedException e) {
+            log.info("Streaming query client disconnected (stop/navigate away): {}", e.getMessage());
+            emitter.complete();
+        } catch (Exception e) {
+            log.error("Streaming query failed", e);
+            try {
+                emitter.send(SseEmitter.event().name("error")
+                    .data(new StreamErrorEvent("Something went wrong generating this answer."), MediaType.APPLICATION_JSON));
+            } catch (Exception ignored) {
+                // Connection is already gone — nothing left to notify.
+            }
+            emitter.completeWithError(e);
+        }
+    }
+
+    /** Consumes the LLM's token stream, forwarding text to the client as it's confirmed safe —
+     * withholding just enough of the tail (marker length - 1 chars) that the follow-up-questions
+     * marker (and the follow-up section after it) can never leak into the displayed answer
+     * mid-stream. Returns the full raw output (marker and follow-up section included) for the
+     * caller to parse exactly like the blocking path does. */
+    private String streamAndAccumulate(SseEmitter emitter, String prompt) {
+        StringBuilder accumulator = new StringBuilder();
+        int withholdLength = AnswerGenerationService.FOLLOW_UP_MARKER.length() - 1;
+        boolean[] markerFound = {false};
+        int[] sentLength = {0};
+
+        answerService.streamAnswer(prompt)
+            .doOnNext(delta -> {
+                accumulator.append(delta);
+                if (markerFound[0]) return;
+                int markerIdx = accumulator.indexOf(AnswerGenerationService.FOLLOW_UP_MARKER);
+                int safeEnd = markerIdx != -1 ? markerIdx : Math.max(sentLength[0], accumulator.length() - withholdLength);
+                if (markerIdx != -1) markerFound[0] = true;
+                if (safeEnd > sentLength[0]) {
+                    sendToken(emitter, accumulator.substring(sentLength[0], safeEnd));
+                    sentLength[0] = safeEnd;
+                }
+            })
+            .blockLast();
+
+        if (!markerFound[0] && accumulator.length() > sentLength[0]) {
+            sendToken(emitter, accumulator.substring(sentLength[0]));
+        }
+
+        return accumulator.toString();
+    }
+
+    private void sendToken(SseEmitter emitter, String text) {
+        if (text == null || text.isEmpty()) return;
+        sendEvent(emitter, "token", new StreamTokenEvent(text));
+    }
+
+    /** Throws an unchecked {@link ClientDisconnectedException} on send failure so it propagates
+     * out of any Reactor {@code doOnNext} it's called from, cancelling the upstream LLM stream
+     * (and the surrounding try/catch in {@link #processQueryStream} treats it as an ordinary,
+     * expected "client left" rather than a real error worth alarming logs over). */
+    private void sendEvent(SseEmitter emitter, String eventName, Object data) {
+        try {
+            emitter.send(SseEmitter.event().name(eventName).data(data, MediaType.APPLICATION_JSON));
+        } catch (Exception e) {
+            throw new ClientDisconnectedException(e);
+        }
+    }
+
+    private static class ClientDisconnectedException extends RuntimeException {
+        ClientDisconnectedException(Throwable cause) { super(cause); }
+    }
+
+    private static int estimateTokens(String text) {
+        return text != null ? text.length() / 4 : 0;
+    }
+
     @Transactional
     public ChatResponse regenerateAnswer(String messageIdStr, UserPrincipal principal, String style) {
         UUID messageId = UUID.fromString(messageIdStr);
@@ -327,6 +544,7 @@ public class ChatService {
     private List<SourceReference> buildSources(List<RetrievedChunk> chunks) {
         return chunks.stream()
             .map(chunk -> SourceReference.builder()
+                .documentId(chunk.getDocumentId())
                 .document(chunk.getDocumentName())
                 .chunkId(chunk.getChunkId())
                 .relevanceScore(chunk.getSimilarity())
@@ -484,6 +702,24 @@ public class ChatService {
         private List<ReasoningStep> reasoningChain;
     }
 
+    // ── Streaming (SSE) event payloads ──────────────────────────────────────────
+    // Sent as the `data` of named SSE events by processQueryStream: "sources" (once, before
+    // generation) → any number of "token" → "done" (terminal, success) | "error" (terminal, failure).
+
+    public record StreamTokenEvent(String text) {}
+
+    public record StreamErrorEvent(String message) {}
+
+    @lombok.Data @lombok.Builder
+    public static class StreamDoneEvent {
+        private String chatId;
+        private String messageId;
+        private double confidence;
+        private String sessionTitle;
+        private List<String> relatedQuestions;
+        private List<ReasoningStep> reasoningChain;
+    }
+
     @lombok.Data @lombok.Builder
     public static class ReasoningStep {
         private String subQuestion;
@@ -493,6 +729,7 @@ public class ChatService {
 
     @lombok.Data @lombok.Builder
     public static class SourceReference {
+        private String documentId;
         private String document;
         private String chunkId;
         private double relevanceScore;

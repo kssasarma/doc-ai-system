@@ -38,8 +38,9 @@ public class AnalyticsController {
     @GetMapping("/top-questions")
     public ResponseEntity<List<AnalyticsService.TopQuestionDTO>> getTopQuestions(
             @RequestParam(defaultValue = "10") int limit,
+            @RequestParam(defaultValue = "30") int days,
             @AuthenticationPrincipal UserPrincipal principal) {
-        return ResponseEntity.ok(analyticsService.getTopQuestions(principal.tenantId(), limit));
+        return ResponseEntity.ok(analyticsService.getTopQuestions(principal.tenantId(), limit, days));
     }
 
     @GetMapping("/product-coverage")
@@ -55,8 +56,10 @@ public class AnalyticsController {
     }
 
     @GetMapping("/cost")
-    public ResponseEntity<AnalyticsService.CostSummaryDTO> getCostSummary(@AuthenticationPrincipal UserPrincipal principal) {
-        return ResponseEntity.ok(analyticsService.getCostSummary(principal.tenantId()));
+    public ResponseEntity<AnalyticsService.CostSummaryDTO> getCostSummary(
+            @RequestParam(defaultValue = "30") int days,
+            @AuthenticationPrincipal UserPrincipal principal) {
+        return ResponseEntity.ok(analyticsService.getCostSummary(principal.tenantId(), days));
     }
 
     @GetMapping("/document-coverage")

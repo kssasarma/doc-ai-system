@@ -3,6 +3,12 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="%BASE_URL%favicon.svg" />
+    <!-- No dedicated PNG icon asset exists yet — reusing the SVG favicon here is a stopgap.
+         iOS Safari's "Add to Home Screen" prefers a PNG; this still renders (modern iOS accepts
+         SVG touch icons), just without the guaranteed cross-version support a real PNG would have. -->
+    <link rel="apple-touch-icon" href="%BASE_URL%favicon.svg" />
+    <link rel="manifest" href="%BASE_URL%manifest.webmanifest" />
+    <meta name="theme-color" content="#2563eb" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="Docs-inator - AI-Powered Documentation Assistant. Get instant answers to your documentation questions with our intelligent chatbot." />
     <meta name="keywords" content="documentation, chatbot, AI, assistant, docs, help" />

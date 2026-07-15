@@ -8,6 +8,7 @@ import {
   type TopicSubscription,
 } from '../../services/topicSubscriptionService';
 import { useAuth } from '../../context/AuthContext';
+import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 import { fadeInUp, staggerContainer } from '../../lib/motion';
 import PageHeader from '../ui/PageHeader';
 import { Card, CardBody } from '../ui/Card';
@@ -20,6 +21,7 @@ import { SkeletonRow } from '../ui/Skeleton';
 import { useToast } from '../ui/Toast';
 
 export default function SubscriptionsPage() {
+  useDocumentTitle('Subscriptions');
   const { token } = useAuth();
   const toast = useToast();
   const [subscriptions, setSubscriptions] = useState<TopicSubscription[]>([]);

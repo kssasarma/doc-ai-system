@@ -1,8 +1,12 @@
 package com.docai.bot.application.service;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.time.LocalDateTime;
 import java.util.Base64;
+import java.util.HexFormat;
 import java.util.UUID;
 
 import org.springframework.mail.javamail.JavaMailSender;
@@ -53,7 +57,7 @@ public class InvitationService {
     private final SecureRandom random = new SecureRandom();
 
     @Transactional
-    public InvitationToken invite(String email, User.Role role, UUID tenantId, UUID invitedBy) {
+    public InviteResult invite(String email, User.Role role, UUID tenantId, UUID invitedBy) {
         if (role != User.Role.SUPER_ADMIN && tenantId == null) {
             throw new IllegalArgumentException("tenantId is required for role " + role);
         }
@@ -69,7 +73,7 @@ public class InvitationService {
                 .orElseThrow(() -> new IllegalArgumentException("Tenant not found: " + tenantId));
             long currentMembers = membershipRepository.countByTenantId(tenantId);
             long pendingInvites = invitationRepository
-                .countByTenantIdAndAcceptedAtIsNullAndExpiresAtAfter(tenantId, LocalDateTime.now());
+                .countByTenantIdAndAcceptedAtIsNullAndRevokedAtIsNullAndExpiresAtAfter(tenantId, LocalDateTime.now());
             if (currentMembers + pendingInvites >= tenant.getMaxUsers()) {
                 throw new IllegalStateException(
                     "This tenant has reached its plan limit of " + tenant.getMaxUsers() + " users");
@@ -78,10 +82,10 @@ public class InvitationService {
 
         byte[] bytes = new byte[TOKEN_BYTES];
         random.nextBytes(bytes);
-        String token = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+        String rawToken = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
 
         InvitationToken invitation = invitationRepository.save(InvitationToken.builder()
-            .token(token)
+            .tokenHash(hash(rawToken))
             .email(email)
             .role(role)
             .tenantId(tenantId)
@@ -89,17 +93,52 @@ public class InvitationService {
             .expiresAt(LocalDateTime.now().plusHours(EXPIRY_HOURS))
             .build());
 
-        sendInviteEmail(invitation);
-        return invitation;
+        sendInviteEmail(invitation, rawToken);
+        return new InviteResult(invitation, rawToken);
+    }
+
+    public record InviteResult(InvitationToken invitation, String rawToken) {}
+
+    @Transactional(readOnly = true)
+    public java.util.List<InvitationToken> listPending(UUID tenantId) {
+        return invitationRepository
+            .findByTenantIdAndAcceptedAtIsNullAndRevokedAtIsNullAndExpiresAtAfterOrderByCreatedAtDesc(
+                tenantId, LocalDateTime.now());
+    }
+
+    /** Revokes a still-pending invite so its link stops working — e.g. it was sent to the wrong
+     * address, or the person no longer needs access before ever accepting it. */
+    @Transactional
+    public void revoke(UUID invitationId, UUID tenantId) {
+        InvitationToken invitation = invitationRepository.findById(invitationId)
+            .filter(inv -> tenantId.equals(inv.getTenantId()))
+            .orElseThrow(() -> new IllegalArgumentException("Invitation not found"));
+        if (invitation.isAccepted()) {
+            throw new IllegalStateException("This invitation has already been accepted");
+        }
+        invitation.setRevokedAt(LocalDateTime.now());
+        invitationRepository.save(invitation);
+    }
+
+    private String hash(String rawToken) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            return HexFormat.of().formatHex(digest.digest(rawToken.getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 not available", e);
+        }
     }
 
     @Transactional
     public User accept(String token, String username, String password) {
-        InvitationToken invitation = invitationRepository.findByToken(token)
+        InvitationToken invitation = invitationRepository.findByTokenHash(hash(token))
             .orElseThrow(() -> new IllegalArgumentException("Invalid invitation"));
 
         if (invitation.isAccepted()) {
             throw new IllegalStateException("This invitation has already been used");
+        }
+        if (invitation.isRevoked()) {
+            throw new IllegalStateException("This invitation has been revoked");
         }
         if (invitation.isExpired()) {
             throw new IllegalStateException("This invitation has expired");
@@ -160,9 +199,9 @@ public class InvitationService {
         return user;
     }
 
-    private void sendInviteEmail(InvitationToken invitation) {
+    private void sendInviteEmail(InvitationToken invitation, String rawToken) {
         try {
-            String link = props.getAppUrl() + "/accept-invite?token=" + invitation.getToken();
+            String link = props.getAppUrl() + "/accept-invite?token=" + rawToken;
 
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, "UTF-8");

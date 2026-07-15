@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Save, AlertCircle, Sparkles, Clock, Palette } from 'lucide-react';
 import {
-  getTenantLLMConfig, updateTenantLLMConfig,
+  getTenantLLMConfig,
   getRetentionPolicy, updateRetentionPolicy,
   type TenantLLMConfig, type DataRetentionPolicy,
 } from '../../services/tenantService';
@@ -14,11 +14,11 @@ import PageHeader from '../ui/PageHeader';
 import { Card, CardBody } from '../ui/Card';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
-import Select from '../ui/Select';
 import { SkeletonCard } from '../ui/Skeleton';
 import { useToast } from '../ui/Toast';
+import LlmConfigForm from './LlmConfigForm';
 
-type Section = 'llm' | 'retention' | 'branding';
+type Section = 'retention' | 'branding';
 
 function SectionCard({ title, icon: Icon, children }: { title: string; icon: React.ElementType; children: React.ReactNode }) {
   return (
@@ -63,19 +63,6 @@ export default function SettingsPage() {
       .catch(e => setError(e instanceof Error ? e.message : 'Failed to load tenant settings'))
       .finally(() => setLoading(false));
   }, [token, tenantId]);
-
-  const saveLLM = async () => {
-    if (!llmConfig || !token) return;
-    setSaving('llm');
-    try {
-      setLlmConfig(await updateTenantLLMConfig(token, tenantId, llmConfig));
-      toast.success('LLM configuration saved.');
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Failed to save LLM configuration.');
-    } finally {
-      setSaving(null);
-    }
-  };
 
   const saveRetention = async () => {
     if (!retention || !token) return;
@@ -130,63 +117,10 @@ export default function SettingsPage() {
       <PageHeader title="Tenant Settings" description="Configure your organization's LLM provider, data retention, and branding." />
 
       <motion.div variants={staggerContainer} initial="hidden" animate="visible" className="space-y-6">
-        {llmConfig && (
+        {llmConfig && token && (
           <motion.div variants={fadeInUp}>
             <SectionCard title="LLM Configuration" icon={Sparkles}>
-              <div className="space-y-3">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <Select
-                    label="Chat Provider"
-                    value={llmConfig.chatProvider}
-                    onChange={e => setLlmConfig(c => c ? { ...c, chatProvider: e.target.value } : c)}
-                  >
-                    <option value="openai">OpenAI</option>
-                    <option value="anthropic">Anthropic</option>
-                  </Select>
-                  <Input
-                    label="Chat Model"
-                    value={llmConfig.chatModel}
-                    onChange={e => setLlmConfig(c => c ? { ...c, chatModel: e.target.value } : c)}
-                  />
-                  <Input
-                    label="Embedding Provider"
-                    value={llmConfig.embeddingProvider}
-                    onChange={e => setLlmConfig(c => c ? { ...c, embeddingProvider: e.target.value } : c)}
-                  />
-                  <Input
-                    label="Embedding Model"
-                    value={llmConfig.embeddingModel}
-                    onChange={e => setLlmConfig(c => c ? { ...c, embeddingModel: e.target.value } : c)}
-                  />
-                </div>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    id="routing"
-                    checked={llmConfig.routingEnabled}
-                    onChange={e => setLlmConfig(c => c ? { ...c, routingEnabled: e.target.checked } : c)}
-                    className="h-4 w-4 rounded border-border accent-primary"
-                  />
-                  <label htmlFor="routing" className="text-sm text-foreground">Enable smart routing (simple → cheap model, complex → powerful model)</label>
-                </div>
-                {llmConfig.routingEnabled && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <Input
-                      label="Simple queries model"
-                      value={llmConfig.simpleModel}
-                      onChange={e => setLlmConfig(c => c ? { ...c, simpleModel: e.target.value } : c)}
-                    />
-                    <Input
-                      label="Complex queries model"
-                      value={llmConfig.complexModel}
-                      onChange={e => setLlmConfig(c => c ? { ...c, complexModel: e.target.value } : c)}
-                    />
-                  </div>
-                )}
-                <div className="flex items-center gap-3">
-                  <Button onClick={saveLLM} loading={saving === 'llm'} leftIcon={<Save size={14} />}>Save</Button>
-                </div>
-              </div>
+              <LlmConfigForm token={token} tenantId={tenantId} config={llmConfig} onSaved={setLlmConfig} />
             </SectionCard>
           </motion.div>
         )}

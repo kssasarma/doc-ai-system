@@ -4,3 +4,4 @@
 ./document-ingestor/.project
 
 .env
+node_modules/

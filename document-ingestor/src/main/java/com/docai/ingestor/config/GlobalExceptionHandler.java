@@ -16,6 +16,8 @@ import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
+import com.docai.ingestor.application.service.TenantQuotaExceededException;
+
 import lombok.Builder;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
@@ -46,6 +48,13 @@ public class GlobalExceptionHandler {
             IllegalArgumentException ex, WebRequest request) {
         return ResponseEntity.badRequest()
             .body(ErrorResponse.of("BAD_REQUEST", ex.getMessage(), request));
+    }
+
+    @ExceptionHandler(TenantQuotaExceededException.class)
+    public ResponseEntity<ErrorResponse> handleQuotaExceeded(
+            TenantQuotaExceededException ex, WebRequest request) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+            .body(ErrorResponse.of("QUOTA_EXCEEDED", ex.getMessage(), request));
     }
 
     @ExceptionHandler(NoResourceFoundException.class)

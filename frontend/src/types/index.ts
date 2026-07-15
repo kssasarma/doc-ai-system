@@ -9,7 +9,11 @@ export interface ChatMessage {
   content: string;
   role: 'user' | 'assistant';
   timestamp: number;
+  /** No content has arrived yet — shows the typing-dots placeholder. */
   isTyping?: boolean;
+  /** Tokens are actively arriving — content is partial; metadata (confidence/upvote/bookmark)
+   * isn't final yet, so those stay hidden until streaming completes. */
+  isStreaming?: boolean;
   messageId?: string;
   sources?: Source[];
   confidence?: number;
@@ -55,7 +59,6 @@ export interface AppConfig {
     };
     chat: {
       maxMessageLength: number;
-      typingSpeed: number;
     };
   };
   storage: {
@@ -68,6 +71,7 @@ export interface AppConfig {
 
 export interface Source {
   chunkId: string;
+  documentId?: string;
   document: string;
   relevanceScore?: number;
   product?: string;
@@ -89,6 +93,15 @@ export interface BackendChatResponse {
 export interface APIResponse {
   success: boolean;
   data?: BackendChatResponse;
+  error?: string;
+}
+
+// Generic API envelope — analyticsService/apiKeyService/auditLogService import this shared
+// version; annotationService/collectionService each still declare their own identical local copy
+// (pre-existing duplication, not touched here).
+export interface ApiResult<T> {
+  success: boolean;
+  data?: T;
   error?: string;
 }
 
@@ -188,6 +201,14 @@ export interface TenantUser {
   username: string;
   email: string;
   role: Role;
+  active: boolean;
+}
+
+// Generic Spring Data Page<T> shape (see AuditLogPage for the original one-off version of this).
+export interface PageResponse<T> {
+  content: T[];
+  totalElements: number;
+  totalPages: number;
 }
 
 // Invitation types
@@ -195,6 +216,14 @@ export interface Invitation {
   id: string;
   email: string;
   role: string;
+  expiresAt: string;
+}
+
+export interface PendingInvitation {
+  id: string;
+  email: string;
+  role: string;
+  createdAt: string;
   expiresAt: string;
 }
 
@@ -274,6 +303,16 @@ export interface UserPreference {
 export interface ProductEntry {
   product: string;
   versions: string[];
+}
+
+// Phase 6.2 — "Google for the company" library/home surface
+export interface LibraryDocument {
+  id: string;
+  documentName: string;
+  product: string;
+  version: string;
+  chunkCount: number | null;
+  updatedAt: string | null;
 }
 
 // Phase 3 — Team Collaboration types

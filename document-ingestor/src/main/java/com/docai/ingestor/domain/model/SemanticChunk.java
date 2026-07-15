@@ -28,4 +28,9 @@ public class SemanticChunk {
     /** True = leaf paragraph (used for search); false = section-level context chunk. */
     @Builder.Default
     private boolean isLeaf = true;
+
+    /** Populated by IngestionService after embedding — kept on the chunk itself (rather than a
+     * parallel list) so parse/chunk/embed and persist can be cleanly separated into two phases
+     * (see IngestionService#parseChunkAndEmbed / #completeIngestion) without re-zipping indices. */
+    private float[] embedding;
 }

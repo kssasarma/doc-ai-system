@@ -7,6 +7,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.expression.method.DefaultMethodSecurityExpressionHandler;
+import org.springframework.security.access.hierarchicalroles.RoleHierarchy;
+import org.springframework.security.access.hierarchicalroles.RoleHierarchyImpl;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -35,7 +38,15 @@ public class SecurityConfig {
     private String allowedOrigins;
 
     private static final String[] PUBLIC_PATHS = {
-        "/api/auth/**",
+        // Only the auth endpoints a caller with no session yet can genuinely reach — NOT the
+        // whole /api/auth/** tree, which also holds authenticated-only endpoints (/me,
+        // /change-password, /my-tenants, /switch-tenant, /logout) that a blanket wildcard here
+        // would incorrectly leave open to anonymous callers.
+        "/api/auth/login",
+        "/api/auth/refresh",
+        "/api/auth/accept-invite",
+        "/api/auth/forgot-password",
+        "/api/auth/reset-password",
         "/api/auth/oidc/**",  // Phase 7 — OIDC callback + config
         "/api/share/{token}", // GET only — must work for anonymous visitors of a public link.
                                // Deliberately NOT "/api/share/**": that would also cover
@@ -47,7 +58,10 @@ public class SecurityConfig {
         "/api/branding",      // Phase 7 — white-label branding
         "/actuator/health",
         "/actuator/info",
-        "/actuator/prometheus",
+        // /actuator/prometheus deliberately NOT listed here — an unauthenticated scrape target
+        // leaks internal metrics/topology. Requires the normal ADMIN JWT like any other admin
+        // surface; a real deployment scrapes it with a service credential or puts it on a
+        // separate, network-isolated management port instead of exposing it anonymously.
         "/v3/api-docs/**",
         "/swagger-ui/**",
         "/swagger-ui.html"
@@ -77,6 +91,27 @@ public class SecurityConfig {
             // that order is load-bearing, not incidental.
             .addFilterAfter(tenantResolutionFilter, ApiKeyAuthFilter.class)
             .build();
+    }
+
+    /** SUPER_ADMIN > ADMIN > USER. Without this, every {@code @PreAuthorize("hasRole('ADMIN')")}
+     * (and {@code hasAnyRole}-without-SUPER_ADMIN) check across the admin controllers locks
+     * SUPER_ADMIN out — a functional bug, not an intentional restriction: SUPER_ADMIN is a
+     * superset role (it can also create tenants) and should pass any admin-level check. Declared
+     * as a static bean method per Spring Security's guidance for beans consumed by
+     * method-security infrastructure, which initializes very early. */
+    @Bean
+    static RoleHierarchy roleHierarchy() {
+        return RoleHierarchyImpl.withDefaultRolePrefix()
+            .role("SUPER_ADMIN").implies("ADMIN")
+            .role("ADMIN").implies("USER")
+            .build();
+    }
+
+    @Bean
+    static DefaultMethodSecurityExpressionHandler methodSecurityExpressionHandler(RoleHierarchy roleHierarchy) {
+        DefaultMethodSecurityExpressionHandler handler = new DefaultMethodSecurityExpressionHandler();
+        handler.setRoleHierarchy(roleHierarchy);
+        return handler;
     }
 
     @Bean

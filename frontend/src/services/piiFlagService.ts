@@ -36,3 +36,31 @@ export async function reviewPiiFlag(
     return { success: false, error: e instanceof Error ? e.message : 'Unknown error' };
   }
 }
+
+/** Approves a quarantined document's PII findings — makes it searchable again. */
+export async function releaseQuarantinedDocument(documentId: string, token: string): Promise<ApiResult<void>> {
+  try {
+    const res = await fetch(`${BASE}/document/${documentId}/release`, {
+      method: 'POST',
+      headers: authHeaders(token),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : 'Unknown error' };
+  }
+}
+
+/** Rejects a quarantined document — deletes it outright. */
+export async function rejectQuarantinedDocument(documentId: string, token: string): Promise<ApiResult<void>> {
+  try {
+    const res = await fetch(`${BASE}/document/${documentId}/reject`, {
+      method: 'POST',
+      headers: authHeaders(token),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : 'Unknown error' };
+  }
+}

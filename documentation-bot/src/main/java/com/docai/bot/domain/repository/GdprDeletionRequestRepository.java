@@ -1,5 +1,6 @@
 package com.docai.bot.domain.repository;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -12,4 +13,6 @@ public interface GdprDeletionRequestRepository extends JpaRepository<GdprDeletio
     List<GdprDeletionRequest> findByTenantIdAndStatus(UUID tenantId, String status);
 
     List<GdprDeletionRequest> findByUserId(UUID userId);
+
+    List<GdprDeletionRequest> findByStatusAndRequestedAtBefore(String status, LocalDateTime cutoff);
 }

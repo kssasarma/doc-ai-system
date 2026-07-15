@@ -50,7 +50,25 @@ Click **Save & Connect**.
 | `storage` | Save API URL, key, and settings locally |
 | `activeTab` | (unused at runtime, required for future clipboard features) |
 
-The extension does **not** request `<all_urls>` host permissions — it only contacts the API URL you configure in settings.
+The extension does **not** request `<all_urls>` host permissions upfront — `manifest.json`'s
+`host_permissions` is empty. Instead, when you save your backend URL in the setup form, the
+extension requests permission for just that one origin via Chrome's `optional_host_permissions`
+API (you'll see a one-time browser prompt). If you decline, the popup shows an error and won't
+save the URL, since without that grant `fetch()` calls to your backend are subject to the same
+CORS restrictions as a request from any other webpage.
+
+### CORS: allow the extension's origin
+
+A Manifest V3 extension's fetches come from an origin like `chrome-extension://<extension-id>`.
+The host-permission grant above lets the *browser* allow the request, but your Docs-inator
+backend still needs to allow it too — add that origin to `CORS_ALLOWED_ORIGINS` on
+documentation-bot (see the root README's Configuration Reference), e.g.:
+
+```
+CORS_ALLOWED_ORIGINS=https://your-frontend-domain.com,chrome-extension://abcdefghijklmnopqrstuvwxyz123456
+```
+
+You'll find your installed extension's id on `chrome://extensions` (enable Developer mode).
 
 ## Building for production
 

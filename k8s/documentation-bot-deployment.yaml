@@ -17,7 +17,9 @@ spec:
     spec:
       containers:
         - name: documentation-bot
-          image: your-registry/documentation-bot:latest
+          # Pin an explicit release tag before applying — never :latest (unanswerable rollbacks,
+          # unclear what's actually running). Bump this line per release.
+          image: your-registry/documentation-bot:1.0.0
           ports:
             - containerPort: 8082
           envFrom:

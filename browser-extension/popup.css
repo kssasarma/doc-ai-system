@@ -39,6 +39,7 @@ body {
 
 /* Setup form */
 .hint { color: #94a3b8; font-size: 12px; }
+.setup-error { background: #450a0a; color: #fca5a5; font-size: 12px; padding: 8px; border-radius: 6px; }
 form { display: flex; flex-direction: column; gap: 8px; }
 label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #94a3b8; }
 input {

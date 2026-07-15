@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
 import { AuthUser, AuthResponse } from '../types';
 import { login as apiLogin, getMe, changePassword as apiChangePassword, refreshSession, revokeSession } from '../services/authService';
 import { registerAuthExpiredHandler } from '../lib/authEvents';

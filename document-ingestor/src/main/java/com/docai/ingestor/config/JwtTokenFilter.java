@@ -1,12 +1,15 @@
 package com.docai.ingestor.config;
 
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 
 import javax.crypto.SecretKey;
 
+import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.env.Environment;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -20,18 +23,41 @@ import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
+import jakarta.annotation.PostConstruct;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 @Component
+@RequiredArgsConstructor
 public class JwtTokenFilter extends OncePerRequestFilter {
+
+    /** The exact value application.yml's dev default decodes to — same known secret the bot
+     * service guards against; a real deploy signing/verifying tokens with this is forgeable. */
+    private static final String DEV_DEFAULT_SECRET = "bXktc2VjcmV0LWtleS1mb3ItZG9jYWktc3lzdGVtLWp3dC10b2tlbnMtMjAyNA==";
+
+    private final Environment environment;
 
     @Value("${app.jwt.secret}")
     private String secret;
+
+    @PostConstruct
+    void validateSecretIsNotDevDefault() {
+        if (!DEV_DEFAULT_SECRET.equals(secret)) return;
+        boolean isDevLikeProfile = Arrays.stream(environment.getActiveProfiles())
+            .anyMatch(p -> p.equalsIgnoreCase("dev") || p.equalsIgnoreCase("local") || p.equalsIgnoreCase("test"));
+        if (!isDevLikeProfile) {
+            throw new IllegalStateException(
+                "Refusing to start: JWT_SECRET is unset, so this service would verify tokens "
+                + "against the publicly-known development default from this repo. Set JWT_SECRET "
+                + "to the same real secret configured on documentation-bot, or explicitly activate "
+                + "a dev/local/test Spring profile if this is intentionally a local run.");
+        }
+    }
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
@@ -55,7 +81,9 @@ public class JwtTokenFilter extends OncePerRequestFilter {
 
                     if (tenantId != null) {
                         TenantContext.set(tenantId);
+                        MDC.put("tenantId", tenantId.toString());
                     }
+                    MDC.put("userId", userId.toString());
 
                     List<SimpleGrantedAuthority> authorities = List.of(
                         new SimpleGrantedAuthority("ROLE_" + role)
@@ -75,6 +103,8 @@ public class JwtTokenFilter extends OncePerRequestFilter {
             filterChain.doFilter(request, response);
         } finally {
             TenantContext.clear();
+            MDC.remove("tenantId");
+            MDC.remove("userId");
         }
     }
 

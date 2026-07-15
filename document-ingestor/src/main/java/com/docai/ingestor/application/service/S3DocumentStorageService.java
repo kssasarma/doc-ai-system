@@ -41,16 +41,22 @@ public class S3DocumentStorageService implements DocumentStorageService {
     private String bucket;
 
     @Override
-    public String store(InputStream inputStream, String originalName, String tenantId) {
+    public String store(InputStream inputStream, String originalName, String tenantId, long contentLength) {
         String ext = originalName.contains(".")
             ? originalName.substring(originalName.lastIndexOf('.'))
             : "";
         String key = "documents/" + tenantId + "/" + UUID.randomUUID() + ext;
         try {
-            byte[] bytes = inputStream.readAllBytes();
+            // Known length: stream straight through to S3 — no full-file buffer in this process's
+            // heap, closing the "100MB upload × N concurrent requests" OOM vector. Unknown length
+            // (a network download with no reliable Content-Length) falls back to buffering, but
+            // every such caller already caps the stream's size itself (see LimitedInputStream),
+            // so this is a bounded, not unbounded, buffer.
+            RequestBody body = contentLength >= 0
+                ? RequestBody.fromInputStream(inputStream, contentLength)
+                : RequestBody.fromBytes(inputStream.readAllBytes());
             s3Client.putObject(
-                PutObjectRequest.builder().bucket(bucket).key(key).build(),
-                RequestBody.fromBytes(bytes));
+                PutObjectRequest.builder().bucket(bucket).key(key).build(), body);
             log.debug("Stored file in S3: s3://{}/{}", bucket, key);
             return key;
         } catch (IOException e) {

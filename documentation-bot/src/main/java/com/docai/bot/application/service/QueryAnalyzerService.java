@@ -2,7 +2,6 @@ package com.docai.bot.application.service;
 
 import java.util.List;
 
-import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Service;
 
 import com.docai.bot.domain.model.VersionComparator;
@@ -16,7 +15,7 @@ import lombok.extern.slf4j.Slf4j;
 @RequiredArgsConstructor
 public class QueryAnalyzerService {
 
-	private final ChatClient.Builder chatClientBuilder;
+	private final LLMRouter llmRouter;
 	private final DocumentRepository documentRepository;
 
 	/**
@@ -76,7 +75,7 @@ public class QueryAnalyzerService {
 		Exception lastException = null;
 		for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
 			try {
-				String response = chatClientBuilder.build().prompt().user(prompt).call().content();
+				String response = llmRouter.chat(prompt, false);
 				if (response != null) {
 					parseProductAndVersion(response, context);
 				}

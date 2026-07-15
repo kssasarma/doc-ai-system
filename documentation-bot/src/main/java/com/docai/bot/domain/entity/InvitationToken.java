@@ -21,7 +21,7 @@ import lombok.NoArgsConstructor;
 
 @Entity
 @Table(name = "invitation_tokens", indexes = {
-    @Index(name = "idx_invitation_tokens_token", columnList = "token"),
+    @Index(name = "idx_invitation_tokens_token_hash", columnList = "token_hash"),
     @Index(name = "idx_invitation_tokens_email", columnList = "email")
 })
 @Data
@@ -34,8 +34,11 @@ public class InvitationToken {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
-    @Column(nullable = false, unique = true, length = 100)
-    private String token;
+    /** SHA-256 hex of the raw token — same rationale as RefreshToken: high-entropy random value,
+     * no dictionary-attack risk, so a fast deterministic hash (not BCrypt) is appropriate and
+     * allows an indexed exact-match lookup. The raw token only ever exists in the emailed link. */
+    @Column(name = "token_hash", nullable = false, unique = true, length = 64)
+    private String tokenHash;
 
     @Column(nullable = false, length = 100)
     private String email;
@@ -57,6 +60,11 @@ public class InvitationToken {
     @Column(name = "accepted_at")
     private LocalDateTime acceptedAt;
 
+    /** Set when an admin revokes a still-pending invite — the link stops working exactly like an
+     * expired one, but distinctly so callers can tell the two apart if useful later. */
+    @Column(name = "revoked_at")
+    private LocalDateTime revokedAt;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -67,5 +75,9 @@ public class InvitationToken {
 
     public boolean isAccepted() {
         return acceptedAt != null;
+    }
+
+    public boolean isRevoked() {
+        return revokedAt != null;
     }
 }

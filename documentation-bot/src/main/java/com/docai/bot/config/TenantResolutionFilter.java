@@ -3,6 +3,7 @@ package com.docai.bot.config;
 import java.io.IOException;
 import java.util.UUID;
 
+import org.slf4j.MDC;
 import org.springframework.core.annotation.Order;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -52,10 +53,20 @@ public class TenantResolutionFilter extends OncePerRequestFilter {
             UUID tenantId = resolve(request);
             if (tenantId != null) {
                 TenantContext.set(tenantId);
+                MDC.put("tenantId", tenantId.toString());
+            }
+            // Only ever comes from an authenticated principal — there's no header-hint fallback
+            // for userId the way there is for tenantId above, so an anonymous/pre-login request
+            // simply logs without one.
+            UUID userId = resolveUserIdFromAuthenticatedPrincipal();
+            if (userId != null) {
+                MDC.put("userId", userId.toString());
             }
             chain.doFilter(request, response);
         } finally {
             TenantContext.clear();
+            MDC.remove("tenantId");
+            MDC.remove("userId");
         }
     }
 
@@ -88,6 +99,14 @@ public class TenantResolutionFilter extends OncePerRequestFilter {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth != null && auth.isAuthenticated() && auth.getPrincipal() instanceof UserPrincipal principal) {
             return principal.tenantId(); // null for SUPER_ADMIN — intentionally platform-wide
+        }
+        return null;
+    }
+
+    private UUID resolveUserIdFromAuthenticatedPrincipal() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.isAuthenticated() && auth.getPrincipal() instanceof UserPrincipal principal) {
+            return principal.userId();
         }
         return null;
     }

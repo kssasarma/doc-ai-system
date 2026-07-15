@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useBranding } from '../../context/BrandingContext';
 import AuthLayout from './AuthLayout';
 import Input from '../ui/Input';
+import PasswordInput from '../ui/PasswordInput';
 import Button from '../ui/Button';
 
 export default function LoginPage() {
@@ -47,15 +49,16 @@ export default function LoginPage() {
           autoFocus
           placeholder="Enter username"
         />
-        <Input
+        <PasswordInput
           label="Password"
-          type="password"
           value={password}
           onChange={e => setPassword(e.target.value)}
           required
-          minLength={6}
           placeholder="Enter password"
         />
+        <div className="text-right -mt-2">
+          <Link to="/forgot-password" className="text-xs text-primary hover:underline">Forgot password?</Link>
+        </div>
 
         {error && <div className="text-sm text-danger bg-danger/10 rounded-lg px-3 py-2">{error}</div>}
 

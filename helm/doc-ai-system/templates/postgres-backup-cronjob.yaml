@@ -1,0 +1,103 @@
+{{/*
+  Nightly pg_dump to the same S3 bucket document-ingestor stores documents in, under backups/ —
+  see k8s/postgres-backup-cronjob.yaml for the same job outside Helm. Gated on postgres.enabled:
+  when the chart is pointed at an external managed DB (postgres.enabled: false), backups are that
+  operator's responsibility, not this chart's.
+*/}}
+{{- if and .Values.postgres.enabled .Values.postgres.backup.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: postgres-backup
+  namespace: {{ .Values.global.namespace }}
+spec:
+  schedule: {{ .Values.postgres.backup.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: pg-backup
+              image: postgres:16
+              command: ["/bin/bash", "-c"]
+              args:
+                - |
+                  set -euo pipefail
+                  apt-get update -qq && apt-get install -y -qq awscli >/dev/null
+
+                  TIMESTAMP="$(date -u +%Y%m%d-%H%M%S)"
+                  DUMP_FILE="/tmp/docai-${TIMESTAMP}.dump"
+                  KEY="backups/docai-${TIMESTAMP}.dump"
+                  ENDPOINT_ARGS=()
+                  if [ -n "${S3_ENDPOINT:-}" ]; then ENDPOINT_ARGS=(--endpoint-url "$S3_ENDPOINT"); fi
+
+                  echo "Dumping docai (host=${SPRING_DATABASE_HOST}) to ${DUMP_FILE}..."
+                  PGPASSWORD="$SPRING_DATABASE_PASSWORD" pg_dump \
+                    -h "$SPRING_DATABASE_HOST" -U "$SPRING_DATABASE_USERNAME" -d docai -Fc -f "$DUMP_FILE"
+
+                  echo "Uploading to s3://${S3_BUCKET}/${KEY}..."
+                  aws s3 cp "$DUMP_FILE" "s3://${S3_BUCKET}/${KEY}" "${ENDPOINT_ARGS[@]}"
+                  rm -f "$DUMP_FILE"
+
+                  echo "Pruning backups older than {{ .Values.postgres.backup.retentionDays }} days..."
+                  CUTOFF="$(date -u -d '-{{ .Values.postgres.backup.retentionDays }} days' +%Y%m%d)"
+                  aws s3 ls "s3://${S3_BUCKET}/backups/" "${ENDPOINT_ARGS[@]}" | awk '{print $4}' | grep '^docai-' | while read -r name; do
+                    file_date="$(echo "$name" | sed -E 's/docai-([0-9]{8})-.*/\1/')"
+                    if [[ "$file_date" =~ ^[0-9]{8}$ ]] && [ "$file_date" -lt "$CUTOFF" ]; then
+                      echo "Deleting old backup: $name"
+                      aws s3 rm "s3://${S3_BUCKET}/backups/${name}" "${ENDPOINT_ARGS[@]}"
+                    fi
+                  done
+
+                  echo "Backup complete."
+              env:
+                - name: SPRING_DATABASE_HOST
+                  value: "postgres-service"
+                - name: SPRING_DATABASE_USERNAME
+                  valueFrom:
+                    secretKeyRef:
+                      name: doc-ai-secrets
+                      key: SPRING_DATABASE_USERNAME
+                - name: SPRING_DATABASE_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: doc-ai-secrets
+                      key: SPRING_DATABASE_PASSWORD
+                - name: S3_BUCKET
+                  valueFrom:
+                    secretKeyRef:
+                      name: doc-ai-secrets
+                      key: S3_BUCKET
+                - name: S3_ENDPOINT
+                  valueFrom:
+                    configMapKeyRef:
+                      name: doc-ai-config
+                      key: S3_ENDPOINT
+                - name: AWS_ACCESS_KEY_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: doc-ai-secrets
+                      key: S3_ACCESS_KEY
+                - name: AWS_SECRET_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: doc-ai-secrets
+                      key: S3_SECRET_KEY
+                - name: AWS_DEFAULT_REGION
+                  valueFrom:
+                    configMapKeyRef:
+                      name: doc-ai-config
+                      key: S3_REGION
+              resources:
+                requests:
+                  cpu: "250m"
+                  memory: "256Mi"
+                limits:
+                  cpu: "1000m"
+                  memory: "1Gi"
+{{- end }}

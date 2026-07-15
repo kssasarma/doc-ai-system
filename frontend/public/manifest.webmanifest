@@ -1,0 +1,18 @@
+{
+  "name": "Docs-inator - AI Documentation Assistant",
+  "short_name": "Docs-inator",
+  "description": "Get instant answers to your documentation questions with our intelligent chatbot",
+  "start_url": "/docs-inator/",
+  "scope": "/docs-inator/",
+  "display": "standalone",
+  "background_color": "#fafafb",
+  "theme_color": "#2563eb",
+  "icons": [
+    {
+      "src": "/docs-inator/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -3,11 +3,11 @@ package com.docai.ingestor.adapter.rest;
 import java.util.UUID;
 
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -25,7 +25,9 @@ import lombok.extern.slf4j.Slf4j;
 
 /**
  * Webhook endpoint for CI/CD-triggered document ingestion.
- * Authenticated via the standard JWT/API-key mechanism provided by the security filter chain.
+ * Authenticated by {@link com.docai.ingestor.config.WebhookHmacAuthFilter} (a shared-secret
+ * HMAC signature over the raw request body — see that class) or, as a fallback, a normal ADMIN
+ * JWT via the standard security filter chain.
  */
 @Slf4j
 @RestController
@@ -52,10 +54,9 @@ public class WebhookController {
     @PostMapping("/webhook")
     public ResponseEntity<WebhookJobResponse> triggerWebhookIngestion(
             @Valid @RequestBody WebhookRequest request,
-            @RequestHeader(value = "X-API-Key", required = false) String apiKeyHeader,
-            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+            Authentication auth) {
 
-        String requestedBy = extractRequestedBy(apiKeyHeader, authHeader);
+        String requestedBy = auth != null ? auth.getName() : "unknown";
         log.info("Webhook ingestion triggered by '{}': {} {} {}", requestedBy,
             request.getProduct(), request.getVersion(), request.getDownloadUrl());
 
@@ -99,18 +100,6 @@ public class WebhookController {
                 .processedAt(event.getProcessedAt() != null ? event.getProcessedAt().toString() : null)
                 .build()))
             .orElse(ResponseEntity.notFound().build());
-    }
-
-    private String extractRequestedBy(String apiKeyHeader, String authHeader) {
-        if (apiKeyHeader != null && !apiKeyHeader.isBlank()) {
-            return apiKeyHeader.substring(0, Math.min(12, apiKeyHeader.length())) + "…";
-        }
-        if (authHeader != null && authHeader.startsWith("Bearer ")) return "jwt";
-        if (authHeader != null && authHeader.startsWith("ApiKey ")) {
-            String key = authHeader.substring(7);
-            return key.substring(0, Math.min(12, key.length())) + "…";
-        }
-        return "unknown";
     }
 
     // ── DTOs ─────────────────────────────────────────────────────────────────

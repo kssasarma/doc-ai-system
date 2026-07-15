@@ -37,7 +37,8 @@ spec:
               echo "documentation-bot is ready — proceeding."
       containers:
         - name: document-ingestor
-          image: your-registry/document-ingestor:latest
+          # Pin an explicit release tag before applying — never :latest. Bump per release.
+          image: your-registry/document-ingestor:1.0.0
           ports:
             - containerPort: 8081
           envFrom:

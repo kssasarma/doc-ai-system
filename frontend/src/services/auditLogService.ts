@@ -31,12 +31,14 @@ export async function fetchAuditLog(
   page = 0,
   size = 50,
   action?: string,
-  since?: string
+  since?: string,
+  actorId?: string,
 ): Promise<ApiResult<AuditLogPage>> {
   try {
     const params = new URLSearchParams({ page: String(page), size: String(size) });
     if (action) params.set('action', action);
     if (since) params.set('since', since);
+    if (actorId) params.set('actorId', actorId);
     const res = await fetch(`${BOT_URL}/api/admin/audit-log?${params}`, {
       headers: authHeaders(token),
     });

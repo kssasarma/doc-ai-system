@@ -1,5 +1,7 @@
 package com.docai.bot.adapter.rest;
 
+import java.util.UUID;
+
 import org.springframework.data.domain.Page;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -28,7 +30,8 @@ public class AuditLogController {
             @RequestParam(defaultValue = "50") int size,
             @RequestParam(required = false) String action,
             @RequestParam(required = false) String since,
+            @RequestParam(required = false) UUID actorId,
             @AuthenticationPrincipal UserPrincipal principal) {
-        return ResponseEntity.ok(auditLogService.getAuditLog(principal.tenantId(), page, size, action, since));
+        return ResponseEntity.ok(auditLogService.getAuditLog(principal.tenantId(), page, size, action, since, actorId));
     }
 }

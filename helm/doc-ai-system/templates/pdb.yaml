@@ -1,0 +1,25 @@
+{{/*
+  Ensures at least one pod of each multi-replica service survives a voluntary disruption (node
+  drain, cluster upgrade) — see k8s/pdb.yaml for the same reasoning outside Helm.
+*/}}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: documentation-bot-pdb
+  namespace: {{ .Values.global.namespace }}
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: documentation-bot
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: document-ingestor-pdb
+  namespace: {{ .Values.global.namespace }}
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: document-ingestor

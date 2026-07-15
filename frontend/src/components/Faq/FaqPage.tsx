@@ -1,9 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { MessageCircle, ThumbsUp, ChevronDown, ChevronUp, Search } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { listApprovedFaq, markHelpful, type FaqEntry, type PagedFaqEntries } from '../../services/faqService';
 import { useAuth } from '../../context/AuthContext';
+import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 import { fadeInUp, staggerContainer } from '../../lib/motion';
 import PageHeader from '../ui/PageHeader';
 import { Card } from '../ui/Card';
@@ -15,6 +16,7 @@ import { SkeletonCard } from '../ui/Skeleton';
 import { useToast } from '../ui/Toast';
 
 export default function FaqPage() {
+  useDocumentTitle('FAQ');
   const { token } = useAuth();
   const toast = useToast();
   const [data, setData] = useState<PagedFaqEntries | null>(null);

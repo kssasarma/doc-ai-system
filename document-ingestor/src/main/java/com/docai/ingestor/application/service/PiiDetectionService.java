@@ -56,7 +56,9 @@ public class PiiDetectionService {
     /**
      * Scans {@code content} for PII and persists any findings as PiiFlag rows.
      *
-     * @return true if any HIGH/CRITICAL PII was found (admin should review before publishing)
+     * @return true if any CRITICAL PII was found (the pattern set below never produces "HIGH" —
+     *         its risk levels are LOW/MEDIUM/CRITICAL only; IngestionService quarantines the
+     *         document rather than letting it go straight to COMPLETED when this is true)
      */
     @Transactional
     public boolean scanAndFlag(UUID documentId, UUID tenantId, String content) {
@@ -89,7 +91,7 @@ public class PiiDetectionService {
         if (!flags.isEmpty()) {
             piiFlagRepository.saveAll(flags);
         }
-        return flags.stream().anyMatch(f -> "HIGH".equals(f.getRiskLevel()) || "CRITICAL".equals(f.getRiskLevel()));
+        return flags.stream().anyMatch(f -> "CRITICAL".equals(f.getRiskLevel()));
     }
 
     private String redact(String excerpt, String type) {

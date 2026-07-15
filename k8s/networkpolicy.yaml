@@ -1,0 +1,270 @@
+# Default-deny + explicit-allow NetworkPolicies for the doc-ai namespace (Phase 7.3). Only takes
+# effect if the cluster's CNI actually enforces NetworkPolicy (Calico, Cilium, etc — plain
+# kubenet/some managed defaults silently ignore these, so verify with your CNI's docs).
+#
+# Traffic model (see k8s/ingress.yaml's own comment): the ingress controller only ever talks to
+# the frontend Service — the frontend pod's own nginx is the single-origin reverse proxy that
+# then calls documentation-bot-service/document-ingestor-service internally. documentation-bot
+# also calls document-ingestor directly for the "open citation" download-url lookup (Phase 6.3).
+
+# Deny everything not explicitly allowed below, for every pod in the namespace.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: doc-ai
+spec:
+  podSelector: {}
+  policyTypes: ["Ingress", "Egress"]
+
+---
+# DNS resolution — every pod needs this or nothing else below works (OpenAI/S3 hostnames,
+# service DNS names, etc). kube-dns/CoreDNS normally lives in kube-system.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: doc-ai
+spec:
+  podSelector: {}
+  policyTypes: ["Egress"]
+  egress:
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+
+---
+# Ingress controller -> frontend only. Restricting the `from` further requires knowing your
+# ingress controller's actual namespace/pod labels (varies per cluster/installation) — narrow
+# this with a namespaceSelector/podSelector once you know them.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-to-frontend
+  namespace: doc-ai
+spec:
+  podSelector:
+    matchLabels:
+      app: frontend
+  policyTypes: ["Ingress"]
+  ingress:
+    - ports:
+        - protocol: TCP
+          port: 80
+
+---
+# frontend's nginx -> documentation-bot / document-ingestor (the reverse-proxy hop).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-frontend-to-backend
+  namespace: doc-ai
+spec:
+  podSelector:
+    matchLabels:
+      app: frontend
+  policyTypes: ["Egress"]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: documentation-bot
+      ports:
+        - protocol: TCP
+          port: 8082
+    - to:
+        - podSelector:
+            matchLabels:
+              app: document-ingestor
+      ports:
+        - protocol: TCP
+          port: 8081
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-to-documentation-bot
+  namespace: doc-ai
+spec:
+  podSelector:
+    matchLabels:
+      app: documentation-bot
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: frontend
+      ports:
+        - protocol: TCP
+          port: 8082
+
+---
+# document-ingestor accepts from frontend (normal API traffic) and from documentation-bot
+# (the internal, HMAC-authenticated download-url lookup backing "open citation" — Phase 6.3).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-to-document-ingestor
+  namespace: doc-ai
+spec:
+  podSelector:
+    matchLabels:
+      app: document-ingestor
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: frontend
+        - podSelector:
+            matchLabels:
+              app: documentation-bot
+      ports:
+        - protocol: TCP
+          port: 8081
+
+---
+# documentation-bot -> document-ingestor (see above).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-bot-to-ingestor
+  namespace: doc-ai
+spec:
+  podSelector:
+    matchLabels:
+      app: documentation-bot
+  policyTypes: ["Egress"]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: document-ingestor
+      ports:
+        - protocol: TCP
+          port: 8081
+
+---
+# documentation-bot + document-ingestor -> postgres.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-to-postgres
+  namespace: doc-ai
+spec:
+  podSelector:
+    matchLabels:
+      app: postgres
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: documentation-bot
+        - podSelector:
+            matchLabels:
+              app: document-ingestor
+      ports:
+        - protocol: TCP
+          port: 5432
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-bot-ingestor-egress-to-postgres
+  namespace: doc-ai
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app
+        operator: In
+        values: ["documentation-bot", "document-ingestor"]
+  policyTypes: ["Egress"]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: postgres
+      ports:
+        - protocol: TCP
+          port: 5432
+
+---
+# documentation-bot -> redis (rate limiting, embedding cache). document-ingestor doesn't use redis.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-to-redis
+  namespace: doc-ai
+spec:
+  podSelector:
+    matchLabels:
+      app: redis
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: documentation-bot
+      ports:
+        - protocol: TCP
+          port: 6379
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-bot-egress-to-redis
+  namespace: doc-ai
+spec:
+  podSelector:
+    matchLabels:
+      app: documentation-bot
+  policyTypes: ["Egress"]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: redis
+      ports:
+        - protocol: TCP
+          port: 6379
+
+---
+# Outbound internet: OpenAI/Anthropic APIs, real AWS S3, SMTP (digest emails). These are
+# CDN-backed/dynamic-IP endpoints, so this is a broad HTTPS/SMTP allow rather than an IP
+# allowlist — narrowing further would mean tracking provider IP ranges, which is impractical.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-internet-egress-bot-ingestor
+  namespace: doc-ai
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app
+        operator: In
+        values: ["documentation-bot", "document-ingestor"]
+  policyTypes: ["Egress"]
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 587
+        - protocol: TCP
+          port: 465

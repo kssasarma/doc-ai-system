@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Share2, Copy, Check, Trash2, Globe, Lock, Pencil, UserPlus, Users } from 'lucide-react';
+import { Share2, Copy, Check, Trash2, Globe, Lock, Pencil, Users } from 'lucide-react';
 import { ShareLink, ShareRecipient, TenantUser } from '../../types';
 import {
   createShareLink,
@@ -10,12 +10,12 @@ import {
   addRecipient,
   removeRecipient,
 } from '../../services/shareService';
-import { getTenantUsers } from '../../services/tenantService';
+import { useTenantUsers } from '../../hooks/useTenantUsers';
 import { useAuth } from '../../context/AuthContext';
 import Modal, { ModalBody, ModalFooter } from '../ui/Modal';
 import Button from '../ui/Button';
 import IconButton from '../ui/IconButton';
-import Select from '../ui/Select';
+import Combobox from '../ui/Combobox';
 import Spinner from '../ui/Spinner';
 import { cn } from '../../lib/cn';
 import { useToast } from '../ui/Toast';
@@ -37,7 +37,7 @@ const ACCESS_OPTIONS = [
 ];
 
 const ShareModal: React.FC<ShareModalProps> = ({ chatId, onClose }) => {
-  const { token, user } = useAuth();
+  const { token } = useAuth();
   const toast = useToast();
   const [link, setLink] = useState<ShareLink | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -48,10 +48,16 @@ const ShareModal: React.FC<ShareModalProps> = ({ chatId, onClose }) => {
   const [expireDays, setExpireDays] = useState<number | null>(7);
 
   const [recipients, setRecipients] = useState<ShareRecipient[]>([]);
-  const [tenantUsers, setTenantUsers] = useState<TenantUser[]>([]);
-  const [selectedUserId, setSelectedUserId] = useState('');
+  const [userQuery, setUserQuery] = useState('');
+  const [debouncedUserQuery, setDebouncedUserQuery] = useState('');
   const [addingRecipient, setAddingRecipient] = useState(false);
   const [removingRecipientId, setRemovingRecipientId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const handle = setTimeout(() => setDebouncedUserQuery(userQuery.trim()), 250);
+    return () => clearTimeout(handle);
+  }, [userQuery]);
+  const { data: userResults, isFetching: searchingUsers } = useTenantUsers({ q: debouncedUserQuery, size: 20 });
 
   useEffect(() => {
     if (!token) return;
@@ -68,11 +74,6 @@ const ShareModal: React.FC<ShareModalProps> = ({ chatId, onClose }) => {
   }, [chatId, token, link]);
 
   useEffect(() => { loadRecipients(); }, [loadRecipients]);
-
-  useEffect(() => {
-    if (!token || !user?.tenantId) return;
-    getTenantUsers(token, user.tenantId).then(setTenantUsers).catch(() => {});
-  }, [token, user?.tenantId]);
 
   const shareUrl = link
     ? `${window.location.origin}/share/${link.token}`
@@ -119,12 +120,11 @@ const ShareModal: React.FC<ShareModalProps> = ({ chatId, onClose }) => {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleAddRecipient = async () => {
-    if (!token || !selectedUserId) return;
+  const handleAddRecipient = async (targetUser: TenantUser) => {
+    if (!token) return;
     setAddingRecipient(true);
-    const res = await addRecipient(chatId, selectedUserId, token);
+    const res = await addRecipient(chatId, targetUser.userId, token);
     if (res.success) {
-      setSelectedUserId('');
       loadRecipients();
       setLink(l => l ? { ...l, recipientCount: l.recipientCount + 1 } : l);
       toast.success('Access granted.');
@@ -150,7 +150,7 @@ const ShareModal: React.FC<ShareModalProps> = ({ chatId, onClose }) => {
 
   const showSettingsForm = editing || !link;
   const grantedIds = new Set(recipients.map(r => r.userId));
-  const grantableUsers = tenantUsers.filter(u => !grantedIds.has(u.userId));
+  const grantableUsers = (userResults?.content ?? []).filter(u => !grantedIds.has(u.userId));
 
   return (
     <Modal open onClose={onClose} title="Share Chat" icon={<Share2 size={18} className="text-primary" />}>
@@ -190,28 +190,16 @@ const ShareModal: React.FC<ShareModalProps> = ({ chatId, onClose }) => {
                       Share with specific people
                       <span className="font-normal opacity-80"> (optional — narrows access down from the whole workspace)</span>
                     </label>
-                    <div className="flex gap-2">
-                      <div className="flex-1">
-                        <Select value={selectedUserId} onChange={e => setSelectedUserId(e.target.value)} aria-label="Select a person to share with">
-                          <option value="">
-                            {grantableUsers.length === 0 ? 'No more people to add' : 'Select a person…'}
-                          </option>
-                          {grantableUsers.map(u => (
-                            <option key={u.userId} value={u.userId}>{u.username} ({u.email})</option>
-                          ))}
-                        </Select>
-                      </div>
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={handleAddRecipient}
-                        disabled={!selectedUserId}
-                        loading={addingRecipient}
-                        leftIcon={!addingRecipient ? <UserPlus size={13} /> : undefined}
-                      >
-                        Add
-                      </Button>
-                    </div>
+                    <Combobox
+                      query={userQuery}
+                      onQueryChange={setUserQuery}
+                      items={grantableUsers}
+                      getKey={u => u.userId}
+                      getLabel={u => `${u.username} (${u.email})`}
+                      onSelect={handleAddRecipient}
+                      placeholder="Search people to share with…"
+                      loading={searchingUsers || addingRecipient}
+                    />
                     {recipients.length > 0 && (
                       <div className="space-y-1">
                         {recipients.map(r => (

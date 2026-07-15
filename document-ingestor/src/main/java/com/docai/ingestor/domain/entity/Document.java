@@ -71,6 +71,13 @@ public class Document {
     @Column(name = "chunk_count")
     private Integer chunkCount;
 
+    /** The embedding model that actually produced this document's chunk embeddings — recorded at
+     * ingest time so a later query can request the same model, rather than the tenant's possibly-
+     * since-changed current embedding config (see EmbeddingService/VectorSearchService). Null for
+     * documents ingested before this column existed. */
+    @Column(name = "embedding_model", length = 100)
+    private String embeddingModel;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private IngestionStatus status;
@@ -90,6 +97,10 @@ public class Document {
         PENDING,
         PROCESSING,
         COMPLETED,
-        FAILED
+        FAILED,
+        /** Ingested successfully but held back from search pending admin review — see
+         * PiiDetectionService/IngestionService#completeIngestion. Excluded by every search-path
+         * status filter the same way FAILED/PROCESSING already are (see Phase 2.2). */
+        QUARANTINED
     }
 }

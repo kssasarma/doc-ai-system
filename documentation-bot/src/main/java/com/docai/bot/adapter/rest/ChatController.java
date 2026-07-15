@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import com.docai.bot.application.service.ChatService;
 import com.docai.bot.application.service.ChatService.AllChatsResponse;
@@ -56,6 +57,31 @@ public class ChatController {
             .build();
 
         return ResponseEntity.ok(chatService.processQuery(chatRequest));
+    }
+
+    /**
+     * Streaming counterpart of {@code POST /query} — same request shape, but the answer arrives
+     * token-by-token over Server-Sent Events instead of one blocking JSON response. See
+     * {@link ChatService#processQueryStream} for the full event contract. No read timeout (0) —
+     * a slow-but-progressing generation shouldn't be killed by an emitter timeout; the client
+     * (fetch AbortController) is what ends the connection early ("stop generating").
+     */
+    @PostMapping(value = "/query/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter queryStream(
+            @Valid @RequestBody QueryRequest request,
+            @AuthenticationPrincipal UserPrincipal principal) {
+
+        ChatRequest chatRequest = ChatRequest.builder()
+            .chatId(request.getChatId())
+            .product(request.getProduct())
+            .version(request.getVersion())
+            .question(request.getQuestion())
+            .userId(principal.userId())
+            .build();
+
+        SseEmitter emitter = new SseEmitter(0L);
+        chatService.processQueryStream(chatRequest, emitter);
+        return emitter;
     }
 
     @GetMapping("/history/{chatId}")

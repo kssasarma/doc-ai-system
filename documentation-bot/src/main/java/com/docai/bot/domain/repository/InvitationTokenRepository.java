@@ -1,6 +1,7 @@
 package com.docai.bot.domain.repository;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -11,7 +12,10 @@ import com.docai.bot.domain.entity.InvitationToken;
 
 @Repository
 public interface InvitationTokenRepository extends JpaRepository<InvitationToken, UUID> {
-    Optional<InvitationToken> findByToken(String token);
+    Optional<InvitationToken> findByTokenHash(String tokenHash);
 
-    long countByTenantIdAndAcceptedAtIsNullAndExpiresAtAfter(UUID tenantId, LocalDateTime now);
+    long countByTenantIdAndAcceptedAtIsNullAndRevokedAtIsNullAndExpiresAtAfter(UUID tenantId, LocalDateTime now);
+
+    List<InvitationToken> findByTenantIdAndAcceptedAtIsNullAndRevokedAtIsNullAndExpiresAtAfterOrderByCreatedAtDesc(
+        UUID tenantId, LocalDateTime now);
 }

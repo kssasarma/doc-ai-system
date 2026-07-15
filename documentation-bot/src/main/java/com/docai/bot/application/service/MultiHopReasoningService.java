@@ -6,7 +6,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -34,7 +33,7 @@ public class MultiHopReasoningService {
     private static final String LLM_UNAVAILABLE =
         "The AI service is temporarily unavailable. Please try again in a moment.";
 
-    private final ChatClient.Builder chatClientBuilder;
+    private final LLMRouter llmRouter;
     private final VectorSearchService vectorSearchService;
     private final CircuitBreaker llmCircuitBreaker;
     private final Bulkhead llmBulkhead;
@@ -42,11 +41,11 @@ public class MultiHopReasoningService {
     @Value("${bot.min-similarity-threshold:0.55}")
     private double minSimilarityThreshold;
 
-    public MultiHopReasoningService(ChatClient.Builder chatClientBuilder,
+    public MultiHopReasoningService(LLMRouter llmRouter,
                                     VectorSearchService vectorSearchService,
                                     @Qualifier("llmCircuitBreaker") CircuitBreaker llmCircuitBreaker,
                                     @Qualifier("llmBulkhead") Bulkhead llmBulkhead) {
-        this.chatClientBuilder = chatClientBuilder;
+        this.llmRouter = llmRouter;
         this.vectorSearchService = vectorSearchService;
         this.llmCircuitBreaker = llmCircuitBreaker;
         this.llmBulkhead = llmBulkhead;
@@ -214,23 +213,16 @@ public class MultiHopReasoningService {
         prompt.append("Then provide 3 follow-up questions, one per line.\n");
 
         try {
-            var chatResponse = llmBulkhead.executeSupplier(
+            // complexQuery=true: this is the final synthesis across all sub-answers — the
+            // highest-value step in the multi-hop pipeline, worth the better model.
+            LLMRouter.LlmChatResult chatResult = llmBulkhead.executeSupplier(
                 () -> llmCircuitBreaker.executeSupplier(
-                    () -> chatClientBuilder.build().prompt().user(prompt.toString()).call().chatResponse()
+                    () -> llmRouter.chatWithUsage(prompt.toString(), true)
                 )
             );
-            String content = chatResponse != null && chatResponse.getResult() != null
-                ? chatResponse.getResult().getOutput().getText() : null;
-
-            int promptTokens = 0, completionTokens = 0;
-            try {
-                if (chatResponse != null && chatResponse.getMetadata() != null
-                        && chatResponse.getMetadata().getUsage() != null) {
-                    var usage = chatResponse.getMetadata().getUsage();
-                    promptTokens = usage.getPromptTokens() != null ? usage.getPromptTokens().intValue() : 0;
-                    completionTokens = usage.getCompletionTokens() != null ? usage.getCompletionTokens().intValue() : 0;
-                }
-            } catch (Exception ignored) {}
+            String content = chatResult.content();
+            int promptTokens = chatResult.promptTokens();
+            int completionTokens = chatResult.completionTokens();
 
             String answer = content;
             List<String> related = List.of();
@@ -256,12 +248,13 @@ public class MultiHopReasoningService {
         }
     }
 
-    /** Single LLM text call wrapped with bulkhead → circuit breaker. */
+    /** Single LLM text call wrapped with bulkhead → circuit breaker. complexQuery=false: this
+     * backs question decomposition, a cheap classification-shaped task, not final synthesis. */
     private String callLlmProtected(String prompt) {
         try {
             return llmBulkhead.executeSupplier(
                 () -> llmCircuitBreaker.executeSupplier(
-                    () -> chatClientBuilder.build().prompt().user(prompt).call().content()
+                    () -> llmRouter.chat(prompt, false)
                 )
             );
         } catch (CallNotPermittedException e) {

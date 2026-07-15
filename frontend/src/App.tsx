@@ -1,19 +1,25 @@
-import React, { Suspense, lazy, useState, useCallback } from 'react';
+import React, { Suspense, lazy, useState, useCallback, useRef, useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 import { useChatSessions } from './hooks/useChatSessions';
+import { useDocumentTitle } from './hooks/useDocumentTitle';
 import { createMessage } from './utils/chatUtils';
-import { sendChatMessage } from './services/chatService';
+import { streamChatMessage } from './services/chatService';
 import { BackendChatResponse } from './types';
 import appConfig from './config/app.json';
+import { cn } from './lib/cn';
+import { Menu as MenuIcon } from 'lucide-react';
 import LoginPage from './components/Auth/LoginPage';
 import ChangePasswordPage from './components/Auth/ChangePasswordPage';
 import AcceptInvitePage from './components/Auth/AcceptInvitePage';
+import ForgotPasswordPage from './components/Auth/ForgotPasswordPage';
+import ResetPasswordPage from './components/Auth/ResetPasswordPage';
 import Spinner from './components/ui/Spinner';
 import AppShell from './components/Layout/AppShell';
 
 const Sidebar = lazy(() => import('./components/Sidebar/Sidebar'));
 const ChatArea = lazy(() => import('./components/Chat/ChatArea'));
+const HomeScreen = lazy(() => import('./components/Home/HomeScreen'));
 const AdminEntry = lazy(() => import('./components/Admin/AdminEntry'));
 const BookmarksPage = lazy(() => import('./components/Bookmarks/BookmarksPage'));
 const CollectionsPage = lazy(() => import('./components/Collections/CollectionsPage'));
@@ -21,6 +27,7 @@ const SharedChatView = lazy(() => import('./components/Chat/SharedChatView'));
 const ApiKeysPage = lazy(() => import('./components/Settings/ApiKeysPage'));
 const FaqPage = lazy(() => import('./components/Faq/FaqPage'));
 const SubscriptionsPage = lazy(() => import('./components/Subscriptions/SubscriptionsPage'));
+const LibraryPage = lazy(() => import('./components/Library/LibraryPage'));
 
 const LoadingSpinner = () => (
   <div className="flex h-screen w-full items-center justify-center bg-background">
@@ -39,19 +46,34 @@ function ChatPage() {
     activeSessionId,
     isLoading: isLoadingSessions,
     isLoadingHistory,
+    error: sessionsError,
     createSession,
     deleteSession,
     updateSession,
     updateSessionTitle,
     updateMessage,
+    updateMessageByLocalId,
     selectSession,
     addMessage,
-    removeTypingIndicators,
     updateSessionChatId,
+    refetchSessions,
   } = useChatSessions(token!);
+
+  useDocumentTitle(activeSession?.title);
 
   const [isLoading, setIsLoading] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [streamingChatId, setStreamingChatId] = useState<string | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  // Set by the home screen's "ask anything" composer, which has no session to send into yet —
+  // createSession() is async and the new session only becomes `activeSession` on a later render,
+  // so the actual send is deferred to the effect below once that session exists.
+  const pendingDraftRef = useRef<string | null>(null);
+
+  const handleStopGeneration = useCallback(() => {
+    abortControllerRef.current?.abort();
+  }, []);
 
   const handleSendMessage = useCallback(async (content: string, scope?: { product?: string; version?: string }) => {
     if (!activeSessionId || isLoading || !token) return;
@@ -61,53 +83,83 @@ function ChatPage() {
 
     addMessage(activeSessionId, createMessage(content, 'user'));
     setIsLoading(true);
+    setStreamingChatId(activeSessionId);
+
+    const assistantMessage = createMessage('', 'assistant');
+    assistantMessage.isTyping = true;
+    addMessage(activeSessionId, assistantMessage);
+
+    const chatIdToSend = currentSession.isPersisted ? activeSessionId : undefined;
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    // Reassigned once (in onDone) if the backend created a brand-new session — every callback
+    // below closes over this same binding, so later calls automatically target the right session.
+    let effectiveChatId = activeSessionId;
+    let accumulated = '';
+    let flushScheduled = false;
+    const flushContent = () => {
+      flushScheduled = false;
+      updateMessageByLocalId(effectiveChatId, assistantMessage.id, {
+        content: accumulated, isTyping: false, isStreaming: true,
+      });
+    };
 
     try {
-      const typingMessage = createMessage('', 'assistant');
-      typingMessage.isTyping = true;
-      addMessage(activeSessionId, typingMessage);
-
-      const chatIdToSend = currentSession.isPersisted ? activeSessionId : undefined;
-
-      const response = await sendChatMessage(content, token, chatIdToSend, scope);
-
-      if (response.success && response.data) {
-        let effectiveChatId = activeSessionId;
-        if (response.data.chatId && response.data.chatId !== activeSessionId) {
-          updateSessionChatId(activeSessionId, response.data.chatId);
-          effectiveChatId = response.data.chatId;
-        }
-        removeTypingIndicators(effectiveChatId);
-
-        // Update session title from backend (first-message auto-title)
-        if (response.data.sessionTitle) {
-          updateSessionTitle(effectiveChatId, response.data.sessionTitle);
-        }
-
-        addMessage(effectiveChatId, createMessage(response.data.answer, 'assistant', {
-          messageId: response.data.messageId,
-          sources: response.data.sources,
-          confidence: response.data.confidence,
-          relatedQuestions: response.data.relatedQuestions,
-          reasoningChain: response.data.reasoningChain,
-        }));
+      await streamChatMessage(content, token, chatIdToSend, scope, {
+        onSources: (sources) => {
+          updateMessageByLocalId(effectiveChatId, assistantMessage.id, {
+            sources, isTyping: false, isStreaming: true,
+          });
+        },
+        onToken: (delta) => {
+          accumulated += delta;
+          // Coalesce rapid deltas into at most one state update per animation frame — a raw
+          // per-token setState would repaint far more often than the eye can register and risks
+          // jank on long answers.
+          if (!flushScheduled) {
+            flushScheduled = true;
+            requestAnimationFrame(flushContent);
+          }
+        },
+        onDone: (payload) => {
+          if (payload.chatId && payload.chatId !== activeSessionId) {
+            updateSessionChatId(activeSessionId, payload.chatId);
+            effectiveChatId = payload.chatId;
+          }
+          if (payload.sessionTitle) {
+            updateSessionTitle(effectiveChatId, payload.sessionTitle);
+          }
+          updateMessageByLocalId(effectiveChatId, assistantMessage.id, {
+            content: accumulated,
+            isTyping: false,
+            isStreaming: false,
+            messageId: payload.messageId,
+            confidence: payload.confidence,
+            relatedQuestions: payload.relatedQuestions,
+            reasoningChain: payload.reasoningChain,
+          });
+        },
+      }, controller.signal);
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        // User clicked "stop" — keep whatever partial answer already streamed in.
+        updateMessageByLocalId(effectiveChatId, assistantMessage.id, {
+          content: accumulated, isTyping: false, isStreaming: false,
+        });
       } else {
-        removeTypingIndicators(activeSessionId);
-        addMessage(activeSessionId, createMessage(
-          `Error: ${response.error || 'Unknown error occurred'}`,
-          'assistant'
-        ));
+        updateMessageByLocalId(effectiveChatId, assistantMessage.id, {
+          content: accumulated || `Error: ${err instanceof Error ? err.message : 'Unknown error occurred'}`,
+          isTyping: false,
+          isStreaming: false,
+        });
       }
-    } catch {
-      removeTypingIndicators(activeSessionId);
-      addMessage(activeSessionId, createMessage(
-        'Sorry, I encountered an error. Please try again.',
-        'assistant'
-      ));
     } finally {
       setIsLoading(false);
+      setStreamingChatId(null);
+      abortControllerRef.current = null;
     }
-  }, [activeSessionId, sessions, isLoading, token, addMessage, removeTypingIndicators,
+  }, [activeSessionId, sessions, isLoading, token, addMessage, updateMessageByLocalId,
       updateSessionChatId, updateSessionTitle]);
 
   const handleRenameSession = useCallback((title: string) => {
@@ -132,29 +184,86 @@ function ChatPage() {
     });
   }, [activeSession, activeSessionId, updateMessage]);
 
+  const handleAsk = useCallback((content: string) => {
+    pendingDraftRef.current = content;
+    createSession();
+  }, [createSession]);
+
+  // Fires once the session created by handleAsk shows up as activeSession (empty — no messages
+  // yet) — at that point activeSessionId is populated, so handleSendMessage can actually send.
+  useEffect(() => {
+    if (pendingDraftRef.current && activeSession && activeSession.messages.length === 0) {
+      const draft = pendingDraftRef.current;
+      pendingDraftRef.current = null;
+      handleSendMessage(draft);
+    }
+  }, [activeSession, handleSendMessage]);
+
+  const showHomeScreen = !activeSessionId && !isLoadingSessions;
+
+  // A session was selected/created — the drawer's job (letting the reader get to a chat) is done.
+  useEffect(() => {
+    setMobileSidebarOpen(false);
+  }, [activeSessionId]);
+
   return (
-    <div className="flex h-full bg-background overflow-hidden">
+    <div className="flex h-full bg-background overflow-hidden relative">
       <Suspense fallback={<LoadingSpinner />}>
-        <Sidebar
-          sessions={sessions}
-          activeSessionId={activeSessionId}
-          onCreateSession={createSession}
-          onSelectSession={selectSession}
-          onDeleteSession={deleteSession}
-          onPinSession={handlePinSession}
-          onRenameSession={(chatId, title) => updateSession(chatId, { title })}
-          isCollapsed={sidebarCollapsed}
-          onToggleCollapse={() => setSidebarCollapsed(prev => !prev)}
-        />
-        <ChatArea
-          session={activeSession ?? null}
-          onSendMessage={handleSendMessage}
-          isLoading={isLoading}
-          onCreateSession={createSession}
-          chatNotFound={!isLoadingSessions && !isLoadingHistory && !!activeSessionId && !activeSession}
-          onRenameSession={handleRenameSession}
-          onRegeneratedAnswer={handleRegeneratedAnswer}
-        />
+        {/* <768px: the sidebar becomes an overlay drawer instead of a permanent column (Phase 6.6) —
+            mirrors AdminLayout's "no room for a fixed sidebar on a phone" mobile treatment. */}
+        <div
+          className={cn(
+            'fixed inset-y-0 left-0 z-40 transition-transform duration-300 ease-out md:relative md:z-auto md:translate-x-0',
+            mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full',
+          )}
+        >
+          <Sidebar
+            sessions={sessions}
+            activeSessionId={activeSessionId}
+            onCreateSession={createSession}
+            onSelectSession={selectSession}
+            onDeleteSession={deleteSession}
+            onPinSession={handlePinSession}
+            onRenameSession={(chatId, title) => updateSession(chatId, { title })}
+            isCollapsed={sidebarCollapsed}
+            onToggleCollapse={() => setSidebarCollapsed(prev => !prev)}
+            error={sessionsError}
+            onRetry={refetchSessions}
+          />
+        </div>
+        {mobileSidebarOpen && (
+          <div
+            className="fixed inset-0 z-30 bg-black/50 md:hidden"
+            onClick={() => setMobileSidebarOpen(false)}
+            aria-hidden
+          />
+        )}
+
+        {/* Mobile-only hamburger to open the drawer — the chat/home surfaces have no header of
+            their own to host this, so it floats over whichever is showing. */}
+        <button
+          onClick={() => setMobileSidebarOpen(true)}
+          aria-label="Open chat list"
+          className="md:hidden fixed top-3 left-3 z-20 flex items-center justify-center w-9 h-9 rounded-lg bg-surface border border-border shadow-soft text-foreground"
+        >
+          <MenuIcon size={18} />
+        </button>
+
+        {showHomeScreen ? (
+          <HomeScreen onAsk={handleAsk} sessions={sessions} onSelectSession={selectSession} />
+        ) : (
+          <ChatArea
+            session={activeSession ?? null}
+            onSendMessage={handleSendMessage}
+            isLoading={isLoading}
+            isStreaming={!!activeSessionId && streamingChatId === activeSessionId}
+            onStopGeneration={handleStopGeneration}
+            onCreateSession={createSession}
+            chatNotFound={!isLoadingSessions && !isLoadingHistory && !!activeSessionId && !activeSession}
+            onRenameSession={handleRenameSession}
+            onRegeneratedAnswer={handleRegeneratedAnswer}
+          />
+        )}
       </Suspense>
     </div>
   );
@@ -203,6 +312,8 @@ function App() {
     <Routes>
       <Route path="/change-password" element={<ChangePasswordRoute />} />
       <Route path="/accept-invite" element={<AcceptInvitePage />} />
+      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+      <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route path="/admin/*" element={
         <AdminRoute>
           <Suspense fallback={<LoadingSpinner />}>
@@ -221,6 +332,13 @@ function App() {
         <ProtectedRoute>
           <Suspense fallback={<LoadingSpinner />}>
             <CollectionsPage />
+          </Suspense>
+        </ProtectedRoute>
+      } />
+      <Route path="/library" element={
+        <ProtectedRoute>
+          <Suspense fallback={<LoadingSpinner />}>
+            <LibraryPage />
           </Suspense>
         </ProtectedRoute>
       } />

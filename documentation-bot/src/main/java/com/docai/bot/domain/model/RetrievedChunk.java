@@ -10,6 +10,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class RetrievedChunk {
+    private String documentId;
     private String documentName;
     private String content;
     private double similarity;

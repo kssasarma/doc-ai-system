@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { useAuth } from '../../context/AuthContext';
 import { PiiFlag } from '../../types';
-import { fetchPiiFlags, reviewPiiFlag } from '../../services/piiFlagService';
-import { ShieldAlert, Check } from 'lucide-react';
+import { fetchPiiFlags, reviewPiiFlag, releaseQuarantinedDocument, rejectQuarantinedDocument } from '../../services/piiFlagService';
+import { ShieldAlert, Check, Lock, Trash2 } from 'lucide-react';
 import { fadeInUp, staggerContainer } from '../../lib/motion';
 import PageHeader from '../ui/PageHeader';
 import { Card } from '../ui/Card';
@@ -12,6 +12,7 @@ import Badge, { type BadgeProps } from '../ui/Badge';
 import EmptyState from '../ui/EmptyState';
 import { SkeletonRow } from '../ui/Skeleton';
 import { useToast } from '../ui/Toast';
+import { useConfirm } from '../ui/ConfirmDialog';
 
 const RISK_BADGE: Record<PiiFlag['riskLevel'], NonNullable<BadgeProps['variant']>> = {
   CRITICAL: 'danger',
@@ -23,6 +24,7 @@ const RISK_BADGE: Record<PiiFlag['riskLevel'], NonNullable<BadgeProps['variant']
 export default function PiiFlagsTab() {
   const { token } = useAuth();
   const toast = useToast();
+  const confirm = useConfirm();
   const [flags, setFlags] = useState<PiiFlag[]>([]);
   const [loading, setLoading] = useState(true);
   const [actioningId, setActioningId] = useState<string | null>(null);
@@ -46,6 +48,42 @@ export default function PiiFlagsTab() {
       toast.success('Flag reviewed.');
     } else {
       toast.error(res.error ?? 'Failed to review flag.');
+    }
+    setActioningId(null);
+  };
+
+  // CRITICAL flags hold the whole document in quarantine (see IngestionService#completeIngestion
+  // on the backend) — release/reject act on the document, not the individual flag, since a
+  // document can carry several flags at once and can't be "half quarantined".
+  const handleRelease = async (documentId: string, flagId: string) => {
+    if (!token) return;
+    setActioningId(flagId);
+    const res = await releaseQuarantinedDocument(documentId, token);
+    if (res.success) {
+      setFlags(prev => prev.filter(f => f.documentId !== documentId));
+      toast.success('Document released — it is now searchable again.');
+    } else {
+      toast.error(res.error ?? 'Failed to release document.');
+    }
+    setActioningId(null);
+  };
+
+  const handleReject = async (documentId: string, flagId: string) => {
+    if (!token) return;
+    const confirmed = await confirm({
+      title: 'Reject document',
+      message: 'Reject and permanently delete this document? This cannot be undone.',
+      confirmLabel: 'Reject & delete',
+      danger: true,
+    });
+    if (!confirmed) return;
+    setActioningId(flagId);
+    const res = await rejectQuarantinedDocument(documentId, token);
+    if (res.success) {
+      setFlags(prev => prev.filter(f => f.documentId !== documentId));
+      toast.success('Document rejected and deleted.');
+    } else {
+      toast.error(res.error ?? 'Failed to reject document.');
     }
     setActioningId(null);
   };
@@ -93,23 +131,48 @@ export default function PiiFlagsTab() {
                     </p>
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      loading={actioningId === flag.id}
-                      leftIcon={<Check className="w-3 h-3" />}
-                      onClick={() => handleReview(flag.id, 'ACKNOWLEDGED')}
-                    >
-                      Acknowledge
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      loading={actioningId === flag.id}
-                      onClick={() => handleReview(flag.id, 'DISMISSED')}
-                    >
-                      Dismiss
-                    </Button>
+                    {flag.riskLevel === 'CRITICAL' ? (
+                      <>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          loading={actioningId === flag.id}
+                          leftIcon={<Lock className="w-3 h-3" />}
+                          onClick={() => handleRelease(flag.documentId, flag.id)}
+                        >
+                          Release
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          loading={actioningId === flag.id}
+                          leftIcon={<Trash2 className="w-3 h-3" />}
+                          onClick={() => handleReject(flag.documentId, flag.id)}
+                        >
+                          Reject &amp; delete
+                        </Button>
+                      </>
+                    ) : (
+                      <>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          loading={actioningId === flag.id}
+                          leftIcon={<Check className="w-3 h-3" />}
+                          onClick={() => handleReview(flag.id, 'ACKNOWLEDGED')}
+                        >
+                          Acknowledge
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          loading={actioningId === flag.id}
+                          onClick={() => handleReview(flag.id, 'DISMISSED')}
+                        >
+                          Dismiss
+                        </Button>
+                      </>
+                    )}
                   </div>
                 </div>
               ))}

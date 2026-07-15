@@ -3,9 +3,8 @@ package com.docai.bot.application.service;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
-import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -18,6 +17,7 @@ import io.github.resilience4j.bulkhead.BulkheadFullException;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import lombok.extern.slf4j.Slf4j;
+import reactor.core.publisher.Flux;
 
 @Slf4j
 @Service
@@ -25,21 +25,24 @@ public class AnswerGenerationService {
 
     private static final int MAX_ATTEMPTS = 3;
     private static final long INITIAL_BACKOFF_MS = 1000L;
-    private static final String FOLLOW_UP_MARKER = "---FOLLOW-UP-QUESTIONS---";
+    /** Package-private (not private) — ChatService.processQueryStream needs this to know how much
+     * of the streamed tail to withhold from the client so the marker (and the follow-up questions
+     * after it) never leaks into the displayed answer as it streams in. */
+    static final String FOLLOW_UP_MARKER = "---FOLLOW-UP-QUESTIONS---";
     private static final String LLM_UNAVAILABLE =
         "The AI service is temporarily unavailable. Please try again in a moment.";
 
-    private final ChatClient.Builder chatClientBuilder;
+    private final LLMRouter llmRouter;
     private final CircuitBreaker llmCircuitBreaker;
     private final Bulkhead llmBulkhead;
 
     @Value("${bot.min-similarity-threshold:0.55}")
     private double minSimilarityThreshold;
 
-    public AnswerGenerationService(ChatClient.Builder chatClientBuilder,
+    public AnswerGenerationService(LLMRouter llmRouter,
                                    @Qualifier("llmCircuitBreaker") CircuitBreaker llmCircuitBreaker,
                                    @Qualifier("llmBulkhead") Bulkhead llmBulkhead) {
-        this.chatClientBuilder = chatClientBuilder;
+        this.llmRouter = llmRouter;
         this.llmCircuitBreaker = llmCircuitBreaker;
         this.llmBulkhead = llmBulkhead;
     }
@@ -69,9 +72,26 @@ public class AnswerGenerationService {
                                        String verbosity, String answerFormat,
                                        String product, String version) {
 
-        if (relevantChunks == null || relevantChunks.isEmpty()) {
+        String prompt = promptForStreaming(question, chatContext, relevantChunks, verbosity, answerFormat, product, version);
+        if (prompt == null) {
             log.warn("No relevant chunks found for question: {}", question);
-            return new AnswerResult(buildEmptyStateMessage(question, null, null), Collections.emptyList(), 0, 0);
+            return new AnswerResult(emptyStateMessage(question), Collections.emptyList(), 0, 0);
+        }
+
+        LlmResult llm = callWithRetry(prompt, question);
+        AnswerResult parsed = parseOutput(llm.content());
+        return new AnswerResult(parsed.answer(), parsed.relatedQuestions(),
+            llm.promptTokens(), llm.completionTokens());
+    }
+
+    /** Builds the same prompt {@link #generateAnswer} would use, without calling the LLM — for
+     * the streaming path (ChatService.processQueryStream), which streams tokens itself rather
+     * than blocking for the full completion. Returns null when there are no chunks to answer
+     * from; the caller should use {@link #emptyStateMessage} directly with no LLM call. */
+    String promptForStreaming(String question, String chatContext, List<RetrievedChunk> relevantChunks,
+                               String verbosity, String answerFormat, String product, String version) {
+        if (relevantChunks == null || relevantChunks.isEmpty()) {
+            return null;
         }
 
         double maxSimilarity = relevantChunks.stream()
@@ -101,12 +121,67 @@ public class AnswerGenerationService {
             .distinct()
             .count() > 1;
 
-        String prompt = buildPrompt(question, chatContext, relevantChunks, verbosity, answerFormat,
+        return buildPrompt(question, chatContext, relevantChunks, verbosity, answerFormat,
             lowConfidence, product, version, spansMultipleVersions);
-        LlmResult llm = callWithRetry(prompt, question);
-        AnswerResult parsed = parseOutput(llm.content());
-        return new AnswerResult(parsed.answer(), parsed.relatedQuestions(),
-            llm.promptTokens(), llm.completionTokens());
+    }
+
+    /** The exact empty-state text {@link #generateAnswer} returns when there are no chunks —
+     * exposed so the streaming path can show the same message without a wasted LLM round-trip. */
+    String emptyStateMessage(String question) {
+        return buildEmptyStateMessage(question, null, null);
+    }
+
+    /** Parses a fully-accumulated streamed completion the same way the blocking path parses its
+     * single response — exposed for ChatService.processQueryStream. */
+    AnswerResult parseStreamedOutput(String rawOutput) {
+        return parseOutput(rawOutput);
+    }
+
+    /**
+     * Streaming counterpart of {@link #callProtectedLlm} — same bulkhead/circuit-breaker
+     * protection, adapted for a reactive stream rather than a blocking call (no
+     * resilience4j-reactor dependency is on the classpath, so permits are acquired/released by
+     * hand rather than via a decorator operator). complexQuery=true for the same reason
+     * {@link #callLlmOnce} uses it: this is the primary, user-facing answer.
+     *
+     * On bulkhead-full or circuit-open, returns a single-element Flux with the degraded message
+     * (mirroring the blocking path) rather than throwing — the streaming contract has no good way
+     * to "fail" other than emitting text and completing.
+     */
+    Flux<String> streamAnswer(String prompt) {
+        if (!llmBulkhead.tryAcquirePermission()) {
+            log.error("LLM bulkhead full — declining streaming request");
+            return Flux.just(LLM_UNAVAILABLE);
+        }
+        if (!llmCircuitBreaker.tryAcquirePermission()) {
+            llmBulkhead.releasePermission();
+            log.error("LLM circuit breaker is OPEN — declining streaming request");
+            return Flux.just(LLM_UNAVAILABLE);
+        }
+
+        long startNanos = System.nanoTime();
+        // Flux.defer: llmRouter.streamChat resolves tenant config synchronously (TenantContext.get()
+        // can throw) before it ever returns a Flux — without defer, that throw would propagate
+        // straight out of this method and leak both permits above (neither onComplete/onError below
+        // would ever run to release them). defer converts any such synchronous throw into a normal
+        // onError signal on the returned Flux instead, so the .doOnError permit release still fires.
+        return Flux.defer(() -> llmRouter.streamChat(prompt, true))
+            .doOnComplete(() -> {
+                llmCircuitBreaker.onSuccess(System.nanoTime() - startNanos, TimeUnit.NANOSECONDS);
+                llmBulkhead.onComplete();
+            })
+            .doOnError(e -> {
+                llmCircuitBreaker.onError(System.nanoTime() - startNanos, TimeUnit.NANOSECONDS, e);
+                llmBulkhead.onComplete();
+            })
+            // A client stopping generation (SSE connection closed) cancels the subscription —
+            // still release the permits, but don't count it as a provider failure against the
+            // circuit breaker (nothing about the provider went wrong).
+            .doOnCancel(llmBulkhead::onComplete)
+            .onErrorResume(e -> {
+                log.warn("Streaming LLM call failed: {}", e.getMessage());
+                return Flux.just(LLM_UNAVAILABLE);
+            });
     }
 
     public String generateSessionTitle(String question, String answer) {
@@ -121,11 +196,7 @@ public class AnswerGenerationService {
             "Title:";
 
         try {
-            String title = chatClientBuilder.build()
-                .prompt()
-                .user(prompt)
-                .call()
-                .content();
+            String title = llmRouter.chat(prompt, false);
             if (title != null) {
                 title = title.trim().replaceAll("^[\"']|[\"']$", "");
                 if (!title.isBlank()) return title;
@@ -254,35 +325,14 @@ public class AnswerGenerationService {
         );
     }
 
-    /** Bare LLM call — no resilience logic. Throws on any failure so decorators can react. */
+    /** Bare LLM call — no resilience logic. Throws on any failure so decorators can react.
+     * complexQuery=true: this is the primary, user-facing answer synthesis — the one call in the
+     * pipeline "smart routing" is meant to spend the better model on. */
     private LlmResult callLlmOnce(String prompt) {
-        ChatResponse chatResponse = chatClientBuilder.build()
-            .prompt()
-            .user(prompt)
-            .call()
-            .chatResponse();
-
-        String content = chatResponse != null && chatResponse.getResult() != null
-            ? chatResponse.getResult().getOutput().getText() : null;
-
-        int promptTokens;
-        int completionTokens;
-        try {
-            if (chatResponse != null && chatResponse.getMetadata() != null
-                    && chatResponse.getMetadata().getUsage() != null) {
-                var usage = chatResponse.getMetadata().getUsage();
-                promptTokens = usage.getPromptTokens() != null
-                    ? usage.getPromptTokens().intValue() : estimateTokens(prompt);
-                completionTokens = usage.getCompletionTokens() != null
-                    ? usage.getCompletionTokens().intValue() : estimateTokens(content);
-            } else {
-                promptTokens = estimateTokens(prompt);
-                completionTokens = estimateTokens(content);
-            }
-        } catch (Exception ex) {
-            promptTokens = estimateTokens(prompt);
-            completionTokens = estimateTokens(content);
-        }
+        LLMRouter.LlmChatResult result = llmRouter.chatWithUsage(prompt, true);
+        String content = result.content();
+        int promptTokens = result.promptTokens() > 0 ? result.promptTokens() : estimateTokens(prompt);
+        int completionTokens = result.completionTokens() > 0 ? result.completionTokens() : estimateTokens(content);
         return new LlmResult(content, promptTokens, completionTokens);
     }
 

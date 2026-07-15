@@ -4,7 +4,7 @@ import {
   User, Bot, Copy, Check, ThumbsUp, ThumbsDown,
   ChevronDown, ChevronUp, Bookmark, BookmarkCheck,
   RefreshCw, ChevronRight, ArrowUp, FolderPlus, HelpCircle,
-  MessageSquarePlus, Users, GitBranch,
+  MessageSquarePlus, Users, GitBranch, ExternalLink, Loader2, Pencil,
 } from 'lucide-react';
 import MarkdownContent from './MarkdownContent';
 import { ChatMessage, BackendChatResponse } from '../../types';
@@ -12,12 +12,14 @@ import { formatTimestamp } from '../../utils/chatUtils';
 import { submitFeedback, regenerateAnswer } from '../../services/chatService';
 import { createBookmark, deleteBookmarkByMessage } from '../../services/bookmarkService';
 import { toggleUpvote } from '../../services/upvoteService';
+import { fetchDocumentDownloadUrl } from '../../services/documentDownloadService';
 import { useAuth } from '../../context/AuthContext';
 import { fadeInUp, EASE_OUT } from '../../lib/motion';
 import { cn } from '../../lib/cn';
 import Badge from '../ui/Badge';
 import IconButton from '../ui/IconButton';
 import Menu from '../ui/Menu';
+import { useToast } from '../ui/Toast';
 
 const AddToCollectionModal = lazy(() => import('./AddToCollectionModal'));
 const EscalationModal = lazy(() => import('./EscalationModal'));
@@ -29,6 +31,10 @@ interface MessageItemProps {
   onFeedbackChange?: (messageId: string, rating: 1 | -1) => void;
   onRelatedQuestion?: (question: string) => void;
   onRegeneratedAnswer?: (messageId: string, response: BackendChatResponse) => void;
+  /** User messages only — prefills the composer with this message's text so it can be tweaked
+   * and resent (Phase 6.7). Resending appends a new turn; it never rewrites history server-side,
+   * matching how regenerate works for assistant messages. */
+  onEditMessage?: (content: string) => void;
 }
 
 function ConfidenceBadge({ confidence }: { confidence: number }) {
@@ -69,13 +75,16 @@ const MessageItem: React.FC<MessageItemProps> = ({
   onFeedbackChange,
   onRelatedQuestion,
   onRegeneratedAnswer,
+  onEditMessage,
 }) => {
   const isUser = message.role === 'user';
   const { token } = useAuth();
+  const toast = useToast();
 
   const [copied, setCopied] = useState(false);
   const [sourcesExpanded, setSourcesExpanded] = useState(false);
   const [expandedAnnotationChunk, setExpandedAnnotationChunk] = useState<string | null>(null);
+  const [openingDocId, setOpeningDocId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<1 | -1 | null>(message.userFeedback ?? null);
   const [feedbackPending, setFeedbackPending] = useState(false);
   const [bookmarked, setBookmarked] = useState(message.isBookmarked ?? false);
@@ -89,10 +98,10 @@ const MessageItem: React.FC<MessageItemProps> = ({
   const [showEscalationModal, setShowEscalationModal] = useState(false);
 
   const hasSources = !isUser && message.sources && message.sources.length > 0;
-  const showConfidence = !isUser && message.confidence !== undefined && !message.isTyping;
-  const hasReasoningChain = !isUser && message.reasoningChain && message.reasoningChain.length > 0 && !message.isTyping;
+  const showConfidence = !isUser && message.confidence !== undefined && !message.isTyping && !message.isStreaming;
+  const hasReasoningChain = !isUser && message.reasoningChain && message.reasoningChain.length > 0 && !message.isTyping && !message.isStreaming;
   const [chainExpanded, setChainExpanded] = useState(false);
-  const hasRelated = !isUser && message.relatedQuestions && message.relatedQuestions.length > 0 && !message.isTyping;
+  const hasRelated = !isUser && message.relatedQuestions && message.relatedQuestions.length > 0 && !message.isTyping && !message.isStreaming;
   const isLowConfidence = (message.confidence ?? 1) < 0.6;
   const isTeamVerified = upvoteCount >= 3;
 
@@ -102,6 +111,24 @@ const MessageItem: React.FC<MessageItemProps> = ({
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch { /* clipboard unavailable */ }
+  };
+
+  const handleOpenDocument = async (documentId: string) => {
+    if (!token || openingDocId) return;
+    setOpeningDocId(documentId);
+    // Open the tab synchronously (before the await) so popup blockers don't treat it as an
+    // unsolicited popup — the URL is filled in once the presigned link comes back.
+    const tab = window.open('', '_blank', 'noopener,noreferrer');
+    try {
+      const url = await fetchDocumentDownloadUrl(token, documentId);
+      if (tab) tab.location.href = url;
+      else window.open(url, '_blank', 'noopener,noreferrer');
+    } catch (err) {
+      tab?.close();
+      toast.error(err instanceof Error ? err.message : 'Could not open this document');
+    } finally {
+      setOpeningDocId(null);
+    }
   };
 
   const handleFeedback = async (rating: 1 | -1) => {
@@ -203,6 +230,19 @@ const MessageItem: React.FC<MessageItemProps> = ({
             </div>
           )}
 
+          {/* Edit button — user messages only */}
+          {isUser && onEditMessage && (
+            <IconButton
+              label="Edit and resend"
+              variant="ghost"
+              size="sm"
+              onClick={() => onEditMessage(message.content)}
+              className="absolute top-2 right-9 opacity-0 group-hover:opacity-100 transition-opacity text-primary-foreground/70 hover:bg-white/15 hover:text-primary-foreground"
+            >
+              <Pencil size={14} />
+            </IconButton>
+          )}
+
           {/* Copy button */}
           <IconButton
             label="Copy to clipboard"
@@ -226,7 +266,15 @@ const MessageItem: React.FC<MessageItemProps> = ({
             {isUser ? (
               <div className="whitespace-pre-wrap">{message.content}</div>
             ) : (
-              <MarkdownContent content={message.content} />
+              <>
+                <MarkdownContent content={message.content} />
+                {message.isStreaming && (
+                  <span
+                    aria-hidden="true"
+                    className="inline-block w-[2px] h-4 bg-primary align-text-bottom ml-0.5 animate-pulse"
+                  />
+                )}
+              </>
             )}
           </div>
 
@@ -240,8 +288,9 @@ const MessageItem: React.FC<MessageItemProps> = ({
           {message.isTyping && <TypingDots />}
         </div>
 
-        {/* Meta row */}
-        {!isUser && !message.isTyping && (
+        {/* Meta row — deferred until streaming finishes: confidence/related/reasoning aren't
+            known yet, and messageId-gated actions (upvote/bookmark) have no id to act on. */}
+        {!isUser && !message.isTyping && !message.isStreaming && (
           <div className="flex items-center gap-2 mt-1.5 flex-wrap">
             {showConfidence && <ConfidenceBadge confidence={message.confidence!} />}
 
@@ -362,6 +411,19 @@ const MessageItem: React.FC<MessageItemProps> = ({
                         )}
                         {src.relevanceScore !== undefined && (
                           <span className="text-muted-foreground">{Math.round(src.relevanceScore * 100)}%</span>
+                        )}
+                        {src.documentId && (
+                          <button
+                            onClick={() => handleOpenDocument(src.documentId!)}
+                            disabled={openingDocId === src.documentId}
+                            title="Open document"
+                            className="flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-surface text-muted-foreground hover:bg-accent/10 hover:text-accent transition-colors disabled:opacity-50"
+                          >
+                            {openingDocId === src.documentId
+                              ? <Loader2 size={11} className="animate-spin" />
+                              : <ExternalLink size={11} />}
+                            Open
+                          </button>
                         )}
                         {src.chunkId && (
                           <button

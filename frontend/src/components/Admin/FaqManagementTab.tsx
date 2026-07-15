@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Check, X, MessageSquare, Zap } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';

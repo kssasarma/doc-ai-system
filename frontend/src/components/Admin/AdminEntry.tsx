@@ -1,4 +1,3 @@
-import React from 'react';
 import { useAuth } from '../../context/AuthContext';
 import SuperAdminConsole from './SuperAdminConsole';
 import TenantAdminConsole from './TenantAdminConsole';

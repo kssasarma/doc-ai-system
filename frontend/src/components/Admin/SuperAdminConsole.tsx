@@ -1,4 +1,4 @@
-import React, { Suspense } from 'react';
+import { Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { Building2 } from 'lucide-react';
 import AdminLayout, { AdminNavItem } from './AdminLayout';

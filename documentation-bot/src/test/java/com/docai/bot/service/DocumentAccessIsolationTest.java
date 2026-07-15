@@ -222,6 +222,7 @@ class DocumentAccessIsolationTest extends PostgresTestContainerBase {
             .product(product)
             .version(version)
             .documentName(name)
+            .status("COMPLETED")
             .build();
         return documentRepository.save(doc);
     }

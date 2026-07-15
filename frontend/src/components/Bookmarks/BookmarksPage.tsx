@@ -5,6 +5,7 @@ import { motion } from 'framer-motion';
 import { Bookmark as BookmarkType } from '../../types';
 import { fetchBookmarks, deleteBookmark } from '../../services/bookmarkService';
 import { useAuth } from '../../context/AuthContext';
+import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 import { formatTimestamp } from '../../utils/chatUtils';
 import { cn } from '../../lib/cn';
 import { fadeInUp, staggerContainer } from '../../lib/motion';
@@ -18,6 +19,7 @@ import Input from '../ui/Input';
 import { useToast } from '../ui/Toast';
 
 const BookmarksPage: React.FC = () => {
+  useDocumentTitle('Bookmarks');
   const { token } = useAuth();
   const navigate = useNavigate();
   const toast = useToast();

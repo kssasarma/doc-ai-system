@@ -50,6 +50,19 @@ public class Document {
     @Column(name = "chunk_count")
     private Integer chunkCount;
 
+    /** The embedding model that actually produced this document's chunk embeddings (see
+     * document-ingestor's EmbeddingService) — used by VectorSearchService to request a matching
+     * query embedding rather than blindly the tenant's *current* embedding config. Null for
+     * documents ingested before this column existed. */
+    @Column(name = "embedding_model")
+    private String embeddingModel;
+
+    /** Mirrors the ingestor-owned {@code IngestionStatus} enum as a plain string — this entity
+     * only reads the shared table, so a raw string comparison (see DocumentRepository) is enough;
+     * no need to duplicate the enum type here. PENDING | PROCESSING | COMPLETED | FAILED. */
+    @Column(nullable = false)
+    private String status;
+
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 

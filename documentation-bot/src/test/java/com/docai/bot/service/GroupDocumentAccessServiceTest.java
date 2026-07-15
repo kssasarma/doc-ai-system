@@ -134,6 +134,7 @@ class GroupDocumentAccessServiceTest extends PostgresTestContainerBase {
             .product("product-x")
             .version("1.0")
             .documentName(name)
+            .status("COMPLETED")
             .build();
         return documentRepository.save(doc);
     }

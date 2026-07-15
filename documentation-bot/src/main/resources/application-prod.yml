@@ -7,3 +7,5 @@ app:
     secret: ${JWT_SECRET}
   seed-admin:
     password: ${SEED_ADMIN_PASSWORD}
+  secrets:
+    encryption-key: ${SECRETS_ENCRYPTION_KEY}

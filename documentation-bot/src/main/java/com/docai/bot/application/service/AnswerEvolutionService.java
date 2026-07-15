@@ -3,7 +3,6 @@ package com.docai.bot.application.service;
 import java.util.ArrayList;
 import java.util.List;
 
-import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Service;
 
 import com.docai.bot.domain.model.RetrievedChunk;
@@ -24,7 +23,7 @@ import lombok.extern.slf4j.Slf4j;
 public class AnswerEvolutionService {
 
     private final VectorSearchService vectorSearchService;
-    private final ChatClient.Builder chatClientBuilder;
+    private final LLMRouter llmRouter;
     private final DocumentRepository documentRepository;
 
     public record VersionSnapshot(
@@ -126,7 +125,7 @@ public class AnswerEvolutionService {
 
     private String callLlm(String prompt) {
         try {
-            return chatClientBuilder.build().prompt().user(prompt).call().content();
+            return llmRouter.chat(prompt, false);
         } catch (Exception e) {
             log.error("LLM call failed in AnswerEvolutionService: {}", e.getMessage());
             return null;

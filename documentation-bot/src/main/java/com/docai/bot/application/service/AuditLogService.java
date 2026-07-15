@@ -50,21 +50,13 @@ public class AuditLogService {
     }
 
     @Transactional(readOnly = true)
-    public Page<AuditLogDTO> getAuditLog(UUID tenantId, int page, int size, String action, String since) {
+    public Page<AuditLogDTO> getAuditLog(UUID tenantId, int page, int size, String action, String since, UUID actorId) {
         Pageable pageable = PageRequest.of(page, size);
         LocalDateTime sinceTime = since != null && !since.isBlank()
             ? LocalDateTime.parse(since) : null;
+        String actionFilter = action != null && !action.isBlank() ? action : null;
 
-        Page<AuditLog> raw;
-        if (action != null && !action.isBlank() && sinceTime != null) {
-            raw = auditLogRepository.findByTenantIdAndActionAndCreatedAtAfterOrderByCreatedAtDesc(tenantId, action, sinceTime, pageable);
-        } else if (action != null && !action.isBlank()) {
-            raw = auditLogRepository.findByTenantIdAndActionOrderByCreatedAtDesc(tenantId, action, pageable);
-        } else if (sinceTime != null) {
-            raw = auditLogRepository.findByTenantIdAndCreatedAtAfterOrderByCreatedAtDesc(tenantId, sinceTime, pageable);
-        } else {
-            raw = auditLogRepository.findByTenantIdOrderByCreatedAtDesc(tenantId, pageable);
-        }
+        Page<AuditLog> raw = auditLogRepository.search(tenantId, actionFilter, sinceTime, actorId, pageable);
 
         Map<UUID, String> usernameMap = userRepository.findByTenantId(tenantId).stream()
             .collect(Collectors.toMap(User::getId, User::getUsername));

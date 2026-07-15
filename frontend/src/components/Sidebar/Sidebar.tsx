@@ -27,6 +27,10 @@ interface SidebarProps {
   onRenameSession: (sessionId: string, title: string) => void;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
+  /** Set when the sessions list failed to load — rendered as a retry banner instead of silently
+   * showing an empty list indistinguishable from "you have no chats yet" (see Phase 6.1). */
+  error?: string | null;
+  onRetry?: () => void;
 }
 
 const NAV_ACTIONS = (navigate: ReturnType<typeof useNavigate>) => [
@@ -47,6 +51,8 @@ const Sidebar: React.FC<SidebarProps> = ({
   onRenameSession,
   isCollapsed,
   onToggleCollapse,
+  error,
+  onRetry,
 }) => {
   const { token } = useAuth();
   const navigate = useNavigate();
@@ -136,6 +142,16 @@ const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Sessions List */}
       <div className="flex-1 overflow-y-auto p-2">
+        {error && !isCollapsed && (
+          <div className="mb-2 p-3 rounded-lg bg-danger/10 text-xs text-danger space-y-2">
+            <p>Couldn't load your chats: {error}</p>
+            {onRetry && (
+              <button onClick={onRetry} className="font-medium underline hover:no-underline">
+                Retry
+              </button>
+            )}
+          </div>
+        )}
         {isCollapsed ? (
           <div className="flex flex-col gap-2">
             {sortedSessions.slice(0, 5).map(session => (

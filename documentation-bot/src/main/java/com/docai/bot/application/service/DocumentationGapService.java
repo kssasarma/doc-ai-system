@@ -7,7 +7,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -41,7 +40,7 @@ public class DocumentationGapService {
 
     private final QuerySessionGraphRepository querySessionGraphRepository;
     private final DocumentationGapReportRepository gapReportRepository;
-    private final ChatClient.Builder chatClientBuilder;
+    private final LLMRouter llmRouter;
 
     @Value("${bot.min-similarity-threshold:0.55}")
     private double minSimilarityThreshold;
@@ -111,54 +110,66 @@ public class DocumentationGapService {
         return report;
     }
 
+    /** Sets {@link com.docai.bot.config.TenantContext} for the duration of this per-tenant unit
+     * of work (needed by generateDocumentationStub's LLMRouter call) and restores whatever was
+     * there before — required when invoked from the monthly @Scheduled job, which starts with no
+     * tenant context at all; a harmless save/restore when invoked from a request thread that
+     * already has one (generateReport's admin-triggered path). */
     private DocumentationGapReport buildReport(java.util.UUID tenantId, List<QuerySessionGraph> recent,
                                                 String product, String version,
                                                 LocalDate periodStart, LocalDate periodEnd) {
-        int totalLow = 0;
-        List<Map<String, Object>> gapTopics = new ArrayList<>();
+        java.util.UUID previousTenant = com.docai.bot.config.TenantContext.getOrNull();
+        com.docai.bot.config.TenantContext.set(tenantId);
+        try {
+            int totalLow = 0;
+            List<Map<String, Object>> gapTopics = new ArrayList<>();
 
-        List<List<QuerySessionGraph>> clusters = cluster(recent);
-        for (List<QuerySessionGraph> cl : clusters) {
-            if (cl.size() < MIN_CLUSTER_SIZE) continue;
-            totalLow += cl.size();
+            List<List<QuerySessionGraph>> clusters = cluster(recent);
+            for (List<QuerySessionGraph> cl : clusters) {
+                if (cl.size() < MIN_CLUSTER_SIZE) continue;
+                totalLow += cl.size();
 
-            String canonical = pickRepresentative(cl);
-            List<String> examples = cl.stream()
-                .map(QuerySessionGraph::getQueryText)
-                .distinct().limit(5).toList();
-            long uniqueUsers = cl.stream()
-                .map(QuerySessionGraph::getUserId)
-                .filter(u -> u != null).distinct().count();
+                String canonical = pickRepresentative(cl);
+                List<String> examples = cl.stream()
+                    .map(QuerySessionGraph::getQueryText)
+                    .distinct().limit(5).toList();
+                long uniqueUsers = cl.stream()
+                    .map(QuerySessionGraph::getUserId)
+                    .filter(u -> u != null).distinct().count();
 
-            String stub = generateDocumentationStub(canonical, product, version);
+                String stub = generateDocumentationStub(canonical, product, version);
 
-            Map<String, Object> topic = new java.util.HashMap<>();
-            topic.put("topic", canonical);
-            topic.put("queryCount", cl.size());
-            topic.put("uniqueUsers", uniqueUsers);
-            topic.put("exampleQuestions", examples);
-            topic.put("suggestedDocStub", stub);
-            gapTopics.add(topic);
+                Map<String, Object> topic = new java.util.HashMap<>();
+                topic.put("topic", canonical);
+                topic.put("queryCount", cl.size());
+                topic.put("uniqueUsers", uniqueUsers);
+                topic.put("exampleQuestions", examples);
+                topic.put("suggestedDocStub", stub);
+                gapTopics.add(topic);
+            }
+
+            if (gapTopics.isEmpty()) return null;
+
+            String gapTopicsJson = toJson(gapTopics);
+
+            DocumentationGapReport report = DocumentationGapReport.builder()
+                .tenantId(tenantId)
+                .product(product)
+                .version(version)
+                .reportPeriodStart(periodStart)
+                .reportPeriodEnd(periodEnd)
+                .totalLowConfidenceQueries(totalLow)
+                .gapTopics(gapTopicsJson)
+                .generatedAt(LocalDateTime.now())
+                .build();
+
+            report = gapReportRepository.save(report);
+            log.info("DocumentationGapService: saved gap report with {} topics", gapTopics.size());
+            return report;
+        } finally {
+            if (previousTenant != null) com.docai.bot.config.TenantContext.set(previousTenant);
+            else com.docai.bot.config.TenantContext.clear();
         }
-
-        if (gapTopics.isEmpty()) return null;
-
-        String gapTopicsJson = toJson(gapTopics);
-
-        DocumentationGapReport report = DocumentationGapReport.builder()
-            .tenantId(tenantId)
-            .product(product)
-            .version(version)
-            .reportPeriodStart(periodStart)
-            .reportPeriodEnd(periodEnd)
-            .totalLowConfidenceQueries(totalLow)
-            .gapTopics(gapTopicsJson)
-            .generatedAt(LocalDateTime.now())
-            .build();
-
-        report = gapReportRepository.save(report);
-        log.info("DocumentationGapService: saved gap report with {} topics", gapTopics.size());
-        return report;
     }
 
     private String generateDocumentationStub(String topic, String product, String version) {
@@ -174,7 +185,7 @@ public class DocumentationGapService {
             Format as plain paragraphs, no markdown headers.
             """.formatted(topic, ctx);
         try {
-            String result = chatClientBuilder.build().prompt().user(prompt).call().content();
+            String result = llmRouter.chat(prompt, false);
             return result != null ? result.trim() : "";
         } catch (Exception e) {
             log.warn("Stub generation failed for topic '{}': {}", topic, e.getMessage());

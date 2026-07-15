@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.docai.bot.application.service.AuditLogService;
@@ -40,8 +41,8 @@ public class GroupController {
     private final AuditLogService auditLogService;
 
     @GetMapping
-    public ResponseEntity<List<GroupDTO>> list() {
-        return ResponseEntity.ok(groupService.list(TenantContext.get()));
+    public ResponseEntity<List<GroupDTO>> list(@RequestParam(required = false) String q) {
+        return ResponseEntity.ok(groupService.list(TenantContext.get(), q));
     }
 
     @PostMapping

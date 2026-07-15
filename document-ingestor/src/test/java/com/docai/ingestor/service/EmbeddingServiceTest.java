@@ -23,6 +23,8 @@ import org.springframework.ai.embedding.EmbeddingRequest;
 import org.springframework.ai.embedding.EmbeddingResponse;
 
 import com.docai.ingestor.application.service.EmbeddingService;
+import com.docai.ingestor.application.service.SecretsCryptoService;
+import com.docai.ingestor.domain.repository.TenantLlmConfigRepository;
 
 import io.github.resilience4j.bulkhead.Bulkhead;
 import io.github.resilience4j.bulkhead.BulkheadConfig;
@@ -35,9 +37,13 @@ class EmbeddingServiceTest {
     @Mock
     EmbeddingModel embeddingModel;
 
+    @Mock
+    TenantLlmConfigRepository tenantLlmConfigRepository;
+
     private CircuitBreaker circuitBreaker;
     private Bulkhead bulkhead;
     private EmbeddingService embeddingService;
+    private final SecretsCryptoService cryptoService = new SecretsCryptoService("");
 
     @BeforeEach
     void setUp() {
@@ -53,7 +59,7 @@ class EmbeddingServiceTest {
                 .maxConcurrentCalls(10)
                 .maxWaitDuration(Duration.ZERO)
                 .build());
-        embeddingService = new EmbeddingService(embeddingModel, circuitBreaker, bulkhead);
+        embeddingService = new EmbeddingService(embeddingModel, circuitBreaker, bulkhead, tenantLlmConfigRepository, cryptoService);
     }
 
     @Test
@@ -86,7 +92,7 @@ class EmbeddingServiceTest {
                 .maxConcurrentCalls(0)
                 .maxWaitDuration(Duration.ZERO)
                 .build());
-        EmbeddingService service = new EmbeddingService(embeddingModel, circuitBreaker, zeroPermits);
+        EmbeddingService service = new EmbeddingService(embeddingModel, circuitBreaker, zeroPermits, tenantLlmConfigRepository, cryptoService);
 
         assertThatThrownBy(() -> service.generateEmbedding("text"))
             .isInstanceOf(RuntimeException.class)
@@ -106,7 +112,7 @@ class EmbeddingServiceTest {
                 .slidingWindowSize(4)
                 .minimumNumberOfCalls(4)
                 .build());
-        EmbeddingService service = new EmbeddingService(embeddingModel, lenient, bulkhead);
+        EmbeddingService service = new EmbeddingService(embeddingModel, lenient, bulkhead, tenantLlmConfigRepository, cryptoService);
 
         EmbeddingResponse response = mockResponse(expected);
         when(embeddingModel.call(any(EmbeddingRequest.class)))

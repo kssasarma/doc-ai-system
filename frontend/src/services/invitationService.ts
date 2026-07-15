@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { BACKEND_URL } from '../config/backend';
-import type { Invitation, AuthResponse } from '../types';
+import type { Invitation, AuthResponse, PendingInvitation } from '../types';
 
 const BOT_URL = BACKEND_URL;
 
@@ -20,6 +20,15 @@ export async function inviteUser(token: string, email: string, tenantId?: string
     { headers: headers(token) },
   );
   return data;
+}
+
+export async function listPendingInvitations(token: string): Promise<PendingInvitation[]> {
+  const { data } = await axios.get<PendingInvitation[]>(`${BOT_URL}/api/admin/invitations`, { headers: headers(token) });
+  return data;
+}
+
+export async function revokeInvitation(token: string, invitationId: string): Promise<void> {
+  await axios.delete(`${BOT_URL}/api/admin/invitations/${invitationId}`, { headers: headers(token) });
 }
 
 export async function acceptInvite(token: string, username: string, password: string): Promise<AuthResponse> {

@@ -16,7 +16,9 @@ import lombok.extern.slf4j.Slf4j;
 
 /**
  * Runs nightly and purges data older than each tenant's configured retention windows.
- * Covers query logs (query_session_graph), old chat messages, answer feedback, and audit logs.
+ * Covers query logs (query_session_graph and query_logs), chat sessions and everything that
+ * references them (messages, summaries, bookmarks, share links/recipients), answer feedback, and
+ * audit logs.
  */
 @Slf4j
 @Service
@@ -61,7 +63,46 @@ public class DataRetentionService {
             "AND created_at < ?",
             tenantId, now.minusDays(policy.getAuditLogDays()));
 
-        log.info("Retention tenant={} purged: queries={} feedback={} auditLogs={}",
-            tenantId, queryRows, feedbackRows, auditRows);
+        // query_logs — the table every query actually writes to on the hot path (distinct from
+        // query_session_graph above, which backs FAQ clustering/analytics); grows unboundedly
+        // otherwise, unlike the other tables here which are naturally bounded by user action.
+        int queryLogRows = jdbc.update(
+            "DELETE FROM query_logs WHERE tenant_id = ?::uuid AND created_at < ?",
+            tenantId, now.minusDays(policy.getQueryLogDays()));
+
+        // Chat sessions past chatSessionDays, and everything referencing them — chat_messages/
+        // chat_summaries/bookmarks/shared_chat_links/shared_chat_recipients have no DB-level FK to
+        // chat_sessions (app-managed, same reasoning as GdprErasureService#eraseUser), so each
+        // must be purged explicitly, in dependency order, before the sessions themselves.
+        LocalDateTime chatCutoff = now.minusDays(policy.getChatSessionDays());
+        int bookmarkRows = jdbc.update(
+            "DELETE FROM bookmarks WHERE chat_id IN " +
+            "(SELECT id FROM chat_sessions WHERE tenant_id = ?::uuid AND last_active_at < ?)",
+            tenantId, chatCutoff);
+        int recipientRows = jdbc.update(
+            "DELETE FROM shared_chat_recipients WHERE link_id IN " +
+            "(SELECT id FROM shared_chat_links WHERE chat_id IN " +
+            "(SELECT id FROM chat_sessions WHERE tenant_id = ?::uuid AND last_active_at < ?))",
+            tenantId, chatCutoff);
+        int shareLinkRows = jdbc.update(
+            "DELETE FROM shared_chat_links WHERE chat_id IN " +
+            "(SELECT id FROM chat_sessions WHERE tenant_id = ?::uuid AND last_active_at < ?)",
+            tenantId, chatCutoff);
+        int messageRows = jdbc.update(
+            "DELETE FROM chat_messages WHERE chat_id IN " +
+            "(SELECT id FROM chat_sessions WHERE tenant_id = ?::uuid AND last_active_at < ?)",
+            tenantId, chatCutoff);
+        int summaryRows = jdbc.update(
+            "DELETE FROM chat_summaries WHERE chat_id IN " +
+            "(SELECT id FROM chat_sessions WHERE tenant_id = ?::uuid AND last_active_at < ?)",
+            tenantId, chatCutoff);
+        int sessionRows = jdbc.update(
+            "DELETE FROM chat_sessions WHERE tenant_id = ?::uuid AND last_active_at < ?",
+            tenantId, chatCutoff);
+
+        log.info("Retention tenant={} purged: queries={} feedback={} auditLogs={} queryLogs={} "
+            + "chatSessions={} (messages={} summaries={} bookmarks={} shareLinks={} shareRecipients={})",
+            tenantId, queryRows, feedbackRows, auditRows, queryLogRows,
+            sessionRows, messageRows, summaryRows, bookmarkRows, shareLinkRows, recipientRows);
     }
 }

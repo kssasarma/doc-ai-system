@@ -13,67 +13,6 @@ import com.docai.bot.domain.entity.DocumentChunk;
 @Repository
 public interface DocumentChunkRepository extends JpaRepository<DocumentChunk, UUID> {
 
-    interface ChunkSearchResult {
-        String getChunkId();
-        String getContent();
-        String getDocumentName();
-        String getProduct();
-        String getVersion();
-        double getSimilarity();
-    }
-
-    // Phase 6.7: Small-to-big retrieval — search leaf chunks, but if the leaf has a parent
-    // section chunk, return the parent's (richer) content instead.
-    @Query(value = """
-        SELECT CAST(COALESCE(parent.id, dc.id) AS text)          AS chunkId,
-               COALESCE(parent.content, dc.content)              AS content,
-               d.document_name                                   AS documentName,
-               d.product                                         AS product,
-               d.version                                         AS version,
-               (1 - (dc.embedding <=> CAST(:embedding AS vector))) AS similarity
-        FROM document_chunks dc
-        JOIN documents d ON dc.document_id = d.id
-        LEFT JOIN document_chunks parent ON dc.parent_chunk_id = parent.id
-        WHERE d.product = :product AND d.version = :version
-          AND (dc.is_leaf = TRUE OR dc.is_leaf IS NULL)
-        ORDER BY dc.embedding <=> CAST(:embedding AS vector)
-        LIMIT :limit
-        """, nativeQuery = true)
-    List<ChunkSearchResult> findTopKSimilar(String product, String version, String embedding, int limit);
-
-    @Query(value = """
-        SELECT CAST(COALESCE(parent.id, dc.id) AS text)          AS chunkId,
-               COALESCE(parent.content, dc.content)              AS content,
-               d.document_name                                   AS documentName,
-               d.product                                         AS product,
-               d.version                                         AS version,
-               (1 - (dc.embedding <=> CAST(:embedding AS vector))) AS similarity
-        FROM document_chunks dc
-        JOIN documents d ON dc.document_id = d.id
-        LEFT JOIN document_chunks parent ON dc.parent_chunk_id = parent.id
-        WHERE d.product = :product
-          AND (dc.is_leaf = TRUE OR dc.is_leaf IS NULL)
-        ORDER BY dc.embedding <=> CAST(:embedding AS vector)
-        LIMIT :limit
-        """, nativeQuery = true)
-    List<ChunkSearchResult> findTopKSimilarByProduct(String product, String embedding, int limit);
-
-    @Query(value = """
-        SELECT CAST(COALESCE(parent.id, dc.id) AS text)          AS chunkId,
-               COALESCE(parent.content, dc.content)              AS content,
-               d.document_name                                   AS documentName,
-               d.product                                         AS product,
-               d.version                                         AS version,
-               (1 - (dc.embedding <=> CAST(:embedding AS vector))) AS similarity
-        FROM document_chunks dc
-        JOIN documents d ON dc.document_id = d.id
-        LEFT JOIN document_chunks parent ON dc.parent_chunk_id = parent.id
-        WHERE dc.is_leaf = TRUE OR dc.is_leaf IS NULL
-        ORDER BY dc.embedding <=> CAST(:embedding AS vector)
-        LIMIT :limit
-        """, nativeQuery = true)
-    List<ChunkSearchResult> findTopKSimilarAll(String embedding, int limit);
-
     /** A hybrid-retrieval candidate — carries the raw embedding text (not a similarity score)
      * because {@link com.docai.bot.application.service.VectorSearchService} recomputes cosine
      * similarity uniformly, in Java, for every candidate from both the dense and lexical paths
@@ -81,6 +20,7 @@ public interface DocumentChunkRepository extends JpaRepository<DocumentChunk, UU
     interface HybridCandidate {
         String getChunkId();
         String getContent();
+        String getDocumentId();
         String getDocumentName();
         String getProduct();
         String getVersion();
@@ -98,6 +38,7 @@ public interface DocumentChunkRepository extends JpaRepository<DocumentChunk, UU
     @Query(value = """
         SELECT CAST(COALESCE(parent.id, dc.id) AS text) AS chunkId,
                COALESCE(parent.content, dc.content)      AS content,
+               CAST(d.id AS text)                        AS documentId,
                d.document_name                           AS documentName,
                d.product                                  AS product,
                d.version                                  AS version,
@@ -107,6 +48,7 @@ public interface DocumentChunkRepository extends JpaRepository<DocumentChunk, UU
         LEFT JOIN document_chunks parent ON dc.parent_chunk_id = parent.id
         WHERE d.tenant_id = :tenantId
           AND d.id IN (:documentIds)
+          AND d.status = 'COMPLETED'
           AND (dc.is_leaf = TRUE OR dc.is_leaf IS NULL)
           AND (CAST(:narrowProduct AS text) IS NULL OR d.product = :narrowProduct)
           AND (CAST(:narrowVersion AS text) IS NULL OR d.version = :narrowVersion)
@@ -122,6 +64,7 @@ public interface DocumentChunkRepository extends JpaRepository<DocumentChunk, UU
     @Query(value = """
         SELECT CAST(COALESCE(parent.id, dc.id) AS text) AS chunkId,
                COALESCE(parent.content, dc.content)      AS content,
+               CAST(d.id AS text)                        AS documentId,
                d.document_name                           AS documentName,
                d.product                                  AS product,
                d.version                                  AS version,
@@ -131,6 +74,7 @@ public interface DocumentChunkRepository extends JpaRepository<DocumentChunk, UU
         LEFT JOIN document_chunks parent ON dc.parent_chunk_id = parent.id
         WHERE d.tenant_id = :tenantId
           AND d.id IN (:documentIds)
+          AND d.status = 'COMPLETED'
           AND (dc.is_leaf = TRUE OR dc.is_leaf IS NULL)
           AND (CAST(:narrowProduct AS text) IS NULL OR d.product = :narrowProduct)
           AND (CAST(:narrowVersion AS text) IS NULL OR d.version = :narrowVersion)

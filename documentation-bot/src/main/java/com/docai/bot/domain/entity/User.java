@@ -74,6 +74,22 @@ public class User {
     @Column(name = "deleted_at")
     private LocalDateTime deletedAt;
 
+    /** Admin-toggled, reversible login block — distinct from {@link #deletedAt} (permanent GDPR
+     * erasure). Unlike erasure, deactivation is a known, disclosed state: the login error tells
+     * the user exactly what happened rather than looking like a wrong password. */
+    @Column(name = "deactivated_at")
+    private LocalDateTime deactivatedAt;
+
+    /** Consecutive bad-password count since the last successful login; reset to 0 on success. */
+    @Builder.Default
+    @Column(name = "failed_login_attempts", nullable = false)
+    private int failedLoginAttempts = 0;
+
+    /** Null unless currently locked out. Login is refused (even with the correct password) while
+     * this is in the future — see UserService.authenticate. */
+    @Column(name = "locked_until")
+    private LocalDateTime lockedUntil;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;

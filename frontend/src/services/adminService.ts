@@ -1,5 +1,5 @@
 import { INGESTOR_URL } from '../config/backend';
-import { DocumentInfo, IngestionStatus } from '../types';
+import { DocumentInfo, IngestionStatus, PageResponse } from '../types';
 
 const DOCS_URL = `${INGESTOR_URL}/api/documents`;
 const INGEST_URL = `${INGESTOR_URL}/api/ingest`;
@@ -8,10 +8,21 @@ function authHeaders(token: string): Record<string, string> {
   return { Authorization: `Bearer ${token}` };
 }
 
-export async function fetchDocuments(token: string): Promise<DocumentInfo[]> {
-  const res = await fetch(DOCS_URL, { headers: authHeaders(token) });
+export async function fetchDocuments(
+  token: string, opts?: { q?: string; page?: number; size?: number },
+): Promise<PageResponse<DocumentInfo>> {
+  const params = new URLSearchParams();
+  if (opts?.q) params.set('q', opts.q);
+  params.set('page', String(opts?.page ?? 0));
+  params.set('size', String(opts?.size ?? 50));
+  const res = await fetch(`${DOCS_URL}?${params}`, { headers: authHeaders(token) });
   if (!res.ok) throw new Error(`Failed to fetch documents: ${res.status}`);
   return res.json();
+}
+
+export async function deleteDocument(token: string, documentId: string): Promise<void> {
+  const res = await fetch(`${DOCS_URL}/${documentId}`, { method: 'DELETE', headers: authHeaders(token) });
+  if (!res.ok) throw new Error(`Failed to delete document: ${res.status}`);
 }
 
 export async function fetchIngestionStatus(token: string): Promise<IngestionStatus> {
@@ -76,8 +87,9 @@ export async function reprocessFailedDocuments(token: string): Promise<BulkRepro
   return data;
 }
 
-/** Only available for documents that still have their original file in storage — completed
- * documents' source files are deleted once ingestion succeeds. */
+/** Only available for documents that still have their original file in storage — always true
+ * for a document ingested since Phase 6.3 (files are kept, not deleted, after success); a 409
+ * here means either a legacy document from before that change or the file was otherwise removed. */
 export async function getDocumentDownloadUrl(token: string, documentId: string): Promise<string> {
   const res = await fetch(`${DOCS_URL}/${documentId}/download-url`, { headers: authHeaders(token) });
   const data = await res.json();

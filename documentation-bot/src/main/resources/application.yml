@@ -92,6 +92,19 @@ app:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:3000}
   rate-limit:
     requests-per-minute: ${RATE_LIMIT_PER_MINUTE:30}
+    # Per-IP, unauthenticated — /api/auth/login and /api/auth/refresh. Deliberately separate
+    # (and tighter) than the per-user chat limit above; see RateLimitFilter.
+    auth-requests-per-minute: ${AUTH_RATE_LIMIT_PER_MINUTE:10}
+  auth:
+    # Brute-force lockout (UserService.authenticate) — independent of the per-IP rate limit above,
+    # since that one won't catch an attacker spreading guesses across many IPs at one account.
+    max-failed-attempts: ${AUTH_MAX_FAILED_ATTEMPTS:10}
+    lockout-duration-minutes: ${AUTH_LOCKOUT_DURATION_MINUTES:15}
+  secrets:
+    # AES-256 key (base64, 32 bytes) for encrypting per-tenant LLM API keys and integration
+    # tokens at rest. Optional here (dev generates an ephemeral key); required in prod — see
+    # application-prod.yml. Generate with: openssl rand -base64 32
+    encryption-key: ${SECRETS_ENCRYPTION_KEY:}
 
 management:
   endpoints:
@@ -141,4 +154,10 @@ bot:
   cost:
     input-per-1k-tokens: ${BOT_COST_INPUT_PER_1K:0.00015}
     output-per-1k-tokens: ${BOT_COST_OUTPUT_PER_1K:0.00060}
+  internal:
+    # document-ingestor's internal API base URL, and the shared secret this service signs its
+    # calls to it with (must match document-ingestor's own INTERNAL_SERVICE_SECRET) — see
+    # InternalDocumentDownloadService. Backs "open citation" in the chat UI.
+    ingestor-url: ${INGESTOR_INTERNAL_URL:http://document-ingestor:8081}
+    service-secret: ${INTERNAL_SERVICE_SECRET:}
 

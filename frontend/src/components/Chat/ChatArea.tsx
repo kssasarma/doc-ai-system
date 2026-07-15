@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useState, useCallback, useEffect } from 'react';
+import React, { Suspense, lazy, useState, useCallback, useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { ChatSession, BackendChatResponse } from '../../types';
 import { MessageSquarePlus, SearchX, Download, Pencil, Check, X, Share2, MessageCircle } from 'lucide-react';
@@ -11,6 +11,7 @@ import IconButton from '../ui/IconButton';
 import Menu from '../ui/Menu';
 import EmptyState from '../ui/EmptyState';
 import { Skeleton } from '../ui/Skeleton';
+import ErrorBoundary from '../ErrorBoundary';
 
 const ShareModal = lazy(() => import('./ShareModal'));
 
@@ -26,6 +27,8 @@ interface ChatAreaProps {
   session: ChatSession | null;
   onSendMessage: (message: string, scope?: ChatScope) => void;
   isLoading: boolean;
+  isStreaming?: boolean;
+  onStopGeneration?: () => void;
   onCreateSession?: () => void;
   chatNotFound?: boolean;
   onRenameSession?: (title: string) => void;
@@ -36,6 +39,8 @@ const ChatArea: React.FC<ChatAreaProps> = ({
   session,
   onSendMessage,
   isLoading,
+  isStreaming,
+  onStopGeneration,
   onCreateSession,
   chatNotFound,
   onRenameSession,
@@ -85,6 +90,19 @@ const ChatArea: React.FC<ChatAreaProps> = ({
     setPrefillQuestion(question);
   }, []);
 
+  // Backs the "↑ in an empty composer edits your last message" shortcut (Phase 6.6/6.7).
+  const lastUserMessageContent = useMemo(() => {
+    const messages = session?.messages ?? [];
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === 'user') return messages[i].content;
+    }
+    return undefined;
+  }, [session]);
+
+  const handleEditLastMessage = useCallback(() => {
+    if (lastUserMessageContent) setPrefillQuestion(lastUserMessageContent);
+  }, [lastUserMessageContent]);
+
   const handleSend = useCallback((msg: string) => {
     setPrefillQuestion(undefined);
     onSendMessage(msg, { product: scopeProduct, version: scopeVersion });
@@ -127,7 +145,7 @@ const ChatArea: React.FC<ChatAreaProps> = ({
   return (
     <div className="flex-1 flex flex-col bg-background min-w-0">
       {/* Header */}
-      <motion.div variants={fadeIn} initial="hidden" animate="visible" className="bg-surface border-b border-border px-4 py-3">
+      <motion.div variants={fadeIn} initial="hidden" animate="visible" className="bg-surface border-b border-border px-4 py-3 pl-14 md:pl-4">
         <div className="flex items-center justify-between gap-2">
           <div className="flex-1 min-w-0">
             {editingTitle ? (
@@ -197,20 +215,41 @@ const ChatArea: React.FC<ChatAreaProps> = ({
 
       {/* Messages */}
       <div className="flex-1 overflow-hidden">
-        <Suspense fallback={
-          <div className="p-4 space-y-4">
-            <Skeleton className="h-16 w-2/3" />
-            <Skeleton className="h-16 w-1/2 ml-auto" />
-            <Skeleton className="h-24 w-3/4" />
-          </div>
-        }>
-          <MessageList
-            messages={session.messages}
-            sessionChatId={session.chatId}
-            onRelatedQuestion={handleRelatedQuestion}
-            onRegeneratedAnswer={onRegeneratedAnswer}
-          />
-        </Suspense>
+        {/* Keyed by chatId so a crash in one conversation doesn't stay "broken" after switching
+            to another — a fresh boundary mounts per chat rather than remembering hasError=true
+            forever. Falls back to an inline message, not a full-page one, so the header/composer
+            around it stay usable (e.g. to switch chats or start a new one). */}
+        <ErrorBoundary
+          key={session.chatId}
+          fallback={
+            <EmptyState
+              icon={SearchX}
+              title="This conversation couldn't be displayed"
+              description="Something in this chat's messages caused a rendering error. Try starting a new chat, or reload the page."
+              action={onCreateSession && (
+                <Button onClick={onCreateSession} leftIcon={<MessageSquarePlus size={16} />}>
+                  Start New Chat
+                </Button>
+              )}
+            />
+          }
+        >
+          <Suspense fallback={
+            <div className="p-4 space-y-4">
+              <Skeleton className="h-16 w-2/3" />
+              <Skeleton className="h-16 w-1/2 ml-auto" />
+              <Skeleton className="h-24 w-3/4" />
+            </div>
+          }>
+            <MessageList
+              messages={session.messages}
+              sessionChatId={session.chatId}
+              onRelatedQuestion={handleRelatedQuestion}
+              onRegeneratedAnswer={onRegeneratedAnswer}
+              onEditMessage={handleRelatedQuestion}
+            />
+          </Suspense>
+        </ErrorBoundary>
       </div>
 
       {/* Input */}
@@ -219,7 +258,11 @@ const ChatArea: React.FC<ChatAreaProps> = ({
           <MessageInput
             onSendMessage={handleSend}
             disabled={isLoading}
+            isStreaming={isStreaming}
+            onStop={onStopGeneration}
             prefillValue={prefillQuestion}
+            draftKey={session.chatId}
+            onEditLast={handleEditLastMessage}
           />
         </Suspense>
       </div>

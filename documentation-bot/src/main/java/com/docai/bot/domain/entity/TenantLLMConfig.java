@@ -46,7 +46,7 @@ public class TenantLLMConfig {
 
     @Column(name = "embedding_model", nullable = false, length = 100)
     @Builder.Default
-    private String embeddingModel = "gpt-4o-embedding-4k";
+    private String embeddingModel = "text-embedding-3-small";
 
     @Column(name = "api_key_enc", columnDefinition = "TEXT")
     private String apiKeyEnc;

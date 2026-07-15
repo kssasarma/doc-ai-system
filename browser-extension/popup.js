@@ -133,6 +133,19 @@ async function init() {
       defaultProduct: $('default-product').value.trim() || undefined,
       defaultVersion: $('default-version').value.trim() || undefined,
     };
+
+    // manifest.json declares no host_permissions up front (the backend URL is whatever the user
+    // self-hosts it at, not known ahead of time) — request it for this specific origin now,
+    // via optional_host_permissions, instead. Without this grant the fetch() in sendQuestion()
+    // would be subject to the target server's CORS policy same as any other webpage's request.
+    const origin = `${new URL(newCfg.apiUrl).origin}/*`;
+    const granted = await chrome.permissions.request({ origins: [origin] });
+    if (!granted) {
+      $('setup-error').textContent = `Permission to reach ${origin} was denied — the extension can't call your backend without it. Try again and allow access when prompted.`;
+      $('setup-error').classList.remove('hidden');
+      return;
+    }
+
     await saveConfig(newCfg);
     Object.assign(config, newCfg);
     appUrl = newCfg.apiUrl;

@@ -1,6 +1,8 @@
 package com.docai.ingestor.adapter.rest;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -20,9 +22,11 @@ import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import com.docai.ingestor.application.service.DocumentQuotaService;
 import com.docai.ingestor.application.service.DocumentStorageService;
 import com.docai.ingestor.application.service.IngestionService;
 import com.docai.ingestor.config.GlobalExceptionHandler;
@@ -30,9 +34,7 @@ import com.docai.ingestor.config.SecurityConfig;
 import com.docai.ingestor.config.TenantContext;
 import com.docai.ingestor.domain.entity.Document;
 import com.docai.ingestor.domain.entity.Document.IngestionStatus;
-import com.docai.ingestor.domain.entity.Tenant;
 import com.docai.ingestor.domain.repository.DocumentRepository;
-import com.docai.ingestor.domain.repository.TenantRepository;
 
 /**
  * Web-layer slice test for DocumentUploadController.
@@ -46,23 +48,20 @@ import com.docai.ingestor.domain.repository.TenantRepository;
  */
 @WebMvcTest(DocumentUploadController.class)
 @Import({SecurityConfig.class, GlobalExceptionHandler.class})
+@TestPropertySource(properties = "app.jwt.secret=dGVzdC1vbmx5LWp3dC1zZWNyZXQtbm90LXVzZWQtZm9yLXJlYWwtdG9rZW5zLTEyMzQ1Ng==")
 class DocumentUploadControllerTest {
 
     @Autowired MockMvc mockMvc;
     @MockitoBean DocumentRepository documentRepository;
-    @MockitoBean TenantRepository tenantRepository;
     @MockitoBean IngestionService ingestionService;
     @MockitoBean DocumentStorageService documentStorageService;
+    @MockitoBean DocumentQuotaService documentQuotaService;
 
     private static final UUID TENANT_ID = UUID.randomUUID();
 
     @BeforeEach
     void setUp() {
         TenantContext.set(TENANT_ID);
-        Tenant tenant = new Tenant();
-        tenant.setId(TENANT_ID);
-        tenant.setMaxDocuments(100);
-        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
         when(documentRepository.countByTenantIdAndStatusNot(TENANT_ID, IngestionStatus.FAILED)).thenReturn(0L);
     }
 
@@ -133,7 +132,7 @@ class DocumentUploadControllerTest {
             .build();
         setId(saved, docId);
 
-        when(documentStorageService.store(any(), any(), any())).thenReturn(saved.getStorageKey());
+        when(documentStorageService.store(any(), any(), any(), anyLong())).thenReturn(saved.getStorageKey());
         when(documentStorageService.storageType()).thenReturn("S3");
         when(documentRepository.existsByFileHashAndTenantIdAndStatus(any(), any(), any())).thenReturn(false);
         when(documentRepository.findByFileHashAndTenantId(any(), any())).thenReturn(Optional.empty());
@@ -151,7 +150,8 @@ class DocumentUploadControllerTest {
 
     @Test
     void getAllDocuments_admin_returns200WithList() throws Exception {
-        when(documentRepository.findByTenantId(TENANT_ID)).thenReturn(List.of());
+        when(documentRepository.searchByTenantId(eq(TENANT_ID), any(), any()))
+            .thenReturn(new org.springframework.data.domain.PageImpl<>(List.of()));
 
         mockMvc.perform(get("/api/documents")
                 .with(user("admin").roles("ADMIN")))
@@ -160,7 +160,7 @@ class DocumentUploadControllerTest {
 
     @Test
     void upload_duplicateDocument_returns409() throws Exception {
-        when(documentStorageService.store(any(), any(), any())).thenReturn("documents/" + TENANT_ID + "/dup.pdf");
+        when(documentStorageService.store(any(), any(), any(), anyLong())).thenReturn("documents/" + TENANT_ID + "/dup.pdf");
         when(documentRepository.existsByFileHashAndTenantIdAndStatus(any(), any(), any())).thenReturn(true);
 
         mockMvc.perform(multipart("/api/documents/upload")

@@ -14,6 +14,8 @@ public interface GroupRepository extends JpaRepository<Group, UUID> {
 
     List<Group> findByTenantId(UUID tenantId);
 
+    List<Group> findByTenantIdAndNameContainingIgnoreCase(UUID tenantId, String name);
+
     Optional<Group> findByIdAndTenantId(UUID id, UUID tenantId);
 
     boolean existsByTenantIdAndName(UUID tenantId, String name);

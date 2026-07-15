@@ -1,4 +1,5 @@
-import React, { Suspense, lazy, useState } from 'react';
+import { Suspense, lazy, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Popover, PopoverButton, PopoverPanel, Transition } from '@headlessui/react';
 import { Filter, X, ChevronDown, GitCompare } from 'lucide-react';
 import { ProductEntry } from '../../types';
@@ -22,28 +23,31 @@ interface ScopeChipProps {
  */
 export default function ScopeChip({ product, version, onChange }: ScopeChipProps) {
   const { token } = useAuth();
-  const [products, setProducts] = useState<ProductEntry[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(false);
   const [compareTarget, setCompareTarget] = useState<ProductEntry | null>(null);
+  const [open, setOpen] = useState(false);
 
   const isPinned = !!(product || version);
   const label = isPinned ? `${product ?? 'Any product'}${version ? ` ${version}` : ''}` : 'All my documents';
 
-  const loadProducts = () => {
-    if (products.length > 0 || !token) return;
-    setLoading(true);
-    setError(false);
-    fetchAccessibleProducts(token)
-      .then(setProducts)
-      .catch(() => setError(true))
-      .finally(() => setLoading(false));
-  };
+  // Refetches every time the popover opens (not just once per mount) — a newly-ingested document
+  // or version must show up without a full page reload. `enabled: open` + staleTime 0 means react-
+  // query refetches on every open, but dedupes concurrent opens/renders instead of firing a fresh
+  // network call each time (the plain-fetch version this replaced always fired one per open).
+  const { data: products = [], isLoading: loading, isError: error } = useQuery({
+    queryKey: ['accessible-products'],
+    queryFn: () => fetchAccessibleProducts(token!),
+    enabled: open && !!token,
+    staleTime: 0,
+  });
 
   return (
     <>
     <Popover className="relative flex-shrink-0">
-      {({ close }) => {
+      {({ close, open: panelOpen }) => {
+        // Headless UI owns the panel's real open/closed state (outside-click, Esc, selecting an
+        // option via close() all change it) — mirror it into local state so the query's `enabled`
+        // flag stays in sync with reality instead of drifting from a separately-tracked toggle.
+        if (panelOpen !== open) setOpen(panelOpen);
         const select = (p: string | undefined, v: string | undefined) => {
           onChange(p, v);
           close();
@@ -51,7 +55,6 @@ export default function ScopeChip({ product, version, onChange }: ScopeChipProps
         return (
           <>
             <PopoverButton
-              onClick={loadProducts}
               className={cn(
                 'flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg transition-colors border focus:outline-none',
                 isPinned

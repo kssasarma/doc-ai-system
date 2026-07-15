@@ -1,12 +1,17 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import { useAuth } from '../../context/AuthContext';
-import { DocumentInfo, IngestionStatus, TenantUser, Group } from '../../types';
-import { fetchDocuments, fetchIngestionStatus, uploadDocument, retriggerDocument, reprocessFailedDocuments, getDocumentDownloadUrl } from '../../services/adminService';
-import { getTenantUsers } from '../../services/tenantService';
-import { listGroups } from '../../services/groupService';
+import { DocumentInfo } from '../../types';
+import {
+  fetchDocuments, fetchIngestionStatus, uploadDocument, retriggerDocument,
+  reprocessFailedDocuments, getDocumentDownloadUrl, deleteDocument,
+} from '../../services/adminService';
 import DocumentAccessManager from './DocumentAccessManager';
-import { Upload, RefreshCw, RotateCcw, Download, AlertCircle, CheckCircle, Clock, XCircle, Lock, X, FileText } from 'lucide-react';
+import {
+  Upload, RefreshCw, RotateCcw, Download, AlertCircle, CheckCircle, Clock, XCircle,
+  Lock, X, FileText, Search, ChevronLeft, ChevronRight, ChevronDown, Trash2, Star,
+} from 'lucide-react';
 import { fadeInUp, staggerContainer } from '../../lib/motion';
 import { cn } from '../../lib/cn';
 import PageHeader from '../ui/PageHeader';
@@ -19,6 +24,7 @@ import EmptyState from '../ui/EmptyState';
 import { SkeletonRow } from '../ui/Skeleton';
 import Modal, { ModalBody } from '../ui/Modal';
 import { useToast } from '../ui/Toast';
+import { useConfirm } from '../ui/ConfirmDialog';
 
 const STATUS_ICONS: Record<string, React.ReactNode> = {
   COMPLETED: <CheckCircle className="w-4 h-4" />,
@@ -34,13 +40,13 @@ const STATUS_BADGE: Record<string, 'success' | 'primary' | 'warning' | 'danger'>
   FAILED: 'danger',
 };
 
+const PAGE_SIZE = 50;
+
 export default function DocumentsTab() {
-  const { token, user } = useAuth();
+  const { token } = useAuth();
   const toast = useToast();
-  const [documents, setDocuments] = useState<DocumentInfo[]>([]);
-  const [status, setStatus] = useState<IngestionStatus | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState('');
+  const confirm = useConfirm();
+  const queryClient = useQueryClient();
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [product, setProduct] = useState('');
   const [version, setVersion] = useState('');
@@ -48,42 +54,81 @@ export default function DocumentsTab() {
   const [isUploading, setIsUploading] = useState(false);
   const [isBulkReprocessing, setIsBulkReprocessing] = useState(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [tenantUsers, setTenantUsers] = useState<TenantUser[]>([]);
-  const [groups, setGroups] = useState<Group[]>([]);
   const [justUploaded, setJustUploaded] = useState<DocumentInfo | null>(null);
   const [managingDoc, setManagingDoc] = useState<DocumentInfo | null>(null);
 
-  const loadData = useCallback(async () => {
-    if (!token) return;
-    setError('');
-    try {
-      const [docs, stat] = await Promise.all([fetchDocuments(token), fetchIngestionStatus(token)]);
-      setDocuments(docs);
-      setStatus(stat);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load data');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [token]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
+  const [page, setPage] = useState(0);
+  const [collapsedProducts, setCollapsedProducts] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    loadData();
-    const interval = setInterval(loadData, 10000);
-    return () => clearInterval(interval);
-  }, [loadData]);
+    const handle = setTimeout(() => { setDebouncedQuery(searchQuery.trim()); setPage(0); }, 300);
+    return () => clearTimeout(handle);
+  }, [searchQuery]);
 
-  useEffect(() => {
-    if (!token || !user?.tenantId) return;
-    getTenantUsers(token, user.tenantId).then(setTenantUsers).catch(() => {});
-  }, [token, user?.tenantId]);
+  const documentsQuery = useQuery({
+    queryKey: ['documents', debouncedQuery, page],
+    queryFn: () => fetchDocuments(token!, { q: debouncedQuery || undefined, page, size: PAGE_SIZE }),
+    enabled: !!token,
+    // Only keep polling while something is actually in flight — an all-COMPLETED/FAILED corpus
+    // has nothing left to watch, and the previous unconditional 10s interval kept hitting the
+    // API forever even on an admin's idle tab. Also stops polling when the tab isn't visible.
+    refetchInterval: (query) => {
+      if (document.visibilityState !== 'visible') return false;
+      const docs = query.state.data?.content;
+      const stillWorking = docs?.some(d => d.status === 'PROCESSING' || d.status === 'PENDING');
+      return stillWorking ? 10000 : false;
+    },
+  });
+  const statusQuery = useQuery({
+    queryKey: ['ingestion-status'],
+    queryFn: () => fetchIngestionStatus(token!),
+    enabled: !!token,
+    refetchInterval: () => (documentsQuery.data?.content.some(d => d.status === 'PROCESSING' || d.status === 'PENDING') ? 10000 : false),
+  });
 
-  useEffect(() => {
-    if (!token) return;
-    listGroups(token).then(setGroups).catch(() => {});
-  }, [token]);
+  const documents = documentsQuery.data?.content ?? [];
+  const totalPages = documentsQuery.data?.totalPages ?? 0;
+  const totalElements = documentsQuery.data?.totalElements ?? 0;
+  const status = statusQuery.data ?? null;
+  const isLoading = documentsQuery.isLoading;
+  const error = documentsQuery.isError ? 'Failed to load data' : '';
+
+  // Grouped by product for display — within the current page only (pagination and "group by
+  // product" are in some tension at a page boundary, but that's an acceptable trade at the scale
+  // this backs). "Latest" is the highest version per product group by natural/numeric string
+  // comparison, best-effort within what's currently loaded.
+  const groups = useMemo(() => {
+    const byProduct = new Map<string, DocumentInfo[]>();
+    documents.forEach(doc => {
+      const list = byProduct.get(doc.product) ?? [];
+      list.push(doc);
+      byProduct.set(doc.product, list);
+    });
+    return Array.from(byProduct.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([productName, docs]) => {
+        const sorted = [...docs].sort((a, b) => b.version.localeCompare(a.version, undefined, { numeric: true }));
+        return { product: productName, docs: sorted, latestVersion: sorted[0]?.version };
+      });
+  }, [documents]);
+
+  const loadData = () => {
+    queryClient.invalidateQueries({ queryKey: ['documents'] });
+    queryClient.invalidateQueries({ queryKey: ['ingestion-status'] });
+  };
+
+  const toggleCollapsed = (productName: string) => {
+    setCollapsedProducts(prev => {
+      const next = new Set(prev);
+      if (next.has(productName)) next.delete(productName); else next.add(productName);
+      return next;
+    });
+  };
 
   const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -143,6 +188,27 @@ export default function DocumentsTab() {
       toast.error(e instanceof Error ? e.message : 'Could not get download link.');
     } finally {
       setDownloadingId(null);
+    }
+  };
+
+  const handleDelete = async (doc: DocumentInfo) => {
+    if (!token) return;
+    const confirmed = await confirm({
+      title: 'Delete document',
+      message: `Delete "${doc.documentName}"? This removes it and all its chunks permanently.`,
+      confirmLabel: 'Delete',
+      danger: true,
+    });
+    if (!confirmed) return;
+    setDeletingId(doc.id);
+    try {
+      await deleteDocument(token, doc.id);
+      loadData();
+      toast.success(`Deleted "${doc.documentName}"`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Delete failed.');
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -206,7 +272,7 @@ export default function DocumentsTab() {
                   </div>
                   <IconButton label="Dismiss" variant="ghost" size="sm" onClick={() => setJustUploaded(null)}><X size={15} /></IconButton>
                 </div>
-                <DocumentAccessManager token={token!} documentId={justUploaded.id} tenantUsers={tenantUsers} groups={groups} />
+                <DocumentAccessManager token={token!} documentId={justUploaded.id} />
               </motion.div>
             )}
           </CardBody>
@@ -214,7 +280,7 @@ export default function DocumentsTab() {
 
         {/* Document list */}
         <Card>
-          <CardHeader className="flex items-center justify-between gap-2">
+          <CardHeader className="flex items-center justify-between gap-2 flex-wrap">
             <h2 className="text-base font-semibold text-foreground">Documents</h2>
             <div className="flex items-center gap-2">
               {!!status?.failed && (
@@ -231,19 +297,32 @@ export default function DocumentsTab() {
               <Button variant="ghost" size="sm" onClick={loadData} leftIcon={<RefreshCw className="w-3.5 h-3.5" />}>Refresh</Button>
             </div>
           </CardHeader>
+          <div className="px-4 pt-4">
+            <div className="relative">
+              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+              <Input
+                type="text"
+                aria-label="Search documents"
+                placeholder="Search by document name or product…"
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                className="pl-9"
+              />
+            </div>
+          </div>
           {isLoading ? (
-            <div className="divide-y divide-border">{[0, 1, 2].map(i => <SkeletonRow key={i} columns={5} />)}</div>
+            <div className="divide-y divide-border mt-4">{[0, 1, 2].map(i => <SkeletonRow key={i} columns={5} />)}</div>
           ) : error ? (
             <div className="p-6 text-center text-danger flex items-center justify-center gap-2"><AlertCircle className="w-5 h-5" />{error}</div>
           ) : documents.length === 0 ? (
-            <EmptyState icon={FileText} title="No documents yet" description="Upload your first document above to get started." />
+            <EmptyState icon={FileText} title="No documents found" description={debouncedQuery ? 'Try a different search term.' : 'Upload your first document above to get started.'} />
           ) : (
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto mt-2">
               <table className="w-full text-sm">
                 <thead className="bg-muted text-muted-foreground text-xs uppercase tracking-wide">
                   <tr>
                     <th className="px-6 py-3 text-left">Document</th>
-                    <th className="px-6 py-3 text-left">Product / Version</th>
+                    <th className="px-6 py-3 text-left">Version</th>
                     <th className="px-6 py-3 text-left">Status</th>
                     <th className="px-6 py-3 text-right">Chunks</th>
                     <th className="px-6 py-3 text-left">Created</th>
@@ -251,43 +330,94 @@ export default function DocumentsTab() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {documents.map(doc => (
-                    <tr key={doc.id} className="hover:bg-surface-hover transition-colors">
-                      <td className="px-6 py-4">
-                        <div className="font-medium text-foreground">{doc.documentName}</div>
-                        {doc.errorMessage && <div className="text-xs text-danger mt-0.5 max-w-xs truncate" title={doc.errorMessage}>{doc.errorMessage}</div>}
-                      </td>
-                      <td className="px-6 py-4 text-muted-foreground">{doc.product} <span className="text-muted-foreground/60">v</span>{doc.version}</td>
-                      <td className="px-6 py-4">
-                        <Badge variant={STATUS_BADGE[doc.status] || 'neutral'}>
-                          {STATUS_ICONS[doc.status]}{doc.status}
-                        </Badge>
-                      </td>
-                      <td className="px-6 py-4 text-right text-muted-foreground">{doc.chunkCount ?? '—'}</td>
-                      <td className="px-6 py-4 text-muted-foreground text-xs">{doc.createdAt ? new Date(doc.createdAt).toLocaleString() : '—'}</td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center justify-center gap-2">
-                          <Button variant="secondary" size="sm" onClick={() => setManagingDoc(doc)} leftIcon={<Lock className="w-3.5 h-3.5" />}>Access</Button>
-                          {(doc.status === 'FAILED' || doc.status === 'PENDING') && (
-                            <Button variant="outline" size="sm" onClick={() => handleRetrigger(doc)} leftIcon={<RefreshCw className="w-3.5 h-3.5" />}>Retry</Button>
-                          )}
-                          {doc.status !== 'COMPLETED' && (
-                            <IconButton
-                              label="Download original file"
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleDownload(doc)}
-                              disabled={downloadingId === doc.id}
+                  {groups.map(group => {
+                    const collapsed = collapsedProducts.has(group.product);
+                    return (
+                      <React.Fragment key={group.product}>
+                        <tr className="bg-muted/50">
+                          <td colSpan={6} className="px-6 py-2">
+                            <button
+                              onClick={() => toggleCollapsed(group.product)}
+                              className="flex items-center gap-1.5 text-xs font-semibold text-foreground uppercase tracking-wide"
                             >
-                              <Download className="w-3.5 h-3.5" />
-                            </IconButton>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                              {collapsed ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
+                              {group.product}
+                              <span className="font-normal normal-case text-muted-foreground">({group.docs.length})</span>
+                            </button>
+                          </td>
+                        </tr>
+                        {!collapsed && group.docs.map(doc => (
+                          <tr key={doc.id} className="hover:bg-surface-hover transition-colors">
+                            <td className="px-6 py-4">
+                              <div className="font-medium text-foreground">{doc.documentName}</div>
+                              {doc.errorMessage && <div className="text-xs text-danger mt-0.5 max-w-xs truncate" title={doc.errorMessage}>{doc.errorMessage}</div>}
+                            </td>
+                            <td className="px-6 py-4">
+                              <div className="flex items-center gap-1.5">
+                                <Badge variant="neutral">{doc.version}</Badge>
+                                {doc.version === group.latestVersion && (
+                                  <span title="Latest version for this product" className="text-warning"><Star size={12} fill="currentColor" /></span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-6 py-4">
+                              <Badge variant={STATUS_BADGE[doc.status] || 'neutral'}>
+                                {STATUS_ICONS[doc.status]}{doc.status}
+                              </Badge>
+                            </td>
+                            <td className="px-6 py-4 text-right text-muted-foreground">{doc.chunkCount ?? '—'}</td>
+                            <td className="px-6 py-4 text-muted-foreground text-xs">{doc.createdAt ? new Date(doc.createdAt).toLocaleString() : '—'}</td>
+                            <td className="px-6 py-4">
+                              <div className="flex items-center justify-center gap-1.5">
+                                <Button variant="secondary" size="sm" onClick={() => setManagingDoc(doc)} leftIcon={<Lock className="w-3.5 h-3.5" />}>Access</Button>
+                                {(doc.status === 'FAILED' || doc.status === 'PENDING') && (
+                                  <IconButton label="Retry" variant="ghost" size="sm" onClick={() => handleRetrigger(doc)}>
+                                    <RefreshCw className="w-3.5 h-3.5" />
+                                  </IconButton>
+                                )}
+                                <IconButton
+                                  label="Download original file"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleDownload(doc)}
+                                  disabled={downloadingId === doc.id}
+                                >
+                                  <Download className="w-3.5 h-3.5" />
+                                </IconButton>
+                                <IconButton
+                                  label="Delete document"
+                                  variant="danger"
+                                  size="sm"
+                                  onClick={() => handleDelete(doc)}
+                                  disabled={deletingId === doc.id}
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </IconButton>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </React.Fragment>
+                    );
+                  })}
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {totalPages > 1 && (
+            <div className="px-4 py-3 border-t border-border flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">
+                Page {page + 1} of {totalPages} ({totalElements} total)
+              </span>
+              <div className="flex items-center gap-2">
+                <IconButton label="Previous page" variant="ghost" size="sm" onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0}>
+                  <ChevronLeft size={16} />
+                </IconButton>
+                <IconButton label="Next page" variant="ghost" size="sm" onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1}>
+                  <ChevronRight size={16} />
+                </IconButton>
+              </div>
             </div>
           )}
         </Card>
@@ -296,7 +426,7 @@ export default function DocumentsTab() {
       <Modal open={!!managingDoc} onClose={() => setManagingDoc(null)} title={managingDoc ? `Access — ${managingDoc.documentName}` : ''} icon={<Lock size={15} className="text-primary" />}>
         {managingDoc && (
           <ModalBody>
-            <DocumentAccessManager token={token!} documentId={managingDoc.id} tenantUsers={tenantUsers} groups={groups} />
+            <DocumentAccessManager token={token!} documentId={managingDoc.id} />
           </ModalBody>
         )}
       </Modal>

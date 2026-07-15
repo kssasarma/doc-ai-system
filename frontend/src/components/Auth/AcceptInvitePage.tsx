@@ -4,6 +4,7 @@ import { acceptInvite } from '../../services/invitationService';
 import { useAuth } from '../../context/AuthContext';
 import AuthLayout from './AuthLayout';
 import Input from '../ui/Input';
+import PasswordInput from '../ui/PasswordInput';
 import Button from '../ui/Button';
 
 export default function AcceptInvitePage() {
@@ -62,13 +63,13 @@ export default function AcceptInvitePage() {
           label="Username" type="text" value={username} onChange={e => setUsername(e.target.value)}
           required minLength={3} maxLength={50} autoFocus placeholder="Choose a username, or your existing one"
         />
-        <Input
-          label="Password" type="password" value={password} onChange={e => setPassword(e.target.value)}
-          required minLength={6} placeholder="At least 6 characters, or your existing password"
+        <PasswordInput
+          label="Password" value={password} onChange={e => setPassword(e.target.value)}
+          required minLength={10} showStrength placeholder="At least 10 characters, or your existing password"
         />
-        <Input
-          label="Confirm password" type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)}
-          required minLength={6} placeholder="Re-enter password"
+        <PasswordInput
+          label="Confirm password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)}
+          required minLength={10} placeholder="Re-enter password"
         />
 
         {error && <div className="text-sm text-danger bg-danger/10 rounded-lg px-3 py-2">{error}</div>}

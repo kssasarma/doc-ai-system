@@ -106,8 +106,8 @@ export const fetchOverview = (token: string) =>
 export const fetchDailyStats = (token: string, days = 30) =>
   get<DailyStat[]>(`/api/admin/analytics/daily?days=${days}`, token);
 
-export const fetchTopQuestions = (token: string, limit = 10) =>
-  get<TopQuestion[]>(`/api/admin/analytics/top-questions?limit=${limit}`, token);
+export const fetchTopQuestions = (token: string, limit = 10, days = 30) =>
+  get<TopQuestion[]>(`/api/admin/analytics/top-questions?limit=${limit}&days=${days}`, token);
 
 export const fetchProductCoverage = (token: string) =>
   get<ProductCoverage[]>('/api/admin/analytics/product-coverage', token);
@@ -115,8 +115,8 @@ export const fetchProductCoverage = (token: string) =>
 export const fetchUserEngagement = (token: string) =>
   get<UserEngagement[]>('/api/admin/analytics/user-engagement', token);
 
-export const fetchCostSummary = (token: string) =>
-  get<CostSummary>('/api/admin/analytics/cost', token);
+export const fetchCostSummary = (token: string, days = 30) =>
+  get<CostSummary>(`/api/admin/analytics/cost?days=${days}`, token);
 
 export const fetchDocumentCoverage = (token: string) =>
   get<DocumentCoverage[]>('/api/admin/analytics/document-coverage', token);

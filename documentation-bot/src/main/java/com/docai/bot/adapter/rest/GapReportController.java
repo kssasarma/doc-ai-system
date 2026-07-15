@@ -9,6 +9,7 @@ import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -27,6 +28,7 @@ import lombok.RequiredArgsConstructor;
 @RestController
 @RequestMapping("/api/admin/gap-reports")
 @RequiredArgsConstructor
+@PreAuthorize("hasRole('ADMIN')")
 public class GapReportController {
 
     private final DocumentationGapReportRepository reportRepository;
@@ -36,8 +38,6 @@ public class GapReportController {
     public ResponseEntity<List<DocumentationGapReport>> list(
             @RequestParam(required = false) String product,
             @AuthenticationPrincipal UserPrincipal principal) {
-
-        if (!principal.isAdmin()) return ResponseEntity.status(403).build();
 
         List<DocumentationGapReport> reports = product != null
             ? reportRepository.findByTenantIdAndProductOrderByReportPeriodEndDesc(principal.tenantId(), product)
@@ -51,7 +51,6 @@ public class GapReportController {
             @PathVariable UUID id,
             @AuthenticationPrincipal UserPrincipal principal) {
 
-        if (!principal.isAdmin()) return ResponseEntity.status(403).build();
         return reportRepository.findByIdAndTenantId(id, principal.tenantId())
             .map(ResponseEntity::ok)
             .orElse(ResponseEntity.notFound().build());
@@ -63,8 +62,6 @@ public class GapReportController {
             @RequestParam(required = false) String product,
             @RequestParam(required = false) String version,
             @AuthenticationPrincipal UserPrincipal principal) {
-
-        if (!principal.isAdmin()) return ResponseEntity.status(403).build();
 
         DocumentationGapReport report = gapService.generateReport(principal.tenantId(), product, version);
         if (report == null) {
@@ -78,8 +75,6 @@ public class GapReportController {
     public ResponseEntity<byte[]> export(
             @PathVariable UUID id,
             @AuthenticationPrincipal UserPrincipal principal) {
-
-        if (!principal.isAdmin()) return ResponseEntity.status(403).build();
 
         return reportRepository.findByIdAndTenantId(id, principal.tenantId())
             .map(report -> {

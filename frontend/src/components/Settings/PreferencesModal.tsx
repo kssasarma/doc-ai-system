@@ -8,6 +8,7 @@ import Modal, { ModalBody, ModalFooter } from '../ui/Modal';
 import Button from '../ui/Button';
 import Spinner from '../ui/Spinner';
 import { useToast } from '../ui/Toast';
+import { useConfirm } from '../ui/ConfirmDialog';
 import { cn } from '../../lib/cn';
 
 interface PreferencesModalProps {
@@ -35,6 +36,7 @@ const optionButtonClasses = (active: boolean) =>
 const PreferencesModal: React.FC<PreferencesModalProps> = ({ onClose }) => {
   const { token } = useAuth();
   const toast = useToast();
+  const confirm = useConfirm();
   const [prefs, setPrefs] = useState<UserPreference>({
     verbosity: 'BALANCED',
     answerFormat: 'PROSE',
@@ -79,9 +81,13 @@ const PreferencesModal: React.FC<PreferencesModalProps> = ({ onClose }) => {
 
   const handleRequestDeletion = async () => {
     if (!token) return;
-    if (!window.confirm(
-      'Request deletion of your account and personal data? An admin will process this request; it cannot be undone once completed.'
-    )) return;
+    const confirmed = await confirm({
+      title: 'Request account deletion',
+      message: 'Request deletion of your account and personal data? An admin will process this request; it cannot be undone once completed.',
+      confirmLabel: 'Request deletion',
+      danger: true,
+    });
+    if (!confirmed) return;
     setIsRequestingDeletion(true);
     const res = await requestAccountDeletion(token);
     if (res.success) {

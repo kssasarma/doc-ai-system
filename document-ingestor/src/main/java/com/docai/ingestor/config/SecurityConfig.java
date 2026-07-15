@@ -28,6 +28,8 @@ public class SecurityConfig {
 
     private final JwtTokenFilter jwtTokenFilter;
     private final RequestCorrelationFilter requestCorrelationFilter;
+    private final WebhookHmacAuthFilter webhookHmacAuthFilter;
+    private final InternalServiceAuthFilter internalServiceAuthFilter;
 
     @Value("${app.cors.allowed-origins:http://localhost:5173,http://localhost:3000}")
     private String allowedOrigins;
@@ -35,7 +37,9 @@ public class SecurityConfig {
     private static final String[] PUBLIC_PATHS = {
         "/actuator/health",
         "/actuator/info",
-        "/actuator/prometheus",
+        // /actuator/prometheus deliberately NOT listed here — same reasoning as
+        // documentation-bot's SecurityConfig: an unauthenticated scrape target leaks internal
+        // metrics/topology. Requires the normal ADMIN JWT (or webhook HMAC) like any other route.
         "/v3/api-docs/**",
         "/swagger-ui/**",
         "/swagger-ui.html"
@@ -55,7 +59,9 @@ public class SecurityConfig {
                 .anyRequest().hasRole("ADMIN")
             )
             .addFilterBefore(jwtTokenFilter, UsernamePasswordAuthenticationFilter.class)
-            .addFilterBefore(requestCorrelationFilter, JwtTokenFilter.class)
+            .addFilterBefore(webhookHmacAuthFilter, JwtTokenFilter.class)
+            .addFilterBefore(internalServiceAuthFilter, JwtTokenFilter.class)
+            .addFilterBefore(requestCorrelationFilter, WebhookHmacAuthFilter.class)
             .build();
     }
 

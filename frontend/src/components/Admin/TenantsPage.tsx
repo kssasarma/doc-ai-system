@@ -3,7 +3,7 @@ import { Building2, Plus, Save, ChevronDown, ChevronUp, AlertCircle } from 'luci
 import { motion } from 'framer-motion';
 import {
   listTenants, createTenant, updateTenant,
-  getTenantLLMConfig, updateTenantLLMConfig,
+  getTenantLLMConfig,
   getRetentionPolicy, updateRetentionPolicy,
   type Tenant, type TenantLLMConfig, type DataRetentionPolicy,
 } from '../../services/tenantService';
@@ -21,6 +21,7 @@ import Select from '../ui/Select';
 import { useToast } from '../ui/Toast';
 import { fadeInUp, staggerContainer } from '../../lib/motion';
 import { cn } from '../../lib/cn';
+import LlmConfigForm from './LlmConfigForm';
 
 const EMPTY_FORM = { name: '', slug: '', plan: 'FREE', maxUsers: 10, maxDocuments: 100, adminEmail: '' };
 
@@ -154,18 +155,6 @@ function TenantCard({ tenant, token, expanded, panel, onToggle, onPanelChange, o
     }
   }, [expanded, panel]);
 
-  const saveLLM = async () => {
-    if (!llmConfig) return;
-    setSaving(true);
-    try {
-      const updated = await updateTenantLLMConfig(token, tenant.id, llmConfig);
-      setLlmConfig(updated);
-      toast.success('LLM config saved.');
-    } finally {
-      setSaving(false);
-    }
-  };
-
   const saveRetention = async () => {
     if (!retention) return;
     setSaving(true);
@@ -260,34 +249,7 @@ function TenantCard({ tenant, token, expanded, panel, onToggle, onPanelChange, o
                 {!llmConfig ? (
                   <div className="text-center py-4"><Spinner size="md" /></div>
                 ) : (
-                  <>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      <Select label="Chat Provider" value={llmConfig.chatProvider}
-                        onChange={e => setLlmConfig(c => c ? { ...c, chatProvider: e.target.value } : c)}>
-                        <option value="openai">OpenAI</option>
-                        <option value="anthropic">Anthropic</option>
-                      </Select>
-                      <Input label="Chat Model" value={llmConfig.chatModel}
-                        onChange={e => setLlmConfig(c => c ? { ...c, chatModel: e.target.value } : c)} />
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <input type="checkbox" id="routing" checked={llmConfig.routingEnabled}
-                        className="h-4 w-4 rounded border-border accent-primary"
-                        onChange={e => setLlmConfig(c => c ? { ...c, routingEnabled: e.target.checked } : c)} />
-                      <label htmlFor="routing" className="text-sm text-foreground">Enable smart routing (simple → cheap model, complex → powerful model)</label>
-                    </div>
-                    {llmConfig.routingEnabled && (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        <Input label="Simple queries model" value={llmConfig.simpleModel}
-                          onChange={e => setLlmConfig(c => c ? { ...c, simpleModel: e.target.value } : c)} />
-                        <Input label="Complex queries model" value={llmConfig.complexModel}
-                          onChange={e => setLlmConfig(c => c ? { ...c, complexModel: e.target.value } : c)} />
-                      </div>
-                    )}
-                    <Button variant="primary" size="sm" onClick={saveLLM} disabled={saving} loading={saving} leftIcon={<Save size={12} />}>
-                      Save LLM Config
-                    </Button>
-                  </>
+                  <LlmConfigForm token={token} tenantId={tenant.id} config={llmConfig} onSaved={setLlmConfig} size="sm" />
                 )}
               </div>
             )}

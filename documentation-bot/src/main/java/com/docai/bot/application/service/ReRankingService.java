@@ -6,7 +6,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -39,7 +38,7 @@ import lombok.extern.slf4j.Slf4j;
 @Service
 public class ReRankingService {
 
-    private final ChatClient.Builder chatClientBuilder;
+    private final LLMRouter llmRouter;
     private final CircuitBreaker llmCircuitBreaker;
     private final Bulkhead llmBulkhead;
 
@@ -49,10 +48,10 @@ public class ReRankingService {
     @Value("${bot.rerank.llm-enabled:true}")
     private boolean llmRerankEnabled;
 
-    public ReRankingService(ChatClient.Builder chatClientBuilder,
+    public ReRankingService(LLMRouter llmRouter,
                              @Qualifier("llmCircuitBreaker") CircuitBreaker llmCircuitBreaker,
                              @Qualifier("llmBulkhead") Bulkhead llmBulkhead) {
-        this.chatClientBuilder = chatClientBuilder;
+        this.llmRouter = llmRouter;
         this.llmCircuitBreaker = llmCircuitBreaker;
         this.llmBulkhead = llmBulkhead;
     }
@@ -100,7 +99,7 @@ public class ReRankingService {
         try {
             String response = llmBulkhead.executeSupplier(
                 () -> llmCircuitBreaker.executeSupplier(
-                    () -> chatClientBuilder.build().prompt().user(prompt).call().content()
+                    () -> llmRouter.chat(prompt, false)
                 )
             );
             return applyOrder(candidates, parseOrder(response, candidates.size()));

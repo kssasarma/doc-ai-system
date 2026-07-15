@@ -1,7 +1,8 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { useAuth } from '../../context/AuthContext';
 import { fetchAuditLog, AuditLogEntry } from '../../services/auditLogService';
+import { useTenantUsers } from '../../hooks/useTenantUsers';
 import { Shield, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Card } from '../ui/Card';
 import Badge, { BadgeProps } from '../ui/Badge';
@@ -10,6 +11,7 @@ import { SkeletonRow } from '../ui/Skeleton';
 import PageHeader from '../ui/PageHeader';
 import Select from '../ui/Select';
 import IconButton from '../ui/IconButton';
+import DateRangePicker from '../ui/DateRangePicker';
 import { fadeInUp, staggerContainer } from '../../lib/motion';
 
 const ACTION_VARIANTS: Record<string, BadgeProps['variant']> = {
@@ -46,12 +48,20 @@ export default function AuditLogTab() {
   const [totalElements, setTotalElements] = useState(0);
   const [page, setPage] = useState(0);
   const [actionFilter, setActionFilter] = useState('');
+  const [actorFilter, setActorFilter] = useState('');
+  const [days, setDays] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const load = useCallback(async (pg: number, action: string) => {
+  const { data: tenantUsers } = useTenantUsers({ size: 100 });
+
+  const since = useMemo(() => (
+    days != null ? new Date(Date.now() - days * 86_400_000).toISOString() : undefined
+  ), [days]);
+
+  const load = useCallback(async (pg: number, action: string, sinceParam: string | undefined, actorId: string) => {
     if (!token) return;
     setLoading(true);
-    const res = await fetchAuditLog(token, pg, 50, action || undefined);
+    const res = await fetchAuditLog(token, pg, 50, action || undefined, sinceParam, actorId || undefined);
     if (res.success && res.data) {
       setEntries(res.data.content);
       setTotalPages(res.data.totalPages);
@@ -60,7 +70,7 @@ export default function AuditLogTab() {
     setLoading(false);
   }, [token]);
 
-  useEffect(() => { load(page, actionFilter); }, [load, page, actionFilter]);
+  useEffect(() => { load(page, actionFilter, since, actorFilter); }, [load, page, actionFilter, since, actorFilter]);
 
   return (
     <motion.div variants={staggerContainer} initial="hidden" animate="visible" className="space-y-4">
@@ -71,9 +81,8 @@ export default function AuditLogTab() {
 
       {/* Filters */}
       <motion.div variants={fadeInUp}>
-        <Card className="p-4 flex items-center gap-3">
-          <Shield size={16} className="text-muted-foreground" />
-          <span className="text-sm font-medium text-muted-foreground">Filter by action:</span>
+        <Card className="p-4 flex items-center gap-3 flex-wrap">
+          <Shield size={16} className="text-muted-foreground flex-shrink-0" />
           <div className="w-52">
             <Select
               aria-label="Filter by action"
@@ -89,6 +98,19 @@ export default function AuditLogTab() {
               <option value="USER_ROLE_CHANGE">Role Change</option>
             </Select>
           </div>
+          <div className="w-52">
+            <Select
+              aria-label="Filter by actor"
+              value={actorFilter}
+              onChange={e => { setActorFilter(e.target.value); setPage(0); }}
+            >
+              <option value="">All actors</option>
+              {(tenantUsers?.content ?? []).map(u => (
+                <option key={u.userId} value={u.userId}>{u.username}</option>
+              ))}
+            </Select>
+          </div>
+          <DateRangePicker days={days} onChange={d => { setDays(d); setPage(0); }} allowAll />
           <span className="text-xs text-muted-foreground ml-auto">{totalElements.toLocaleString()} total entries</span>
         </Card>
       </motion.div>

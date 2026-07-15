@@ -7,6 +7,7 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -41,9 +42,11 @@ public class IntegrationToken {
     @Column(nullable = false, length = 30)
     private Provider provider;
 
+    @Convert(converter = EncryptedStringConverter.class)
     @Column(name = "access_token", nullable = false, columnDefinition = "TEXT")
     private String accessToken;
 
+    @Convert(converter = EncryptedStringConverter.class)
     @Column(name = "refresh_token", columnDefinition = "TEXT")
     private String refreshToken;
 

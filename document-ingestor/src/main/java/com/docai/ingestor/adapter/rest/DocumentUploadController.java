@@ -10,6 +10,7 @@ import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -18,15 +19,14 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
+import com.docai.ingestor.application.service.DocumentQuotaService;
 import com.docai.ingestor.application.service.DocumentStorageService;
 import com.docai.ingestor.application.service.FileHashing;
 import com.docai.ingestor.application.service.IngestionService;
 import com.docai.ingestor.config.TenantContext;
 import com.docai.ingestor.domain.entity.Document;
 import com.docai.ingestor.domain.entity.Document.IngestionStatus;
-import com.docai.ingestor.domain.entity.Tenant;
 import com.docai.ingestor.domain.repository.DocumentRepository;
-import com.docai.ingestor.domain.repository.TenantRepository;
 
 import lombok.Builder;
 import lombok.Data;
@@ -41,9 +41,9 @@ import lombok.extern.slf4j.Slf4j;
 public class DocumentUploadController {
 
     private final DocumentRepository documentRepository;
-    private final TenantRepository tenantRepository;
     private final IngestionService ingestionService;
     private final DocumentStorageService documentStorageService;
+    private final DocumentQuotaService documentQuotaService;
 
     // Must match exactly what DocumentParser has a real implementation for (PdfParser,
     // ChmParser, HtmlParser, PlainTextParser) — this allowlist previously only listed pdf/chm,
@@ -80,21 +80,14 @@ public class DocumentUploadController {
 
         try {
             UUID tenantId = TenantContext.get();
-
-            Tenant tenant = tenantRepository.findById(tenantId)
-                .orElseThrow(() -> new IllegalStateException("Tenant not found: " + tenantId));
-            long currentDocuments = documentRepository.countByTenantIdAndStatusNot(tenantId, IngestionStatus.FAILED);
-            if (currentDocuments >= tenant.getMaxDocuments()) {
-                return ResponseEntity.status(HttpStatus.CONFLICT).body(DocumentResponse.error(
-                    "This tenant has reached its plan limit of " + tenant.getMaxDocuments() + " documents"));
-            }
+            documentQuotaService.checkQuota(tenantId);
 
             // Hash while streaming straight into storage — the file never touches this
             // container's disk, not even transiently.
             String storageKey;
             String fileHash;
             try (DigestInputStream digestStream = FileHashing.wrap(file.getInputStream())) {
-                storageKey = documentStorageService.store(digestStream, originalFilename, tenantId.toString());
+                storageKey = documentStorageService.store(digestStream, originalFilename, tenantId.toString(), file.getSize());
                 fileHash = FileHashing.hexOf(digestStream.getMessageDigest());
             }
 
@@ -139,6 +132,8 @@ public class DocumentUploadController {
             log.info("Upload accepted: {} ({} v{})", docName, product, version);
             return ResponseEntity.accepted().body(DocumentResponse.of(document, "Processing started"));
 
+        } catch (com.docai.ingestor.application.service.TenantQuotaExceededException e) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(DocumentResponse.error(e.getMessage()));
         } catch (Exception e) {
             log.error("Upload processing error", e);
             return ResponseEntity.internalServerError()
@@ -170,10 +165,13 @@ public class DocumentUploadController {
         }
     }
 
-    /** A time-limited direct-download link for a document's original file. Only available for
-     * documents that still have one in storage — completed documents' source files are deleted
-     * once ingestion succeeds (see IngestionService), so there's nothing left to download for
-     * those; re-upload is the only way to get the original back. */
+    /** A time-limited direct-download link for a document's original file — ADMIN console use
+     * (e.g. the Documents tab). End-user "open citation" access goes through the bot's
+     * access-policy-gated proxy, which calls {@code InternalDocumentController} instead; this
+     * endpoint requires ADMIN (see class-level {@code @PreAuthorize}) so it isn't a substitute
+     * for that per-document ACL check. Only available for documents that still have a stored
+     * file — legacy documents ingested before source files were retained post-success, or ones
+     * whose file was otherwise cleaned up, have none; re-upload is the only way to get one back. */
     @GetMapping("/{id}/download-url")
     public ResponseEntity<DownloadUrlResponse> downloadUrl(@PathVariable UUID id) {
         UUID tenantId = TenantContext.get();
@@ -185,7 +183,7 @@ public class DocumentUploadController {
         }
         if (doc.getStorageKey() == null) {
             return ResponseEntity.status(HttpStatus.CONFLICT).body(DownloadUrlResponse.builder()
-                .error("This document's original file is no longer available — it was removed after successful processing. Re-upload to get a new copy.")
+                .error("This document's original file is not available for download. Re-upload to get a new copy.")
                 .build());
         }
         try {
@@ -229,10 +227,25 @@ public class DocumentUploadController {
     }
 
     @GetMapping
-    public ResponseEntity<List<DocumentResponse>> getAllDocuments() {
-        return ResponseEntity.ok(documentRepository.findByTenantId(TenantContext.get()).stream()
-            .map(doc -> DocumentResponse.of(doc, null))
-            .toList());
+    public ResponseEntity<org.springframework.data.domain.Page<DocumentResponse>> getAllDocuments(
+            @RequestParam(required = false) String q,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "50") int size) {
+        org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(page, size);
+        return ResponseEntity.ok(documentRepository.searchByTenantId(TenantContext.get(), q, pageable)
+            .map(doc -> DocumentResponse.of(doc, null)));
+    }
+
+    /** Removes a document outright — chunks and the stored source file are cleaned up alongside
+     * the row (see IngestionService#deleteDocument). Any status, not just FAILED/QUARANTINED. */
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> delete(@PathVariable UUID id) {
+        try {
+            ingestionService.deleteDocument(id, TenantContext.get());
+            return ResponseEntity.noContent().build();
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.notFound().build();
+        }
     }
 
     private String getExtension(String filename) {

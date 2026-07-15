@@ -2,6 +2,8 @@ package com.docai.bot.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -13,16 +15,10 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.test.util.ReflectionTestUtils;
-import org.springframework.ai.chat.client.ChatClient.CallResponseSpec;
-import org.springframework.ai.chat.client.ChatClient.ChatClientRequestSpec;
-import org.springframework.ai.chat.model.ChatResponse;
-import org.springframework.ai.chat.model.Generation;
-import org.springframework.ai.chat.metadata.ChatResponseMetadata;
-import org.springframework.ai.chat.metadata.Usage;
 
 import com.docai.bot.application.service.AnswerGenerationService;
+import com.docai.bot.application.service.LLMRouter;
 import com.docai.bot.domain.model.RetrievedChunk;
 
 import io.github.resilience4j.bulkhead.Bulkhead;
@@ -33,14 +29,7 @@ import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
 @ExtendWith(MockitoExtension.class)
 class AnswerGenerationServiceTest {
 
-    @Mock ChatClient.Builder chatClientBuilder;
-    @Mock ChatClient chatClient;
-    @Mock ChatClientRequestSpec requestSpec;
-    @Mock CallResponseSpec callSpec;
-    @Mock ChatResponse chatResponse;
-    @Mock Generation generation;
-    @Mock ChatResponseMetadata metadata;
-    @Mock Usage usage;
+    @Mock LLMRouter llmRouter;
 
     private AnswerGenerationService service;
 
@@ -48,7 +37,7 @@ class AnswerGenerationServiceTest {
     void setUp() {
         CircuitBreaker cb = CircuitBreaker.of("test", CircuitBreakerConfig.ofDefaults());
         Bulkhead bh = Bulkhead.of("test", BulkheadConfig.ofDefaults());
-        service = new AnswerGenerationService(chatClientBuilder, cb, bh);
+        service = new AnswerGenerationService(llmRouter, cb, bh);
         ReflectionTestUtils.setField(service, "minSimilarityThreshold", 0.55);
     }
 
@@ -91,7 +80,7 @@ class AnswerGenerationServiceTest {
 
         service.generateAnswer("question?", null, List.of(lowScoreChunk), "BALANCED", "PROSE");
 
-        verify(requestSpec).user(promptCaptor.capture());
+        verify(llmRouter).chatWithUsage(promptCaptor.capture(), anyBoolean());
         assertThat(promptCaptor.getValue()).contains("weak match");
     }
 
@@ -102,7 +91,7 @@ class AnswerGenerationServiceTest {
 
         service.generateAnswer("question?", null, List.of(highSimilarityChunk()), "BALANCED", "PROSE");
 
-        verify(requestSpec).user(promptCaptor.capture());
+        verify(llmRouter).chatWithUsage(promptCaptor.capture(), anyBoolean());
         assertThat(promptCaptor.getValue()).doesNotContain("weak match");
     }
 
@@ -145,7 +134,7 @@ class AnswerGenerationServiceTest {
         service.generateAnswer("question?", null, List.of(highSimilarityChunk()), "BALANCED", "PROSE",
             "case360", "14.2.0");
 
-        verify(requestSpec).user(promptCaptor.capture());
+        verify(llmRouter).chatWithUsage(promptCaptor.capture(), anyBoolean());
         assertThat(promptCaptor.getValue()).contains("case360").contains("14.2.0");
     }
 
@@ -156,7 +145,7 @@ class AnswerGenerationServiceTest {
 
         service.generateAnswer("question?", null, List.of(highSimilarityChunk()), "BALANCED", "PROSE", null, null);
 
-        verify(requestSpec).user(promptCaptor.capture());
+        verify(llmRouter).chatWithUsage(promptCaptor.capture(), anyBoolean());
         assertThat(promptCaptor.getValue()).doesNotContain("The user is asking about");
     }
 
@@ -174,7 +163,7 @@ class AnswerGenerationServiceTest {
 
         service.generateAnswer("question?", null, List.of(v1, v2), "BALANCED", "PROSE", "case360", null);
 
-        verify(requestSpec).user(promptCaptor.capture());
+        verify(llmRouter).chatWithUsage(promptCaptor.capture(), anyBoolean());
         assertThat(promptCaptor.getValue()).contains("more than one version");
     }
 
@@ -192,7 +181,7 @@ class AnswerGenerationServiceTest {
 
         service.generateAnswer("question?", null, List.of(chunk1, chunk2), "BALANCED", "PROSE", "case360", "14.2.0");
 
-        verify(requestSpec).user(promptCaptor.capture());
+        verify(llmRouter).chatWithUsage(promptCaptor.capture(), anyBoolean());
         assertThat(promptCaptor.getValue()).doesNotContain("more than one version");
     }
 
@@ -208,7 +197,8 @@ class AnswerGenerationServiceTest {
 
     @Test
     void generateSessionTitle_returnsLlmTitle() {
-        stubSimpleLlmResponse("Installing Case360 on Windows Server");
+        when(llmRouter.chat(anyString(), anyBoolean()))
+            .thenReturn("Installing Case360 on Windows Server");
 
         String title = service.generateSessionTitle("How do I install Case360?", "Step 1: ...");
 
@@ -218,26 +208,8 @@ class AnswerGenerationServiceTest {
     // ── helpers ───────────────────────────────────────────────────────────────
 
     private void stubLlmResponse(String content) {
-        when(chatClientBuilder.build()).thenReturn(chatClient);
-        when(chatClient.prompt()).thenReturn(requestSpec);
-        when(requestSpec.user(any(String.class))).thenReturn(requestSpec);
-        when(requestSpec.call()).thenReturn(callSpec);
-        when(callSpec.chatResponse()).thenReturn(chatResponse);
-        when(chatResponse.getResult()).thenReturn(generation);
-        when(generation.getOutput()).thenReturn(
-            new org.springframework.ai.chat.messages.AssistantMessage(content));
-        when(chatResponse.getMetadata()).thenReturn(metadata);
-        when(metadata.getUsage()).thenReturn(usage);
-        when(usage.getPromptTokens()).thenReturn(100);
-        when(usage.getCompletionTokens()).thenReturn(50);
-    }
-
-    private void stubSimpleLlmResponse(String content) {
-        when(chatClientBuilder.build()).thenReturn(chatClient);
-        when(chatClient.prompt()).thenReturn(requestSpec);
-        when(requestSpec.user(any(String.class))).thenReturn(requestSpec);
-        when(requestSpec.call()).thenReturn(callSpec);
-        when(callSpec.content()).thenReturn(content);
+        when(llmRouter.chatWithUsage(any(String.class), anyBoolean()))
+            .thenReturn(new LLMRouter.LlmChatResult(content, 100, 50));
     }
 
     private static RetrievedChunk highSimilarityChunk() {

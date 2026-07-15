@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronsUpDown, Check, Loader2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';

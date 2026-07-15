@@ -12,8 +12,7 @@
       "collapsedWidth": "64px"
     },
     "chat": {
-      "maxMessageLength": 2000,
-      "typingSpeed": 50
+      "maxMessageLength": 2000
     }
   },
   "storage": {

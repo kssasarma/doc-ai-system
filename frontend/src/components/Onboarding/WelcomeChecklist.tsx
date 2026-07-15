@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { CheckCircle2, Circle, Rocket, X, ArrowRight } from 'lucide-react';
@@ -41,12 +41,14 @@ export default function WelcomeChecklist() {
     Promise.all([
       fetchIngestionStatus(token).catch(() => null),
       listGroups(token).catch(() => []),
-      user.tenantId ? getTenantUsers(token, user.tenantId).catch(() => []) : Promise.resolve([]),
+      user.tenantId
+        ? getTenantUsers(token, user.tenantId, { size: 2 }).catch(() => ({ content: [], totalElements: 0, totalPages: 0 }))
+        : Promise.resolve({ content: [], totalElements: 0, totalPages: 0 }),
     ]).then(([status, groups, tenantUsers]) => {
       setSteps([
         { key: 'upload', label: 'Upload your first document', done: (status?.totalDocuments ?? 0) > 0, to: '/admin/documents' },
         { key: 'access', label: 'Create a group and grant it access', done: groups.length > 0, to: '/admin/groups' },
-        { key: 'invite', label: 'Invite your team', done: tenantUsers.length > 1, to: '/admin/users' },
+        { key: 'invite', label: 'Invite your team', done: tenantUsers.totalElements > 1, to: '/admin/users' },
       ]);
     });
   }, [token, user, dismissed]);

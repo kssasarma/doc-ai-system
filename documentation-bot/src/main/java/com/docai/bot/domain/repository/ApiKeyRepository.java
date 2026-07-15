@@ -14,6 +14,8 @@ public interface ApiKeyRepository extends JpaRepository<ApiKey, UUID> {
 
     Optional<ApiKey> findByKeyHash(String keyHash);
 
+    List<ApiKey> findByKeyPrefix(String keyPrefix);
+
     List<ApiKey> findByUserIdOrderByCreatedAtDesc(UUID userId);
 
     void deleteByUserId(UUID userId);

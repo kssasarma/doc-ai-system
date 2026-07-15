@@ -1,9 +1,11 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Users, Plus, Trash2, AlertCircle, ChevronDown, ChevronRight, UserPlus } from 'lucide-react';
+import { Users, Plus, Trash2, AlertCircle, ChevronDown, ChevronRight, UserPlus, Search } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { listGroups, createGroup, deleteGroup, listGroupMembers, addGroupMember, removeGroupMember } from '../../services/groupService';
-import { getTenantUsers } from '../../services/tenantService';
-import type { Group, GroupMember, TenantUser } from '../../types';
+import { useQueryClient } from '@tanstack/react-query';
+import { createGroup, deleteGroup, listGroupMembers, addGroupMember, removeGroupMember } from '../../services/groupService';
+import { useGroups } from '../../hooks/useGroups';
+import { useTenantUsers } from '../../hooks/useTenantUsers';
+import type { GroupMember, TenantUser } from '../../types';
 import { useAuth } from '../../context/AuthContext';
 import { fadeInUp, staggerContainer, EASE_OUT } from '../../lib/motion';
 import PageHeader from '../ui/PageHeader';
@@ -11,45 +13,32 @@ import { Card, CardHeader } from '../ui/Card';
 import Button from '../ui/Button';
 import IconButton from '../ui/IconButton';
 import Input from '../ui/Input';
-import Select from '../ui/Select';
+import Combobox from '../ui/Combobox';
 import EmptyState from '../ui/EmptyState';
 import { Skeleton, SkeletonText } from '../ui/Skeleton';
 import { useToast } from '../ui/Toast';
 
 export default function GroupsPage() {
-  const { token, user } = useAuth();
-  const tenantId = user?.tenantId ?? '';
+  const { token } = useAuth();
   const toast = useToast();
+  const queryClient = useQueryClient();
 
-  const [groups, setGroups] = useState<Group[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [tenantUsers, setTenantUsers] = useState<TenantUser[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
+  useEffect(() => {
+    const handle = setTimeout(() => setDebouncedQuery(searchQuery.trim()), 300);
+    return () => clearTimeout(handle);
+  }, [searchQuery]);
+
+  const { data: groups = [], isLoading: loading, isError } = useGroups(debouncedQuery);
+  const error = isError ? 'Failed to load groups' : '';
 
   const [newGroupName, setNewGroupName] = useState('');
   const [creating, setCreating] = useState(false);
 
   const [expandedGroupId, setExpandedGroupId] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    if (!token) return;
-    setLoading(true);
-    setError('');
-    try {
-      setGroups(await listGroups(token));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load groups');
-    } finally {
-      setLoading(false);
-    }
-  }, [token]);
-
-  useEffect(() => { load(); }, [load]);
-
-  useEffect(() => {
-    if (!token || !tenantId) return;
-    getTenantUsers(token, tenantId).then(setTenantUsers).catch(() => {});
-  }, [token, tenantId]);
+  const reloadGroups = () => queryClient.invalidateQueries({ queryKey: ['groups'] });
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -59,7 +48,7 @@ export default function GroupsPage() {
       await createGroup(token, newGroupName.trim());
       setNewGroupName('');
       toast.success('Group created.');
-      await load();
+      reloadGroups();
     } catch (e) {
       const detail = (e as { response?: { data?: { error?: string } } })?.response?.data?.error;
       toast.error(detail || 'Failed to create group.');
@@ -73,7 +62,7 @@ export default function GroupsPage() {
     try {
       await deleteGroup(token, groupId);
       if (expandedGroupId === groupId) setExpandedGroupId(null);
-      await load();
+      reloadGroups();
       toast.success('Group deleted.');
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Failed to delete group.');
@@ -125,8 +114,21 @@ export default function GroupsPage() {
               <h3 className="text-sm font-semibold text-foreground">Tenant Groups</h3>
               {!loading && <span className="ml-auto text-xs text-muted-foreground">{groups.length} groups</span>}
             </CardHeader>
+            <div className="px-5 pt-4">
+              <div className="relative">
+                <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                <Input
+                  type="text"
+                  aria-label="Search groups"
+                  placeholder="Search groups…"
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
+            </div>
             {loading ? (
-              <div className="divide-y divide-border">
+              <div className="divide-y divide-border mt-2">
                 {[0, 1, 2].map(i => (
                   <div key={i} className="flex items-center gap-3 px-5 py-3">
                     <Skeleton className="w-8 h-8 rounded-full flex-shrink-0" />
@@ -144,11 +146,11 @@ export default function GroupsPage() {
             ) : groups.length === 0 ? (
               <EmptyState
                 icon={Users}
-                title="No groups yet"
-                description="Create your first group above to start managing document access in bulk."
+                title={debouncedQuery ? 'No groups found' : 'No groups yet'}
+                description={debouncedQuery ? 'Try a different search term.' : 'Create your first group above to start managing document access in bulk.'}
               />
             ) : (
-              <div className="divide-y divide-border">
+              <div className="divide-y divide-border mt-2">
                 {groups.map(g => (
                   <div key={g.id}>
                     <div className="flex items-center gap-2 px-5 py-3 hover:bg-surface-hover transition-colors">
@@ -188,8 +190,7 @@ export default function GroupsPage() {
                             <GroupMembersPanel
                               token={token!}
                               groupId={g.id}
-                              tenantUsers={tenantUsers}
-                              onMembershipChanged={load}
+                              onMembershipChanged={reloadGroups}
                             />
                           </div>
                         </motion.div>
@@ -207,19 +208,26 @@ export default function GroupsPage() {
 }
 
 function GroupMembersPanel({
-  token, groupId, tenantUsers, onMembershipChanged,
+  token, groupId, onMembershipChanged,
 }: {
   token: string;
   groupId: string;
-  tenantUsers: TenantUser[];
   onMembershipChanged: () => void;
 }) {
   const toast = useToast();
   const [members, setMembers] = useState<GroupMember[] | null>(null);
   const [error, setError] = useState('');
-  const [selectedUserId, setSelectedUserId] = useState('');
-  const [adding, setAdding] = useState(false);
+  const [userQuery, setUserQuery] = useState('');
+  const [debouncedUserQuery, setDebouncedUserQuery] = useState('');
+  const [addingUserId, setAddingUserId] = useState<string | null>(null);
   const [removingUserId, setRemovingUserId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const handle = setTimeout(() => setDebouncedUserQuery(userQuery.trim()), 250);
+    return () => clearTimeout(handle);
+  }, [userQuery]);
+
+  const { data: userResults, isFetching: searchingUsers } = useTenantUsers({ q: debouncedUserQuery, size: 20 });
 
   const load = useCallback(async () => {
     setError('');
@@ -233,21 +241,19 @@ function GroupMembersPanel({
   useEffect(() => { load(); }, [load]);
 
   const memberIds = new Set((members ?? []).map(m => m.userId));
-  const addableUsers = tenantUsers.filter(u => !memberIds.has(u.userId));
+  const addableUsers = (userResults?.content ?? []).filter(u => !memberIds.has(u.userId));
 
-  const handleAdd = async () => {
-    if (!selectedUserId) return;
-    setAdding(true);
+  const handleAdd = async (targetUser: TenantUser) => {
+    setAddingUserId(targetUser.userId);
     try {
-      await addGroupMember(token, groupId, selectedUserId);
-      setSelectedUserId('');
+      await addGroupMember(token, groupId, targetUser.userId);
       await load();
       onMembershipChanged();
       toast.success('Member added.');
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Failed to add member.');
     } finally {
-      setAdding(false);
+      setAddingUserId(null);
     }
   };
 
@@ -267,29 +273,16 @@ function GroupMembersPanel({
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-col sm:flex-row gap-2">
-        <div className="flex-1">
-          <Select aria-label="Select a user to add to this group" value={selectedUserId} onChange={e => setSelectedUserId(e.target.value)}>
-            <option value="">
-              {addableUsers.length === 0 ? 'No more users to add' : 'Select a user to add…'}
-            </option>
-            {addableUsers.map(u => (
-              <option key={u.userId} value={u.userId}>{u.username} ({u.email})</option>
-            ))}
-          </Select>
-        </div>
-        <Button
-          variant="secondary"
-          size="md"
-          onClick={handleAdd}
-          disabled={!selectedUserId}
-          loading={adding}
-          leftIcon={!adding ? <UserPlus size={14} /> : undefined}
-          className="whitespace-nowrap"
-        >
-          Add
-        </Button>
-      </div>
+      <Combobox
+        query={userQuery}
+        onQueryChange={setUserQuery}
+        items={addableUsers}
+        getKey={u => u.userId}
+        getLabel={u => `${u.username} (${u.email})`}
+        onSelect={handleAdd}
+        placeholder="Search users to add…"
+        loading={searchingUsers || !!addingUserId}
+      />
 
       {error && (
         <div className="flex items-center gap-2 text-xs text-danger bg-danger/10 rounded-lg px-3 py-2">
@@ -300,7 +293,7 @@ function GroupMembersPanel({
       {members === null ? (
         <SkeletonText lines={2} />
       ) : members.length === 0 ? (
-        <EmptyState icon={UserPlus} title="No members yet" description="Add a user above to give them access via this group." />
+        <EmptyState icon={UserPlus} title="No members yet" description="Search for a user above to give them access via this group." />
       ) : (
         <div className="space-y-1.5">
           {members.map(m => (

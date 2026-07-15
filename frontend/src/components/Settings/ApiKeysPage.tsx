@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Key, Plus, Trash2, Copy, Check, AlertTriangle, Clock, Shield } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 import { fetchApiKeys, createApiKey, revokeApiKey, ApiKey } from '../../services/apiKeyService';
 import { fadeInUp, staggerContainer } from '../../lib/motion';
 import Button from '../ui/Button';
@@ -13,6 +14,7 @@ import EmptyState from '../ui/EmptyState';
 import { SkeletonRow } from '../ui/Skeleton';
 import Input from '../ui/Input';
 import { useToast } from '../ui/Toast';
+import { useConfirm } from '../ui/ConfirmDialog';
 
 const SCOPE_OPTIONS = ['query', 'upload', 'admin'];
 
@@ -45,9 +47,11 @@ function CopyButton({ text }: { text: string }) {
 }
 
 export default function ApiKeysPage() {
+  useDocumentTitle('API Keys');
   const navigate = useNavigate();
   const { token } = useAuth();
   const toast = useToast();
+  const confirm = useConfirm();
   const [keys, setKeys] = useState<ApiKey[]>([]);
   const [loading, setLoading] = useState(true);
   const [newKeySecret, setNewKeySecret] = useState<string | null>(null);
@@ -95,7 +99,14 @@ export default function ApiKeysPage() {
   };
 
   const handleRevoke = async (key: ApiKey) => {
-    if (!token || !window.confirm(`Revoke key "${key.name}"? This cannot be undone.`)) return;
+    if (!token) return;
+    const confirmed = await confirm({
+      title: 'Revoke API key',
+      message: `Revoke key "${key.name}"? This cannot be undone.`,
+      confirmLabel: 'Revoke',
+      danger: true,
+    });
+    if (!confirmed) return;
     const res = await revokeApiKey(token, key.id);
     if (res.success) {
       toast.success(`Revoked key "${key.name}"`);

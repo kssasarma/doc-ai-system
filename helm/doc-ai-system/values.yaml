@@ -3,11 +3,20 @@ global:
   imagePullPolicy: IfNotPresent
   namespace: doc-ai
 
+# Default-deny + explicit-allow NetworkPolicies (Phase 7.3). Disable only if your cluster's CNI
+# doesn't enforce NetworkPolicy (plain kubenet, some managed defaults) — deploying them there
+# would give a false sense of enforcement rather than actually doing nothing.
+networkPolicy:
+  enabled: true
+
 # ── documentation-bot ──────────────────────────────────────────────────────────
 bot:
   image:
     repository: documentation-bot
-    tag: latest
+    # Always pin an explicit release tag in a real deployment — never `latest`, which makes
+    # rollbacks and "what's actually running" both unanswerable. Override per release, e.g.
+    # `--set bot.image.tag=v1.2.0` (see the README's Helm upgrade example).
+    tag: "1.0.0"
   replicaCount: 2
   resources:
     requests:
@@ -26,7 +35,8 @@ bot:
 ingestor:
   image:
     repository: document-ingestor
-    tag: latest
+    # Same reasoning as bot.image.tag above — pin per release, don't ship `latest`.
+    tag: "1.0.0"
   replicaCount: 2
   resources:
     requests:
@@ -47,6 +57,13 @@ postgres:
   image: pgvector/pgvector:pg16
   storageSize: "50Gi"
   storageClass: ""   # use cluster default
+  backup:
+    # Nightly pg_dump -> the S3 bucket in secrets.s3Bucket, under backups/. Only meaningful (and
+    # only deployed) when postgres.enabled is true — an external managed DB's backups are that
+    # operator's job, not this chart's.
+    enabled: true
+    schedule: "0 3 * * *"
+    retentionDays: 14
 
 # ── Redis ──────────────────────────────────────────────────────────────────────
 redis:
@@ -71,16 +88,21 @@ secrets:
   openaiApiKey: ""
   anthropicApiKey: ""
   jwtSecret: ""
+  seedAdminPassword: ""
   redisPassword: ""
-  awsAccessKeyId: ""
-  awsSecretAccessKey: ""
+  # Real AWS IAM credentials for the S3 bucket below — not MinIO (see config.storageType/s3Region).
+  s3AccessKey: ""
+  s3SecretKey: ""
   s3Bucket: "docai-documents"
+  mailUsername: ""
+  mailPassword: ""
 
 # ── Config ─────────────────────────────────────────────────────────────────────
 config:
   corsAllowedOrigins: "https://your-frontend-domain.com"
+  appUrl: "https://your-frontend-domain.com"
   openaiChatModel: "gpt-4o-mini"
-  openaiEmbeddingModel: "gpt-4o-embedding-4k"
+  openaiEmbeddingModel: "text-embedding-3-small"
   storageType: "s3"
-  awsRegion: "us-east-1"
+  s3Region: "us-east-1"
   rateLimitPerMinute: "30"

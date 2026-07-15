@@ -15,12 +15,18 @@ public interface DocumentStorageService {
     /**
      * Persist a file and return its storage key.
      *
-     * @param inputStream  raw bytes of the file
-     * @param originalName original filename (used to derive extension / key)
-     * @param tenantId     tenant to scope the storage path
+     * @param inputStream   raw bytes of the file
+     * @param originalName  original filename (used to derive extension / key)
+     * @param tenantId      tenant to scope the storage path
+     * @param contentLength exact byte length of {@code inputStream} if known upfront (e.g. a
+     *                      multipart upload's declared size, or an already-in-memory byte array)
+     *                      — lets the implementation stream directly to storage without buffering
+     *                      the whole file. Pass {@code -1} when unknown (e.g. a network download
+     *                      with no reliable Content-Length); the implementation then falls back to
+     *                      buffering, bounded by whatever size cap the caller already enforces.
      * @return storage key — passed to {@link #resolve(String)}/{@link #exists(String)}/{@link #delete(String)}
      */
-    String store(InputStream inputStream, String originalName, String tenantId);
+    String store(InputStream inputStream, String originalName, String tenantId, long contentLength);
 
     /**
      * Return a local {@link Path} suitable for passing to Apache Tika. The caller owns the

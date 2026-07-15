@@ -3,6 +3,15 @@ import fetch from 'node-fetch';
 const API_URL  = process.env.DOCS_API_URL || 'http://localhost:8082';
 const API_KEY  = process.env.DOCS_API_KEY || '';
 
+// Fail fast at startup, not on the first confusing 401 a user hits mid-conversation — an unset
+// key would otherwise silently send `X-API-Key: ` on every request.
+if (!API_KEY) {
+  throw new Error(
+    'DOCS_API_KEY is not set. Create an API key under Settings → API Keys in the Docs-inator ' +
+    'web app and set it as this bot\'s DOCS_API_KEY environment variable before starting.'
+  );
+}
+
 /**
  * Query the Docs-inator /api/v1/query endpoint.
  * @param {string} question

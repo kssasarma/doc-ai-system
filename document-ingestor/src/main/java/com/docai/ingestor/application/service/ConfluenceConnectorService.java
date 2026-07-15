@@ -14,10 +14,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.docai.ingestor.application.event.DocumentIngestionRequestedEvent;
+import com.docai.ingestor.config.SafeUrlValidator;
 import com.docai.ingestor.config.TenantContext;
 import com.docai.ingestor.domain.entity.ConnectorSyncPage;
 import com.docai.ingestor.domain.entity.Document;
@@ -37,22 +40,33 @@ import lombok.extern.slf4j.Slf4j;
 @RequiredArgsConstructor
 public class ConfluenceConnectorService {
 
+    private static final int MAX_REDIRECTS = 3;
+
     private final IntegrationTokenRepository tokenRepository;
     private final ConnectorSyncPageRepository syncPageRepository;
     private final DocumentRepository documentRepository;
-    private final IngestionService ingestionService;
     private final DocumentStorageService documentStorageService;
+    private final ApplicationEventPublisher eventPublisher;
     private final ObjectMapper objectMapper;
+    private final SafeUrlValidator safeUrlValidator;
+    private final DocumentQuotaService documentQuotaService;
 
+    // Redirect.NEVER — see WebhookIngestionService's identical reasoning: SafeUrlValidator must
+    // re-validate each redirect hop before it's followed.
     private static final HttpClient HTTP = HttpClient.newBuilder()
         .connectTimeout(Duration.ofSeconds(15))
-        .followRedirects(HttpClient.Redirect.NORMAL)
+        .followRedirects(HttpClient.Redirect.NEVER)
         .build();
 
-    /** Save or update an OAuth token for a user. */
+    /** Save or update an OAuth token for a user. Restricts siteUrl to the Confluence host
+     * allowlist (default: *.atlassian.net) so a malicious/compromised admin can't point sync at
+     * an arbitrary internal host — every subsequent API call carries this stored bearer token. */
     @Transactional
     public IntegrationToken saveToken(UUID userId, String accessToken, String refreshToken,
                                       Instant expiresAt, String siteUrl) {
+        String normalizedSiteUrl = siteUrl.replaceAll("/+$", "");
+        safeUrlValidator.validateConfluenceSiteUrl(normalizedSiteUrl);
+
         IntegrationToken token = tokenRepository
             .findByUserIdAndProvider(userId, IntegrationToken.Provider.confluence)
             .orElse(IntegrationToken.builder()
@@ -63,7 +77,7 @@ public class ConfluenceConnectorService {
         token.setAccessToken(accessToken);
         token.setRefreshToken(refreshToken);
         token.setTokenExpiresAt(expiresAt);
-        token.setSiteUrl(siteUrl.replaceAll("/+$", ""));
+        token.setSiteUrl(normalizedSiteUrl);
         return tokenRepository.save(token);
     }
 
@@ -141,6 +155,8 @@ public class ConfluenceConnectorService {
         syncPageRepository.save(record);
 
         try {
+            documentQuotaService.checkQuota(token.getTenantId());
+
             // Fetch full HTML body
             String contentUrl = token.getSiteUrl() + "/wiki/rest/api/content/" + externalId
                 + "?expand=body.storage";
@@ -150,7 +166,7 @@ public class ConfluenceConnectorService {
             byte[] bytes = html.getBytes(StandardCharsets.UTF_8);
             String storageKey = documentStorageService.store(
                 new ByteArrayInputStream(bytes), "confluence-" + externalId + ".html",
-                token.getTenantId().toString());
+                token.getTenantId().toString(), bytes.length);
 
             Document doc = documentRepository.save(Document.builder()
                 .tenantId(token.getTenantId())
@@ -169,7 +185,11 @@ public class ConfluenceConnectorService {
             record.setSyncStatus(ConnectorSyncPage.SyncStatus.COMPLETED);
             syncPageRepository.save(record);
 
-            ingestionService.ingestUploadedFile(doc.getId());
+            // Published rather than called directly — this method runs inside syncSpace's
+            // still-open @Transactional, and ingestUploadedFile is @Async; starting it only after
+            // this transaction commits (see IngestionEventListener) avoids it reading the document
+            // row before the row actually exists from its point of view.
+            eventPublisher.publishEvent(new DocumentIngestionRequestedEvent(doc.getId()));
             log.info("Confluence: synced page '{}' ({})", title, externalId);
 
         } catch (Exception e) {
@@ -181,18 +201,43 @@ public class ConfluenceConnectorService {
     }
 
     private JsonNode apiGet(IntegrationToken token, String url) throws IOException, InterruptedException {
-        HttpRequest req = HttpRequest.newBuilder(URI.create(url))
-            .header("Authorization", "Bearer " + token.getAccessToken())
-            .header("Accept", "application/json")
-            .GET()
-            .timeout(Duration.ofSeconds(30))
-            .build();
+        String originalHost = URI.create(url).getHost();
+        String currentUrl = url;
+        for (int hop = 0; ; hop++) {
+            safeUrlValidator.validateExternalUrl(currentUrl);
 
-        HttpResponse<String> res = HTTP.send(req, HttpResponse.BodyHandlers.ofString());
-        if (res.statusCode() >= 300) {
-            throw new IOException("Confluence API error " + res.statusCode() + " for " + url);
+            HttpRequest.Builder reqBuilder = HttpRequest.newBuilder(URI.create(currentUrl))
+                .header("Accept", "application/json")
+                .GET()
+                .timeout(Duration.ofSeconds(30));
+            // Only ever attach the bearer token when this hop's host is exactly the host we
+            // started with — a redirect to a different host (a CDN, a misconfigured proxy, an
+            // attacker-controlled target) must never receive it, even though that host itself
+            // passed the general SSRF check (which only rules out private/internal addresses,
+            // not "is this the Confluence host the token belongs to").
+            if (originalHost.equalsIgnoreCase(URI.create(currentUrl).getHost())) {
+                reqBuilder.header("Authorization", "Bearer " + token.getAccessToken());
+            }
+            HttpRequest req = reqBuilder.build();
+
+            HttpResponse<String> res = HTTP.send(req, HttpResponse.BodyHandlers.ofString());
+
+            if (res.statusCode() >= 300 && res.statusCode() < 400) {
+                if (hop >= MAX_REDIRECTS) {
+                    throw new IOException("Too many redirects (>" + MAX_REDIRECTS + ") calling Confluence API " + url);
+                }
+                java.util.Optional<String> location = res.headers().firstValue("Location");
+                if (location.isEmpty()) {
+                    throw new IOException("Redirect with no Location header for " + currentUrl);
+                }
+                currentUrl = URI.create(currentUrl).resolve(location.get()).toString();
+                continue;
+            }
+            if (res.statusCode() >= 300) {
+                throw new IOException("Confluence API error " + res.statusCode() + " for " + currentUrl);
+            }
+            return objectMapper.readTree(res.body());
         }
-        return objectMapper.readTree(res.body());
     }
 
     public Map<String, Object> getSyncStats(UUID tokenId) {

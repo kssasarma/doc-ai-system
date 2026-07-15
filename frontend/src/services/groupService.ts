@@ -8,8 +8,10 @@ function headers(token: string) {
   return { Authorization: `Bearer ${token}` };
 }
 
-export async function listGroups(token: string): Promise<Group[]> {
-  const { data } = await axios.get<Group[]>(`${BOT_URL}/api/groups`, { headers: headers(token) });
+export async function listGroups(token: string, q?: string): Promise<Group[]> {
+  const { data } = await axios.get<Group[]>(`${BOT_URL}/api/groups`, {
+    headers: headers(token), params: q ? { q } : undefined,
+  });
   return data;
 }
 

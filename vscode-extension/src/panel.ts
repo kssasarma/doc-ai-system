@@ -12,7 +12,7 @@ export class DocsPanelProvider implements vscode.WebviewViewProvider {
       enableScripts: true,
       localResourceRoots: [this._extensionUri],
     };
-    webviewView.webview.html = this.getHtml(webviewView.webview);
+    webviewView.webview.html = this.getHtml();
 
     webviewView.webview.onDidReceiveMessage(async (msg) => {
       if (msg.type === 'query') {
@@ -91,7 +91,7 @@ export class DocsPanelProvider implements vscode.WebviewViewProvider {
     }
   }
 
-  private getHtml(webview: vscode.Webview): string {
+  private getHtml(): string {
     const nonce = getNonce();
     return `<!DOCTYPE html>
 <html lang="en">

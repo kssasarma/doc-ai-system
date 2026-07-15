@@ -77,3 +77,31 @@ export async function revokeSession(refreshToken: string): Promise<void> {
     // best-effort
   }
 }
+
+/** Always resolves successfully regardless of whether the email matches an account — the
+ * backend deliberately gives no signal either way, to avoid user-enumeration. */
+export async function forgotPassword(email: string): Promise<{ success: boolean }> {
+  try {
+    await fetch(`${AUTH_URL}/forgot-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+  } catch {
+    // Still report success to the caller — same no-signal-either-way reasoning as the backend.
+  }
+  return { success: true };
+}
+
+export async function resetPassword(token: string, newPassword: string): Promise<{ success: boolean; error?: string }> {
+  const res = await fetch(`${AUTH_URL}/reset-password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token, newPassword }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    return { success: false, error: data.error || `Reset failed: ${res.status}` };
+  }
+  return { success: true };
+}

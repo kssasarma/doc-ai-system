@@ -43,6 +43,20 @@ public interface DocumentRepository extends JpaRepository<Document, UUID> {
      * behavior across JPA providers) — short-circuit before calling, same convention as
      * {@link com.docai.bot.application.service.VectorSearchService}. */
     @Query("SELECT DISTINCT d.product AS product, d.version AS version FROM Document d " +
-           "WHERE d.tenantId = :tenantId AND d.id IN :documentIds")
+           "WHERE d.tenantId = :tenantId AND d.id IN :documentIds AND d.status = 'COMPLETED'")
     List<ProductVersion> findDistinctProductVersionsAccessible(UUID tenantId, Set<UUID> documentIds);
+
+    /** Used by VectorSearchService to pick which model to request the query embedding in — see
+     * its class javadoc. Same empty-collection caveat as the query above: never call with an
+     * empty {@code documentIds}. */
+    @Query("SELECT DISTINCT d.embeddingModel FROM Document d " +
+           "WHERE d.tenantId = :tenantId AND d.id IN :documentIds AND d.embeddingModel IS NOT NULL")
+    List<String> findDistinctEmbeddingModelsAccessible(UUID tenantId, Set<UUID> documentIds);
+
+    /** Full document metadata for the "Google for the company" library/home surface (Phase 6.2) —
+     * only ever the caller's actually-accessible, searchable (COMPLETED) documents. Same
+     * empty-collection caveat as the queries above. */
+    @Query("SELECT d FROM Document d WHERE d.tenantId = :tenantId AND d.id IN :documentIds " +
+           "AND d.status = 'COMPLETED' ORDER BY d.updatedAt DESC")
+    List<Document> findAccessibleCompletedDocuments(UUID tenantId, Set<UUID> documentIds);
 }

@@ -14,10 +14,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.docai.ingestor.application.event.DocumentIngestionRequestedEvent;
 import com.docai.ingestor.config.TenantContext;
 import com.docai.ingestor.domain.entity.ConnectorSyncPage;
 import com.docai.ingestor.domain.entity.Document;
@@ -44,9 +46,10 @@ public class NotionConnectorService {
     private final IntegrationTokenRepository tokenRepository;
     private final ConnectorSyncPageRepository syncPageRepository;
     private final DocumentRepository documentRepository;
-    private final IngestionService ingestionService;
     private final DocumentStorageService documentStorageService;
+    private final ApplicationEventPublisher eventPublisher;
     private final ObjectMapper objectMapper;
+    private final DocumentQuotaService documentQuotaService;
 
     private static final HttpClient HTTP = HttpClient.newBuilder()
         .connectTimeout(Duration.ofSeconds(15))
@@ -138,6 +141,8 @@ public class NotionConnectorService {
         syncPageRepository.save(record);
 
         try {
+            documentQuotaService.checkQuota(token.getTenantId());
+
             // Fetch block children and render to plain text
             String text = fetchPageText(token, externalId);
             String content = "# " + title + "\n\n" + text;
@@ -145,7 +150,7 @@ public class NotionConnectorService {
             byte[] bytes = content.getBytes(StandardCharsets.UTF_8);
             String storageKey = documentStorageService.store(
                 new ByteArrayInputStream(bytes), "notion-" + externalId.replace("-", "") + ".txt",
-                token.getTenantId().toString());
+                token.getTenantId().toString(), bytes.length);
 
             Document doc = documentRepository.save(Document.builder()
                 .tenantId(token.getTenantId())
@@ -164,7 +169,10 @@ public class NotionConnectorService {
             record.setSyncStatus(ConnectorSyncPage.SyncStatus.COMPLETED);
             syncPageRepository.save(record);
 
-            ingestionService.ingestUploadedFile(doc.getId());
+            // Published rather than called directly — see ConfluenceConnectorService's identical
+            // comment: avoids ingestUploadedFile's @Async thread reading the document row before
+            // this method's own @Transactional (syncAllPages) has committed it.
+            eventPublisher.publishEvent(new DocumentIngestionRequestedEvent(doc.getId()));
             log.info("Notion: synced page '{}' ({})", title, externalId);
 
         } catch (Exception e) {

@@ -1,8 +1,9 @@
-import React, { Suspense, lazy, useState } from 'react';
+import { Suspense, lazy, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ArrowLeft, LucideIcon } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 import AccountMenu from '../ui/AccountMenu';
 import Spinner from '../ui/Spinner';
 import { cn } from '../../lib/cn';
@@ -70,6 +71,9 @@ export default function AdminLayout({ navItems, title }: { navItems: AdminNavIte
 
   const isItemActive = (to: string) =>
     location.pathname === to || location.pathname === `${to}/` || location.pathname.startsWith(`${to}/`);
+
+  const activeItem = navItems.find(item => isItemActive(item.to));
+  useDocumentTitle(activeItem?.label ?? title);
 
   return (
     <div className="min-h-screen bg-background flex flex-col md:flex-row">

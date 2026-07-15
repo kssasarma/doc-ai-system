@@ -31,6 +31,14 @@ services:
     restart: unless-stopped
     networks:
       - docai-net
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 4G
+        reservations:
+          cpus: "0.5"
+          memory: 1G
 
   document-ingestor:
     build:
@@ -46,6 +54,9 @@ services:
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com}
       OPENAI_EMBEDDING_MODEL: ${OPENAI_EMBEDDING_MODEL:-text-embedding-3-small}
       JWT_SECRET: ${JWT_SECRET}
+      SECRETS_ENCRYPTION_KEY: ${SECRETS_ENCRYPTION_KEY}
+      WEBHOOK_HMAC_SECRET: ${WEBHOOK_HMAC_SECRET:-}
+      INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000}
       # Point at your own S3-compatible object store — a real production deployment should not
       # bundle a single-node MinIO into this compose file's own lifecycle. No defaults for
@@ -75,6 +86,14 @@ services:
     restart: unless-stopped
     networks:
       - docai-net
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 3G
+        reservations:
+          cpus: "0.5"
+          memory: 1G
 
   documentation-bot:
     build:
@@ -91,12 +110,22 @@ services:
       OPENAI_CHAT_MODEL: ${OPENAI_CHAT_MODEL:-gpt-4o-mini}
       OPENAI_EMBEDDING_MODEL: ${OPENAI_EMBEDDING_MODEL:-text-embedding-3-small}
       JWT_SECRET: ${JWT_SECRET}
+      SECRETS_ENCRYPTION_KEY: ${SECRETS_ENCRYPTION_KEY}
       JWT_EXPIRATION_MS: ${JWT_EXPIRATION_MS:-86400000}
       SEED_ADMIN_USERNAME: ${SEED_ADMIN_USERNAME:-admin}
       SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-admin@docs-inator.local}
       SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000}
       RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-30}
+      # No REDIS_HOST here, deliberately: rate limiting and the embedding cache both fall back to
+      # single-node in-memory state when Redis isn't configured (see RateLimitFilter/
+      # EmbeddingCacheService's @ConditionalOnProperty-gated beans) — and this compose file only
+      # ever runs exactly one documentation-bot container, so there's nothing to "distribute"
+      # across. If you scale this service horizontally (`docker compose up --scale
+      # documentation-bot=N`), add a redis service back (see docker-compose.yml's dev setup) and
+      # set REDIS_HOST/REDIS_PORT here — otherwise each replica's rate limit/cache is independent.
+      INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET}
+      INGESTOR_INTERNAL_URL: ${INGESTOR_INTERNAL_URL:-http://document-ingestor:8081}
     ports:
       - "8082:8082"
     depends_on:
@@ -111,6 +140,14 @@ services:
     restart: unless-stopped
     networks:
       - docai-net
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2G
+        reservations:
+          cpus: "0.5"
+          memory: 768M
 
   frontend:
     build:
@@ -132,6 +169,13 @@ services:
     restart: unless-stopped
     networks:
       - docai-net
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 256M
+        reservations:
+          memory: 64M
 
 volumes:
   postgres_data:

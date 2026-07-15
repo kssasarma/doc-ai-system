@@ -13,7 +13,6 @@ import org.springframework.transaction.annotation.Transactional;
 import com.docai.bot.PostgresTestContainerBase;
 import com.docai.bot.application.service.InvitationService;
 import com.docai.bot.application.service.TenantMembershipService;
-import com.docai.bot.domain.entity.InvitationToken;
 import com.docai.bot.domain.entity.Tenant;
 import com.docai.bot.domain.entity.User;
 import com.docai.bot.domain.repository.TenantMembershipRepository;
@@ -40,8 +39,8 @@ class InvitationServiceTest extends PostgresTestContainerBase {
         Tenant tenant = persistTenant("tenant-new-identity");
         User admin = persistUser(tenant, User.Role.ADMIN);
 
-        InvitationToken invitation = invitationService.invite("newperson@example.com", User.Role.USER, tenant.getId(), admin.getId());
-        User created = invitationService.accept(invitation.getToken(), "newperson", "SecurePass123!");
+        InvitationService.InviteResult invitation = invitationService.invite("newperson@example.com", User.Role.USER, tenant.getId(), admin.getId());
+        User created = invitationService.accept(invitation.rawToken(), "newperson", "SecurePass123!");
 
         assertThat(created.getEmail()).isEqualTo("newperson@example.com");
         assertThat(created.getTenantId()).isEqualTo(tenant.getId());
@@ -56,10 +55,10 @@ class InvitationServiceTest extends PostgresTestContainerBase {
         User adminB = persistUser(tenantB, User.Role.ADMIN);
         User existingPerson = persistUser(tenantA, User.Role.USER);
 
-        InvitationToken invitation = invitationService.invite(existingPerson.getEmail(), User.Role.USER, tenantB.getId(), adminB.getId());
+        InvitationService.InviteResult invitation = invitationService.invite(existingPerson.getEmail(), User.Role.USER, tenantB.getId(), adminB.getId());
 
-        assertThat(invitation.getEmail()).isEqualTo(existingPerson.getEmail());
-        assertThat(invitation.getTenantId()).isEqualTo(tenantB.getId());
+        assertThat(invitation.invitation().getEmail()).isEqualTo(existingPerson.getEmail());
+        assertThat(invitation.invitation().getTenantId()).isEqualTo(tenantB.getId());
     }
 
     @Test
@@ -88,8 +87,8 @@ class InvitationServiceTest extends PostgresTestContainerBase {
             .build());
         membershipService.ensureMembership(existingPerson.getId(), tenantA.getId(), User.Role.USER);
 
-        InvitationToken invitation = invitationService.invite(existingPerson.getEmail(), User.Role.ADMIN, tenantB.getId(), adminB.getId());
-        User result = invitationService.accept(invitation.getToken(), "existing-person", "MyRealPassword1!");
+        InvitationService.InviteResult invitation = invitationService.invite(existingPerson.getEmail(), User.Role.ADMIN, tenantB.getId(), adminB.getId());
+        User result = invitationService.accept(invitation.rawToken(), "existing-person", "MyRealPassword1!");
 
         assertThat(result.getId()).isEqualTo(existingPerson.getId());
         assertThat(result.getTenantId()).isEqualTo(tenantB.getId());
@@ -112,9 +111,9 @@ class InvitationServiceTest extends PostgresTestContainerBase {
             .tenantId(tenantA.getId())
             .build());
 
-        InvitationToken invitation = invitationService.invite(existingPerson.getEmail(), User.Role.USER, tenantB.getId(), adminB.getId());
+        InvitationService.InviteResult invitation = invitationService.invite(existingPerson.getEmail(), User.Role.USER, tenantB.getId(), adminB.getId());
 
-        assertThatThrownBy(() -> invitationService.accept(invitation.getToken(), "existing-person-2", "WrongPassword"))
+        assertThatThrownBy(() -> invitationService.accept(invitation.rawToken(), "existing-person-2", "WrongPassword"))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("Incorrect username or password");
         assertThat(membershipRepository.existsByUserIdAndTenantId(existingPerson.getId(), tenantB.getId())).isFalse();
@@ -131,10 +130,10 @@ class InvitationServiceTest extends PostgresTestContainerBase {
     void accept_alreadyAccepted_throws() {
         Tenant tenant = persistTenant("tenant-double-accept");
         User admin = persistUser(tenant, User.Role.ADMIN);
-        InvitationToken invitation = invitationService.invite("doubleaccept@example.com", User.Role.USER, tenant.getId(), admin.getId());
-        invitationService.accept(invitation.getToken(), "doubleaccept", "SecurePass123!");
+        InvitationService.InviteResult invitation = invitationService.invite("doubleaccept@example.com", User.Role.USER, tenant.getId(), admin.getId());
+        invitationService.accept(invitation.rawToken(), "doubleaccept", "SecurePass123!");
 
-        assertThatThrownBy(() -> invitationService.accept(invitation.getToken(), "doubleaccept2", "SecurePass123!"))
+        assertThatThrownBy(() -> invitationService.accept(invitation.rawToken(), "doubleaccept2", "SecurePass123!"))
             .isInstanceOf(IllegalStateException.class)
             .hasMessageContaining("already been used");
     }

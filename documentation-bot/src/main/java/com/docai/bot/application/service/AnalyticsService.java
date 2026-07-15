@@ -124,8 +124,8 @@ public class AnalyticsService {
     // ── Top questions ─────────────────────────────────────────────────────────
 
     @Transactional(readOnly = true)
-    public List<TopQuestionDTO> getTopQuestions(UUID tenantId, int limit) {
-        LocalDateTime since = LocalDateTime.now().minusDays(30);
+    public List<TopQuestionDTO> getTopQuestions(UUID tenantId, int limit, int days) {
+        LocalDateTime since = LocalDateTime.now().minusDays(days);
         return queryLogRepository.findTopQuestions(tenantId, since, PageRequest.of(0, limit)).stream()
             .map(row -> TopQuestionDTO.builder()
                 .questionPreview(str(row[0]))
@@ -183,20 +183,20 @@ public class AnalyticsService {
     // ── Cost summary ──────────────────────────────────────────────────────────
 
     @Transactional(readOnly = true)
-    public CostSummaryDTO getCostSummary(UUID tenantId) {
-        LocalDateTime monthAgo = LocalDateTime.now().minusDays(30);
+    public CostSummaryDTO getCostSummary(UUID tenantId, int days) {
+        LocalDateTime since = LocalDateTime.now().minusDays(days);
         Map<String, String> usernameMap = userRepository.findByTenantId(tenantId).stream()
             .collect(Collectors.toMap(u -> u.getId().toString(), User::getUsername));
 
-        double totalThisMonth = queryLogRepository.sumCostSince(tenantId, monthAgo);
+        double totalThisMonth = queryLogRepository.sumCostSince(tenantId, since);
         double totalAllTime   = queryLogRepository.sumCostAllTime(tenantId);
-        long   queryCountMonth = queryLogRepository.countByTenantIdAndCreatedAtAfter(tenantId, monthAgo);
+        long   queryCountMonth = queryLogRepository.countByTenantIdAndCreatedAtAfter(tenantId, since);
         double avgCost = queryCountMonth > 0 ? totalThisMonth / queryCountMonth : 0.0;
 
-        List<DailyStatDTO> daily = getDailyStats(tenantId, 30);
+        List<DailyStatDTO> daily = getDailyStats(tenantId, days);
 
         List<UserCostDTO> costByUser = queryLogRepository
-            .getCostByUser(tenantId, monthAgo, PageRequest.of(0, 10)).stream()
+            .getCostByUser(tenantId, since, PageRequest.of(0, 10)).stream()
             .map(row -> {
                 String uid = str(row[0]);
                 return UserCostDTO.builder()
@@ -208,7 +208,7 @@ public class AnalyticsService {
             })
             .collect(Collectors.toList());
 
-        List<ProductCostDTO> costByProduct = queryLogRepository.getCostByProduct(tenantId, monthAgo).stream()
+        List<ProductCostDTO> costByProduct = queryLogRepository.getCostByProduct(tenantId, since).stream()
             .map(row -> ProductCostDTO.builder()
                 .product(str(row[0]))
                 .version(str(row[1]))

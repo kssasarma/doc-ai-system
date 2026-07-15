@@ -5,6 +5,8 @@ import {
   SessionsAPIResponse,
   BackendChatHistoryResponse,
   ChatHistoryAPIResponse,
+  ReasoningStep,
+  Source,
 } from '../types';
 
 import { BACKEND_URL } from '../config/backend';
@@ -155,4 +157,96 @@ export async function sendChatMessage(
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
   }
+}
+
+// ── Streaming (SSE) ───────────────────────────────────────────────────────────
+// EventSource can't do POST + an Authorization header, so this parses the SSE wire format
+// (`event: name\ndata: json\n\n`) directly off a streamed fetch() body. Matches
+// ChatController#queryStream / ChatService#processQueryStream's event contract.
+
+export interface StreamDonePayload {
+  chatId: string;
+  messageId: string;
+  confidence: number;
+  sessionTitle?: string;
+  relatedQuestions?: string[];
+  reasoningChain?: ReasoningStep[];
+}
+
+export interface StreamHandlers {
+  onSources: (sources: Source[]) => void;
+  onToken: (delta: string) => void;
+  onDone: (payload: StreamDonePayload) => void;
+}
+
+async function parseSSEStream(response: Response, onEvent: (eventName: string, data: string) => void): Promise<void> {
+  const reader = response.body?.getReader();
+  if (!reader) throw new Error('Streaming is not supported by this browser/response.');
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    let sepIndex: number;
+    while ((sepIndex = buffer.indexOf('\n\n')) !== -1) {
+      const rawEvent = buffer.slice(0, sepIndex);
+      buffer = buffer.slice(sepIndex + 2);
+
+      let eventName = 'message';
+      const dataLines: string[] = [];
+      for (const line of rawEvent.split('\n')) {
+        if (line.startsWith('event:')) eventName = line.slice(6).trim();
+        else if (line.startsWith('data:')) dataLines.push(line.slice(5).trim());
+      }
+      if (dataLines.length > 0) onEvent(eventName, dataLines.join('\n'));
+    }
+  }
+}
+
+/** Streams an answer token-by-token. Rejects on network/HTTP failure or a backend `error` event;
+ * resolves once the `done` event has been delivered to {@link StreamHandlers.onDone}. Pass
+ * `signal` from an AbortController to support "stop generating" — an aborted fetch rejects with
+ * `AbortError`, which the caller should treat as a clean stop, not a failure. */
+export async function streamChatMessage(
+  query: string,
+  token: string,
+  chatId: string | undefined,
+  scope: { product?: string; version?: string } | undefined,
+  handlers: StreamHandlers,
+  signal?: AbortSignal,
+): Promise<void> {
+  const requestBody: { question: string; chatId?: string; product?: string; version?: string } = { question: query };
+  if (chatId) requestBody.chatId = chatId;
+  if (scope?.product) requestBody.product = scope.product;
+  if (scope?.version) requestBody.version = scope.version;
+
+  const response = await fetch(`${CHAT_BACKEND_QUERY_URL}/stream`, {
+    method: 'POST',
+    headers: authHeader(token),
+    body: JSON.stringify(requestBody),
+    signal,
+  });
+
+  if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+
+  await parseSSEStream(response, (eventName, data) => {
+    switch (eventName) {
+      case 'sources':
+        handlers.onSources(JSON.parse(data) as Source[]);
+        break;
+      case 'token':
+        handlers.onToken((JSON.parse(data) as { text: string }).text);
+        break;
+      case 'done':
+        handlers.onDone(JSON.parse(data) as StreamDonePayload);
+        break;
+      case 'error':
+        throw new Error((JSON.parse(data) as { message: string }).message);
+      default:
+        break;
+    }
+  });
 }

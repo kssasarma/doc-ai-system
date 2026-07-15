@@ -32,6 +32,21 @@ public class TenantService {
     private final DataRetentionPolicyRepository retentionRepository;
     private final SharedChatLinkRepository sharedChatLinkRepository;
     private final List<LLMProvider> llmProviders;
+    private final SecretsCryptoService cryptoService;
+
+    /** API key never leaves the server once saved — this is what the admin UI/API actually reads. */
+    public record LlmConfigView(String chatProvider, String chatModel, String embeddingProvider,
+                                 String embeddingModel, boolean routingEnabled, String simpleModel,
+                                 String complexModel, String azureEndpoint, String azureDeployment,
+                                 boolean hasCustomKey, String keyHint) {}
+
+    /** {@code apiKey}: null = leave the stored key untouched, "" = clear it, non-blank = set/replace it. */
+    public record LlmConfigUpdate(String chatProvider, String chatModel, String embeddingProvider,
+                                   String embeddingModel, boolean routingEnabled, String simpleModel,
+                                   String complexModel, String azureEndpoint, String azureDeployment,
+                                   String apiKey) {}
+
+    public record TestConnectionResult(boolean success, String message) {}
 
     public List<Tenant> listAll() {
         return tenantRepository.findAll();
@@ -100,39 +115,98 @@ public class TenantService {
         return brandingRepository.save(branding);
     }
 
-    public TenantLLMConfig getLLMConfig(UUID tenantId) {
-        return llmConfigRepository.findByTenantId(tenantId)
+    public LlmConfigView getLLMConfig(UUID tenantId) {
+        TenantLLMConfig config = llmConfigRepository.findByTenantId(tenantId)
             .orElseGet(() -> TenantLLMConfig.builder().tenantId(tenantId).build());
+        return toView(config);
     }
 
     @Transactional
-    public TenantLLMConfig updateLLMConfig(UUID tenantId, TenantLLMConfig update) {
+    public LlmConfigView updateLLMConfig(UUID tenantId, LlmConfigUpdate update) {
         // LLMRouter silently falls back to OpenAI for any provider name it doesn't recognize —
         // reject an unregistered one here instead of letting an admin "configure" a provider
         // that's actually never used.
         Set<String> validProviders = llmProviders.stream()
             .map(LLMProvider::providerName).collect(Collectors.toSet());
-        if (!validProviders.contains(update.getChatProvider())) {
+        if (!validProviders.contains(update.chatProvider())) {
             throw new IllegalArgumentException(
-                "Unknown chat provider '" + update.getChatProvider() + "' — must be one of " + validProviders);
+                "Unknown chat provider '" + update.chatProvider() + "' — must be one of " + validProviders);
         }
-        if (!validProviders.contains(update.getEmbeddingProvider())) {
+        if (!validProviders.contains(update.embeddingProvider())) {
             throw new IllegalArgumentException(
-                "Unknown embedding provider '" + update.getEmbeddingProvider() + "' — must be one of " + validProviders);
+                "Unknown embedding provider '" + update.embeddingProvider() + "' — must be one of " + validProviders);
         }
 
         TenantLLMConfig config = llmConfigRepository.findByTenantId(tenantId)
             .orElseGet(() -> TenantLLMConfig.builder().tenantId(tenantId).build());
-        config.setChatProvider(update.getChatProvider());
-        config.setChatModel(update.getChatModel());
-        config.setEmbeddingProvider(update.getEmbeddingProvider());
-        config.setEmbeddingModel(update.getEmbeddingModel());
-        config.setRoutingEnabled(update.isRoutingEnabled());
-        config.setSimpleModel(update.getSimpleModel());
-        config.setComplexModel(update.getComplexModel());
-        if (update.getAzureEndpoint() != null) config.setAzureEndpoint(update.getAzureEndpoint());
-        if (update.getAzureDeployment() != null) config.setAzureDeployment(update.getAzureDeployment());
-        return llmConfigRepository.save(config);
+        config.setChatProvider(update.chatProvider());
+        config.setChatModel(update.chatModel());
+        config.setEmbeddingProvider(update.embeddingProvider());
+        config.setEmbeddingModel(update.embeddingModel());
+        config.setRoutingEnabled(update.routingEnabled());
+        config.setSimpleModel(update.simpleModel());
+        config.setComplexModel(update.complexModel());
+        if (update.azureEndpoint() != null) config.setAzureEndpoint(update.azureEndpoint());
+        if (update.azureDeployment() != null) config.setAzureDeployment(update.azureDeployment());
+
+        // apiKey: null = leave stored key untouched, "" = clear it, non-blank = set/replace it.
+        if (update.apiKey() != null) {
+            config.setApiKeyEnc(update.apiKey().isBlank() ? null : cryptoService.encrypt(update.apiKey()));
+        }
+
+        return toView(llmConfigRepository.save(config));
+    }
+
+    /** Tests a chat provider/model/key combination without persisting anything — used by the
+     * admin UI's "Test connection" action before saving. Empty apiKey means "use whatever key is
+     * already stored for this tenant, or the platform default" (matches updateLLMConfig's null-
+     * apiKey semantics) so an admin can re-verify an already-saved custom key. */
+    public TestConnectionResult testConnection(UUID tenantId, String provider, String model, String apiKey) {
+        LLMProvider llmProvider = llmProviders.stream()
+            .filter(p -> p.providerName().equals(provider))
+            .findFirst()
+            .orElse(null);
+        if (llmProvider == null) {
+            return new TestConnectionResult(false, "Unknown provider '" + provider + "'");
+        }
+        String effectiveKey = (apiKey != null && !apiKey.isBlank()) ? apiKey : decryptStoredKey(tenantId);
+        try {
+            var response = llmProvider.chat(null,
+                "Reply with exactly one word: OK", model, effectiveKey);
+            String text = response != null && response.getResult() != null
+                ? response.getResult().getOutput().getText() : null;
+            if (text == null || text.isBlank()) {
+                return new TestConnectionResult(false, "Provider returned an empty response");
+            }
+            return new TestConnectionResult(true, "Connected successfully to " + provider + "/" + model);
+        } catch (Exception e) {
+            String message = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+            log.warn("LLM connection test failed for tenant {} ({}/{}): {}", tenantId, provider, model, message);
+            return new TestConnectionResult(false, message);
+        }
+    }
+
+    private String decryptStoredKey(UUID tenantId) {
+        return llmConfigRepository.findByTenantId(tenantId)
+            .map(TenantLLMConfig::getApiKeyEnc)
+            .filter(enc -> enc != null && !enc.isBlank())
+            .map(cryptoService::decrypt)
+            .orElse(null);
+    }
+
+    private LlmConfigView toView(TenantLLMConfig config) {
+        boolean hasCustomKey = config.getApiKeyEnc() != null && !config.getApiKeyEnc().isBlank();
+        String hint = null;
+        if (hasCustomKey) {
+            String decrypted = cryptoService.decrypt(config.getApiKeyEnc());
+            hint = decrypted != null && decrypted.length() >= 4
+                ? "••••" + decrypted.substring(decrypted.length() - 4)
+                : "••••";
+        }
+        return new LlmConfigView(config.getChatProvider(), config.getChatModel(),
+            config.getEmbeddingProvider(), config.getEmbeddingModel(), config.isRoutingEnabled(),
+            config.getSimpleModel(), config.getComplexModel(), config.getAzureEndpoint(),
+            config.getAzureDeployment(), hasCustomKey, hint);
     }
 
     public DataRetentionPolicy getRetentionPolicy(UUID tenantId) {

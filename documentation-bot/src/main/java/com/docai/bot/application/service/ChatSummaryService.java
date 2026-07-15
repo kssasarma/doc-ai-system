@@ -3,7 +3,6 @@ package com.docai.bot.application.service;
 import java.util.List;
 import java.util.UUID;
 
-import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
@@ -24,7 +23,7 @@ public class ChatSummaryService {
 
     private final ChatMessageRepository messageRepository;
     private final ChatSummaryRepository summaryRepository;
-    private final ChatClient.Builder chatClientBuilder;
+    private final LLMRouter llmRouter;
 
     @Value("${bot.summary-threshold:15}")
     private int summaryThreshold;
@@ -64,11 +63,7 @@ public class ChatSummaryService {
                 "focusing on the key topics discussed and main questions asked:\n\n" +
                 conversation.toString();
             
-            ChatClient chatClient = chatClientBuilder.build();
-            String summary = chatClient.prompt()
-                .user(summaryPrompt)
-                .call()
-                .content();
+            String summary = llmRouter.chat(summaryPrompt, false);
             
             // Save or update summary
             ChatSummary chatSummary = summaryRepository.findById(chatId)

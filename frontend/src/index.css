@@ -153,3 +153,17 @@
 .hljs-strong {
   font-weight: 600;
 }
+
+/* Phase 6.8 — prefers-reduced-motion fallback for CSS animations/transitions (Tailwind's
+   animate-* utilities: fade-in, slide-up, scale-in, shimmer) that framer-motion's own
+   MotionConfig reducedMotion="user" (see main.tsx) doesn't cover. Near-zero duration rather than
+   `animation: none` so onEnd/onComplete callbacks still fire — content that depends on an
+   animation finishing (e.g. exit-then-unmount) doesn't get stuck. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

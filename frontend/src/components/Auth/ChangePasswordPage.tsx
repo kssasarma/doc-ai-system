@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import AuthLayout from './AuthLayout';
-import Input from '../ui/Input';
+import PasswordInput from '../ui/PasswordInput';
 import Button from '../ui/Button';
 
 export default function ChangePasswordPage() {
@@ -50,31 +50,29 @@ export default function ChangePasswordPage() {
       }
     >
       <form onSubmit={handleSubmit} className="space-y-4">
-        <Input
+        <PasswordInput
           label="Current password"
-          type="password"
           value={currentPassword}
           onChange={e => setCurrentPassword(e.target.value)}
           required
           autoFocus
           placeholder="Enter current password"
         />
-        <Input
+        <PasswordInput
           label="New password"
-          type="password"
           value={newPassword}
           onChange={e => setNewPassword(e.target.value)}
           required
-          minLength={6}
-          placeholder="At least 6 characters"
+          minLength={10}
+          showStrength
+          placeholder="At least 10 characters"
         />
-        <Input
+        <PasswordInput
           label="Confirm new password"
-          type="password"
           value={confirmPassword}
           onChange={e => setConfirmPassword(e.target.value)}
           required
-          minLength={6}
+          minLength={10}
           placeholder="Re-enter new password"
         />
 
