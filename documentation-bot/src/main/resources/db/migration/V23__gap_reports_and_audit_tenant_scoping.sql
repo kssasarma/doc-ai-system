@@ -22,9 +22,17 @@ CREATE INDEX idx_answer_upvotes_tenant ON answer_upvotes(tenant_id);
 -- chunk_annotations: backfill from the chunk's own document, not the author, since the whole
 -- point of an annotation is that it's scoped to the document it's attached to.
 ALTER TABLE chunk_annotations ADD COLUMN IF NOT EXISTS tenant_id UUID REFERENCES tenants(id);
-UPDATE chunk_annotations ca SET tenant_id = d.tenant_id
-    FROM document_chunks dc JOIN documents d ON dc.document_id = d.id
-    WHERE ca.document_chunk_id = dc.id AND ca.tenant_id IS NULL;
+-- document_chunks/documents are owned by the ingestor service and don't exist yet when this
+-- service's Flyway runs first on a fresh database (same situation as V2's guard). In that case
+-- chunk_annotations is empty, so there is nothing to backfill and skipping is correct.
+DO $$
+BEGIN
+    IF to_regclass('public.document_chunks') IS NOT NULL THEN
+        EXECUTE 'UPDATE chunk_annotations ca SET tenant_id = d.tenant_id '
+            || 'FROM document_chunks dc JOIN documents d ON dc.document_id = d.id '
+            || 'WHERE ca.document_chunk_id = dc.id AND ca.tenant_id IS NULL';
+    END IF;
+END $$;
 ALTER TABLE chunk_annotations ALTER COLUMN tenant_id SET NOT NULL;
 CREATE INDEX idx_chunk_annotations_tenant ON chunk_annotations(tenant_id);
 

@@ -62,7 +62,9 @@ CREATE INDEX idx_api_keys_tenant ON api_keys(tenant_id);
 ALTER TABLE documentation_gap_reports ADD COLUMN IF NOT EXISTS tenant_id UUID REFERENCES tenants(id);
 UPDATE documentation_gap_reports SET tenant_id = '00000000-0000-0000-0000-000000000001'
     WHERE tenant_id IS NULL;
-CREATE INDEX idx_gap_reports_tenant ON documentation_gap_reports(tenant_id);
+-- No index here: V23 creates idx_gap_reports_tenant as a wider composite index. Creating a
+-- single-column index under the same name here made V23 fail on any fresh database (the legacy
+-- baselined deployment never ran this file through Flyway, which masked the collision).
 
 -- Add tenant_id to faq_entries and faq_clusters (Phase 6)
 ALTER TABLE faq_entries  ADD COLUMN IF NOT EXISTS tenant_id UUID REFERENCES tenants(id);
@@ -70,7 +72,9 @@ ALTER TABLE faq_clusters ADD COLUMN IF NOT EXISTS tenant_id UUID REFERENCES tena
 UPDATE faq_entries  SET tenant_id = '00000000-0000-0000-0000-000000000001' WHERE tenant_id IS NULL;
 UPDATE faq_clusters SET tenant_id = '00000000-0000-0000-0000-000000000001' WHERE tenant_id IS NULL;
 CREATE INDEX idx_faq_entries_tenant  ON faq_entries(tenant_id);
-CREATE INDEX idx_faq_clusters_tenant ON faq_clusters(tenant_id);
+-- No faq_clusters index here: V20 creates idx_faq_clusters_tenant as a wider composite index.
+-- Creating a single-column index under the same name here made V20 fail on any fresh database
+-- (the legacy baselined deployment never ran this file through Flyway, which masked the collision).
 
 -- Add tenant_id to topic_subscriptions (Phase 6)
 ALTER TABLE topic_subscriptions ADD COLUMN IF NOT EXISTS tenant_id UUID REFERENCES tenants(id);

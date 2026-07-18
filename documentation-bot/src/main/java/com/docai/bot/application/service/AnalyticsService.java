@@ -9,6 +9,7 @@ import java.util.stream.Collectors;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
@@ -42,7 +43,10 @@ public class AnalyticsService {
 
     @Async
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
-    @Transactional
+    // REQUIRES_NEW is mandatory here: the publishing transaction is already committed by the time
+    // an AFTER_COMMIT listener runs, so this write needs its own transaction — Spring rejects a
+    // plain @Transactional on a @TransactionalEventListener at startup.
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onQueryRecorded(ChatQueryRecordedEvent event) {
         try {
             QueryLog entry = QueryLog.builder()

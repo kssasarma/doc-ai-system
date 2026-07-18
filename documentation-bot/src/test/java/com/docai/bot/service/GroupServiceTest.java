@@ -38,7 +38,7 @@ class GroupServiceTest extends PostgresTestContainerBase {
 
         assertThat(created.name()).isEqualTo("Support Team");
         assertThat(created.memberCount()).isZero();
-        assertThat(groupService.list(tenant.getId())).extracting(GroupDTO::id).containsExactly(created.id());
+        assertThat(groupService.list(tenant.getId(), null)).extracting(GroupDTO::id).containsExactly(created.id());
     }
 
     @Test
@@ -87,7 +87,7 @@ class GroupServiceTest extends PostgresTestContainerBase {
         assertThat(groupService.listMembers(groupId, tenant.getId()))
             .extracting(GroupService.MemberDTO::userId)
             .containsExactly(user.getId().toString());
-        assertThat(groupService.list(tenant.getId()).get(0).memberCount()).isEqualTo(1);
+        assertThat(groupService.list(tenant.getId(), null).get(0).memberCount()).isEqualTo(1);
     }
 
     @Test
@@ -140,7 +140,7 @@ class GroupServiceTest extends PostgresTestContainerBase {
 
         groupService.delete(UUID.fromString(group.id()), tenant.getId());
 
-        assertThat(groupService.list(tenant.getId())).isEmpty();
+        assertThat(groupService.list(tenant.getId(), null)).isEmpty();
     }
 
     @Test
