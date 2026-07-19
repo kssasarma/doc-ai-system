@@ -1,5 +1,0 @@
-com/docai/e2e/chat/ChatE2ETest.class
-com/docai/e2e/admin/AdminPanelE2ETest.class
-com/docai/e2e/admin/DocumentUploadE2ETest.class
-com/docai/e2e/auth/LoginE2ETest.class
-com/docai/e2e/PlaywrightTestBase.class

@@ -1,5 +1,0 @@
-/home/user/doc-ai-system/e2e-tests/src/test/java/com/docai/e2e/PlaywrightTestBase.java
-/home/user/doc-ai-system/e2e-tests/src/test/java/com/docai/e2e/admin/AdminPanelE2ETest.java
-/home/user/doc-ai-system/e2e-tests/src/test/java/com/docai/e2e/admin/DocumentUploadE2ETest.java
-/home/user/doc-ai-system/e2e-tests/src/test/java/com/docai/e2e/auth/LoginE2ETest.java
-/home/user/doc-ai-system/e2e-tests/src/test/java/com/docai/e2e/chat/ChatE2ETest.java
