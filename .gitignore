@@ -5,3 +5,6 @@
 
 .env
 node_modules/
+
+# Local docker-compose overrides (auto-merged by compose; machine-specific)
+docker-compose.override.yml

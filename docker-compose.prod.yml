@@ -1,5 +1,3 @@
-version: '3.8'
-
 # Production docker-compose — all secrets via env vars, never hardcoded.
 # Create a .env file from .env.example before running:
 #   cp .env.example .env && nano .env
