@@ -1,5 +1,6 @@
 import React, { Suspense, lazy, useState } from 'react';
 import AccountMenu from '../ui/AccountMenu';
+import Footer from './Footer';
 
 const PreferencesModal = lazy(() => import('../Settings/PreferencesModal'));
 
@@ -19,6 +20,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       <div className="flex-1 min-h-0">
         {children}
       </div>
+      <Footer />
       {prefsOpen && (
         <Suspense fallback={null}>
           <PreferencesModal onClose={() => setPrefsOpen(false)} />

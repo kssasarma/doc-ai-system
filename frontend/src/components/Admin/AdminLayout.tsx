@@ -1,5 +1,6 @@
 import { Suspense, lazy, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import Footer from '../Layout/Footer';
 import { motion } from 'framer-motion';
 import { ArrowLeft, LucideIcon } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
@@ -136,12 +137,13 @@ export default function AdminLayout({ navItems, title }: { navItems: AdminNavIte
       </div>
 
       {/* Content */}
-      <main className="flex-1 min-w-0">
-        <div className="max-w-6xl w-full mx-auto px-4 sm:px-6 py-6">
+      <main className="flex-1 min-w-0 flex flex-col">
+        <div className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-6">
           <Suspense fallback={<TabFallback />}>
             <Outlet />
           </Suspense>
         </div>
+        <Footer />
       </main>
 
       {prefsOpen && (
