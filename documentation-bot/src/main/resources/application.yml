@@ -37,10 +37,10 @@ spring:
     properties:
       mail:
         smtp:
-          auth: true
+          auth: ${MAIL_SMTP_AUTH:true}
           starttls:
-            enable: true
-            required: true
+            enable: ${MAIL_STARTTLS_ENABLE:true}
+            required: ${MAIL_STARTTLS_REQUIRED:true}
 
   ai:
     openai:

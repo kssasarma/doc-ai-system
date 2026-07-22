@@ -3,6 +3,10 @@
 -- invitation is invalidated by this migration (recipients must be re-invited); given the existing
 -- 72-hour expiry, this is an acceptable one-time cost for closing the gap rather than trying to
 -- hash already-plaintext values into something meaningful.
+-- Old plaintext-token rows can't be retroactively hashed, and are already invalidated per above
+-- — drop them now rather than leaving same-placeholder rows that would collide under the
+-- UNIQUE index below.
+DELETE FROM invitation_tokens;
 ALTER TABLE invitation_tokens DROP COLUMN token;
 ALTER TABLE invitation_tokens ADD COLUMN token_hash VARCHAR(64) NOT NULL DEFAULT '';
 ALTER TABLE invitation_tokens ALTER COLUMN token_hash DROP DEFAULT;

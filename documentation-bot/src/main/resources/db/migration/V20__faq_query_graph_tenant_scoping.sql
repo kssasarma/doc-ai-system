@@ -23,7 +23,11 @@ CREATE INDEX idx_topic_subs_tenant ON topic_subscriptions(tenant_id, product, ve
 -- attribute them to, so (unlike the rest of this migration) they are NOT backfilled. tenant_id
 -- stays nullable at the DB level and every application read filters on an explicit tenant_id,
 -- so old cross-tenant-blended rows simply become permanently unreachable rather than guessed at.
+-- V11 already added tenant_id (backfilled to a default tenant) and a single-column
+-- idx_faq_clusters_tenant index; replace that index with the composite one below, which
+-- still covers tenant_id-only lookups as its leading column.
 ALTER TABLE faq_clusters ADD COLUMN IF NOT EXISTS tenant_id UUID REFERENCES tenants(id);
+DROP INDEX IF EXISTS idx_faq_clusters_tenant;
 CREATE INDEX idx_faq_clusters_tenant ON faq_clusters(tenant_id, product, version, period_end DESC);
 
 ALTER TABLE faq_entries ADD COLUMN IF NOT EXISTS tenant_id UUID REFERENCES tenants(id);

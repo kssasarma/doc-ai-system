@@ -124,6 +124,16 @@ services:
       # set REDIS_HOST/REDIS_PORT here — otherwise each replica's rate limit/cache is independent.
       INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET}
       INGESTOR_INTERNAL_URL: ${INGESTOR_INTERNAL_URL:-http://document-ingestor:8081}
+      MAIL_HOST: ${MAIL_HOST:-smtp.gmail.com}
+      MAIL_PORT: ${MAIL_PORT:-587}
+      MAIL_USERNAME: ${MAIL_USERNAME:-}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      MAIL_SMTP_AUTH: ${MAIL_SMTP_AUTH:-true}
+      MAIL_STARTTLS_ENABLE: ${MAIL_STARTTLS_ENABLE:-true}
+      MAIL_STARTTLS_REQUIRED: ${MAIL_STARTTLS_REQUIRED:-true}
+      MAIL_FROM: ${MAIL_FROM:-noreply@docs-inator.example.com}
+      MAIL_FROM_NAME: ${MAIL_FROM_NAME:-Docs-inator}
+      APP_URL: ${APP_URL:-http://localhost:5173}
     ports:
       - "8082:8082"
     depends_on:
