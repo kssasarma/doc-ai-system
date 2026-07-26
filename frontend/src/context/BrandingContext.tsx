@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { fetchBranding, type TenantBranding } from '../services/brandingService';
 import { useAuth } from './AuthContext';
+import { APP_TITLE } from '../config/env';
 
 /** "#2563eb" -> "37 99 235" (space-separated RGB triplet, the format tailwind.config.js's
  * `rgb(var(--color-x) / <alpha-value>)` color tokens expect). Falls back to null (leaving the
@@ -13,7 +14,7 @@ function hexToRgbTriplet(hex: string): string | null {
 }
 
 const DEFAULT_BRANDING: TenantBranding = {
-  productName: 'Docs-inator',
+  productName: APP_TITLE,
   logoUrl: null,
   faviconUrl: null,
   primaryColor: '#2563eb',

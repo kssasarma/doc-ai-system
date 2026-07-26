@@ -138,12 +138,20 @@ Omit `REDIS_HOST` entirely to disable the embedding cache. The bot falls back to
 
 ## Frontend (Vite build-time variables)
 
-These are baked into the frontend at build time by Vite. If you change the server addresses after building, you must rebuild the frontend image.
+These are baked into the frontend at build time by Vite (from `frontend/.env` for local dev, or Docker build args for images — see `frontend/.env.example`). If you change any of them after building, you must rebuild the frontend image.
 
 | Variable | Default | Description |
 |---|---|---|
-| `VITE_BACKEND_URL` | `http://localhost:8082` | documentation-bot base URL as seen from the browser |
-| `VITE_INGESTOR_URL` | `http://localhost:8081` | document-ingestor base URL as seen from the browser |
+| `VITE_BASE_PATH` | `/docs-inator/` | Base path the app is served under — drives asset URLs, the react-router basename, and (via the `BASE_PATH` Docker build arg) the nginx redirect/alias locations |
+| `VITE_BACKEND_URL` | `http://localhost:8082` | documentation-bot base URL as seen from the browser; empty string = same-origin relative paths (production nginx proxy) |
+| `VITE_INGESTOR_URL` | `http://localhost:8081` | document-ingestor base URL as seen from the browser; empty string = same-origin relative paths |
+| `VITE_APP_TITLE` | `Docs-inator` | Product name shown in the UI, HTML `<title>`, and meta tags |
+| `VITE_APP_SUBTITLE` | `AI-Powered Documentation Assistant` | Tagline appended to the HTML `<title>` and meta tags |
+| `VITE_APP_DESCRIPTION` | *(from `app.json`)* | Description/og:description meta tag text |
+| `VITE_THEME_COLOR` | `#2563eb` | `<meta name="theme-color">` value |
+| `VITE_MAX_MESSAGE_LENGTH` | `2000` | Max characters accepted by the chat input |
+
+When building via docker-compose, set `FRONTEND_BASE_PATH`, `FRONTEND_APP_TITLE`, `FRONTEND_APP_SUBTITLE`, `FRONTEND_APP_DESCRIPTION`, `FRONTEND_THEME_COLOR`, and `FRONTEND_MAX_MESSAGE_LENGTH` in the root `.env` — the compose files map them onto the build args above (`FRONTEND_BASE_PATH` → `BASE_PATH`, no trailing slash).
 
 ---
 

@@ -11,6 +11,7 @@ import { ToastProvider } from './components/ui/Toast';
 import { ConfirmProvider } from './components/ui/ConfirmDialog';
 import { CommandPaletteProvider } from './components/CommandPalette/CommandPaletteProvider';
 import { installHttpInterceptors } from './lib/httpInterceptors';
+import { ROUTER_BASENAME } from './config/env';
 import ErrorBoundary from './components/ErrorBoundary';
 import App from './App.tsx';
 import './index.css';
@@ -23,7 +24,9 @@ createRoot(document.getElementById('root')!).render(
       {/* Respects the OS/browser prefers-reduced-motion setting for every framer-motion animation
           app-wide (Phase 6.8) — "user" defers to that setting rather than forcing one way. */}
       <MotionConfig reducedMotion="user">
-        <BrowserRouter basename="/docs-inator">
+        {/* Basename follows VITE_BASE_PATH (via Vite's BASE_URL) so routing and asset URLs can
+            never disagree about where the app is mounted. */}
+        <BrowserRouter basename={ROUTER_BASENAME}>
           <ThemeProvider>
             <ToastProvider>
               <ConfirmProvider>

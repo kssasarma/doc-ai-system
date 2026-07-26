@@ -6,7 +6,7 @@ import { useDocumentTitle } from './hooks/useDocumentTitle';
 import { createMessage } from './utils/chatUtils';
 import { streamChatMessage } from './services/chatService';
 import { BackendChatResponse } from './types';
-import appConfig from './config/app.json';
+import { APP_TITLE } from './config/env';
 import { cn } from './lib/cn';
 import { Menu as MenuIcon } from 'lucide-react';
 import LoginPage from './components/Auth/LoginPage';
@@ -33,7 +33,7 @@ const LoadingSpinner = () => (
   <div className="flex h-screen w-full items-center justify-center bg-background">
     <div className="flex flex-col items-center gap-4">
       <Spinner size="lg" />
-      <div className="text-lg font-medium text-foreground">Loading {appConfig.app.title}…</div>
+      <div className="text-lg font-medium text-foreground">Loading {APP_TITLE}…</div>
     </div>
   </div>
 );

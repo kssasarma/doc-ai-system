@@ -3,9 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { Send, Loader2, Square } from 'lucide-react';
 import { cn } from '../../lib/cn';
 import IconButton from '../ui/IconButton';
-import appConfig from '../../config/app.json';
-
-const MAX_MESSAGE_LENGTH = appConfig.ui.chat.maxMessageLength;
+import { MAX_MESSAGE_LENGTH } from '../../config/env';
 
 interface MessageInputProps {
   onSendMessage: (message: string) => void;
