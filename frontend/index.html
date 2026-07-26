@@ -8,16 +8,17 @@
          SVG touch icons), just without the guaranteed cross-version support a real PNG would have. -->
     <link rel="apple-touch-icon" href="%BASE_URL%favicon.svg" />
     <link rel="manifest" href="%BASE_URL%manifest.webmanifest" />
-    <meta name="theme-color" content="#2563eb" />
+    <!-- %VITE_*% placeholders are filled at build time from .env (with app.json defaults) by the
+         htmlEnv plugin in vite.config.ts. -->
+    <meta name="theme-color" content="%VITE_THEME_COLOR%" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="Docs-inator - AI-Powered Documentation Assistant. Get instant answers to your documentation questions with our intelligent chatbot." />
+    <meta name="description" content="%VITE_APP_TITLE% - %VITE_APP_SUBTITLE%. %VITE_APP_DESCRIPTION%" />
     <meta name="keywords" content="documentation, chatbot, AI, assistant, docs, help" />
-    <meta name="author" content="Docs-inator" />
-    <meta property="og:title" content="Docs-inator - AI Documentation Assistant" />
-    <meta property="og:description" content="Get instant answers to your documentation questions with our intelligent chatbot" />
+    <meta name="author" content="%VITE_APP_TITLE%" />
+    <meta property="og:title" content="%VITE_APP_TITLE% - %VITE_APP_SUBTITLE%" />
+    <meta property="og:description" content="%VITE_APP_DESCRIPTION%" />
     <meta property="og:type" content="website" />
-    <link rel="preload" href="/src/config/app.json" as="fetch" crossorigin="anonymous" />
-    <title>Docs-inator - AI Documentation Assistant</title>
+    <title>%VITE_APP_TITLE% - %VITE_APP_SUBTITLE%</title>
     <script>
       // Applied synchronously, before first paint, to avoid a flash of the wrong theme —
       // mirrors the resolution logic in src/context/ThemeContext.tsx.

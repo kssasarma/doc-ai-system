@@ -168,6 +168,15 @@ services:
       args:
         VITE_BACKEND_URL: ${VITE_BACKEND_URL:-}
         VITE_INGESTOR_URL: ${VITE_INGESTOR_URL:-}
+        # Base path the frontend is served under (routing + assets + nginx locations).
+        # Build-time only: changing it requires an image rebuild, not just a restart.
+        BASE_PATH: ${FRONTEND_BASE_PATH:-/docs-inator}
+        # Optional branding overrides; empty = defaults from frontend/src/config/app.json.
+        VITE_APP_TITLE: ${FRONTEND_APP_TITLE:-}
+        VITE_APP_SUBTITLE: ${FRONTEND_APP_SUBTITLE:-}
+        VITE_APP_DESCRIPTION: ${FRONTEND_APP_DESCRIPTION:-}
+        VITE_THEME_COLOR: ${FRONTEND_THEME_COLOR:-}
+        VITE_MAX_MESSAGE_LENGTH: ${FRONTEND_MAX_MESSAGE_LENGTH:-}
     container_name: docai-frontend
     ports:
       - "3000:80"

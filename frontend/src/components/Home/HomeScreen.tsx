@@ -8,7 +8,7 @@ import { fadeIn } from '../../lib/motion';
 import { cn } from '../../lib/cn';
 import Badge from '../ui/Badge';
 import { Skeleton } from '../ui/Skeleton';
-import appConfig from '../../config/app.json';
+import { APP_TITLE } from '../../config/env';
 
 const STARTER_PROMPTS = [
   'How do I get started?',
@@ -51,7 +51,7 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ onAsk, sessions, onSelectSessio
       <div className="max-w-3xl mx-auto px-6 py-16">
         <div className="text-center mb-8">
           <h1 className="text-3xl font-semibold text-foreground">
-            What do you want to know about {appConfig.app.title}?
+            What do you want to know about {APP_TITLE}?
           </h1>
           <p className="text-sm text-muted-foreground mt-2">
             Ask a question and get an answer grounded in your team's documentation.
