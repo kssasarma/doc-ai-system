@@ -121,6 +121,49 @@ class SemanticChunkerTest {
     }
 
     @Test
+    void oversizedTable_splitIntoMultipleChunksEachWithinBudget() {
+        // maxTokens=50 (from setUp) means ~200 chars per chunk; build a table whose rows alone
+        // total well beyond that so it must split rather than stay a single unbounded chunk.
+        StringBuilder table = new StringBuilder("| Code | Description |\n| --- | --- |\n");
+        for (int i = 0; i < 40; i++) {
+            table.append("| ERR-").append(i).append(" | Some longer description of error number ").append(i).append(" |\n");
+        }
+        String text = "Intro.\n\n" + table + "\nOutro.";
+
+        List<SemanticChunk> chunks = chunker.chunk(text);
+        List<SemanticChunk> tableChunks = chunks.stream().filter(c -> "TABLE".equals(c.getChunkType())).toList();
+
+        assertThat(tableChunks.size()).isGreaterThan(1);
+        for (SemanticChunk c : tableChunks) {
+            assertThat(c.getTokenCount()).isLessThanOrEqualTo(50);
+            // Every fragment stays a self-describing table, not orphaned data rows.
+            assertThat(c.getContent()).startsWith("| Code | Description |");
+        }
+        assertThat(tableChunks).anyMatch(c -> c.getContent().contains("ERR-0 "));
+        assertThat(tableChunks).anyMatch(c -> c.getContent().contains("ERR-39 "));
+    }
+
+    @Test
+    void oversizedCodeBlock_splitIntoMultipleChunksEachWithinBudget() {
+        StringBuilder code = new StringBuilder();
+        for (int i = 0; i < 60; i++) {
+            code.append("System.out.println(\"line number ").append(i).append("\");\n");
+        }
+        String text = "Explanation.\n\n```java\n" + code + "```\n\nMore text.";
+
+        List<SemanticChunk> chunks = chunker.chunk(text);
+        List<SemanticChunk> codeChunks = chunks.stream().filter(c -> "CODE".equals(c.getChunkType())).toList();
+
+        assertThat(codeChunks.size()).isGreaterThan(1);
+        for (SemanticChunk c : codeChunks) {
+            assertThat(c.getTokenCount()).isLessThanOrEqualTo(50);
+            assertThat(c.getCodeLanguage()).isEqualTo("java");
+        }
+        assertThat(codeChunks).anyMatch(c -> c.getContent().contains("line number 0"));
+        assertThat(codeChunks).anyMatch(c -> c.getContent().contains("line number 59"));
+    }
+
+    @Test
     void heading_splitsIntoSeparateSection() {
         String text = "# Installation\n\nInstall the agent.\n\n# Configuration\n\nConfigure the server.";
 

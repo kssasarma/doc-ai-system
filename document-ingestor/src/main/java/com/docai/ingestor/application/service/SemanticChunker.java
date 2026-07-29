@@ -60,14 +60,14 @@ public class SemanticChunker {
         while (codeMatcher.find()) {
             String lang = codeMatcher.group(1);
             String code = codeMatcher.group(2).trim();
-            if (!code.isBlank()) {
+            for (String part : splitLinesToBudget(code)) {
                 codeChunks.add(SemanticChunk.builder()
                     .index(codeIndex++)
-                    .content(code)
+                    .content(part)
                     .chunkType("CODE")
                     .codeLanguage(lang.isBlank() ? null : lang)
                     .isLeaf(true)
-                    .tokenCount(estimateTokens(code))
+                    .tokenCount(estimateTokens(part))
                     .build());
             }
             codeRanges.add(new int[]{codeMatcher.start(), codeMatcher.end()});
@@ -84,13 +84,13 @@ public class SemanticChunker {
         int tableIndex = codeIndex;
         while (tableMatcher.find()) {
             String table = tableMatcher.group(1).trim();
-            if (!table.isBlank()) {
+            for (String part : splitTableToBudget(table)) {
                 tableChunks.add(SemanticChunk.builder()
                     .index(tableIndex++)
-                    .content(table)
+                    .content(part)
                     .chunkType("TABLE")
                     .isLeaf(true)
-                    .tokenCount(estimateTokens(table))
+                    .tokenCount(estimateTokens(part))
                     .build());
             }
         }
@@ -257,6 +257,60 @@ public class SemanticChunker {
         String tail = text.substring(text.length() - charLimit);
         int firstSpace = tail.indexOf(' ');
         return (firstSpace > 0 && firstSpace < tail.length() - 1) ? tail.substring(firstSpace + 1) : tail;
+    }
+
+    /** A fenced code block has no natural small-unit boundary like paragraphs do, so an oversized
+     * one (a large embedded log/config dump) is split by line instead of left as a single unbounded
+     * chunk — otherwise its real tokenizer count can dwarf our char/4 estimate and blow past the
+     * embedding model's context window on its own, no batching limit can save a single chunk that's
+     * already too big. {@code trimToTokens} on each resulting part is the final backstop for the
+     * rare single line that's oversized by itself (a minified one-liner, say). */
+    private List<String> splitLinesToBudget(String code) {
+        if (code.isBlank()) return List.of();
+        if (estimateTokens(code) <= maxTokens) return List.of(code);
+
+        List<String> parts = new ArrayList<>();
+        StringBuilder current = new StringBuilder();
+        for (String line : code.split("\n", -1)) {
+            if (!current.isEmpty() && estimateTokens(current.toString()) + estimateTokens(line) > maxTokens) {
+                parts.add(trimToTokens(current.toString(), maxTokens));
+                current = new StringBuilder();
+            }
+            if (!current.isEmpty()) current.append("\n");
+            current.append(line);
+        }
+        if (!current.isEmpty()) parts.add(trimToTokens(current.toString(), maxTokens));
+        return parts;
+    }
+
+    /** Same unbounded-size problem as {@link #splitLinesToBudget} but for tables: a reference table
+     * has no row-count ceiling either, so split by row once it exceeds the budget. Each split
+     * repeats the header + separator row so every fragment stays a valid, self-describing table
+     * instead of orphaned data rows with no column names. */
+    private List<String> splitTableToBudget(String table) {
+        if (table.isBlank()) return List.of();
+        if (estimateTokens(table) <= maxTokens) return List.of(table);
+
+        String[] lines = table.split("\n", -1);
+        if (lines.length < 3) return List.of(trimToTokens(table, maxTokens));
+
+        String prefix = lines[0] + "\n" + lines[1];
+        List<String> parts = new ArrayList<>();
+        StringBuilder current = new StringBuilder(prefix);
+        boolean hasRows = false;
+        for (int i = 2; i < lines.length; i++) {
+            String row = lines[i];
+            if (row.isBlank()) continue;
+            if (hasRows && estimateTokens(current.toString()) + estimateTokens(row) > maxTokens) {
+                parts.add(trimToTokens(current.toString(), maxTokens));
+                current = new StringBuilder(prefix);
+                hasRows = false;
+            }
+            current.append("\n").append(row);
+            hasRows = true;
+        }
+        if (hasRows) parts.add(trimToTokens(current.toString(), maxTokens));
+        return parts.isEmpty() ? List.of(trimToTokens(table, maxTokens)) : parts;
     }
 
     private static String trimToTokens(String text, int limit) {
