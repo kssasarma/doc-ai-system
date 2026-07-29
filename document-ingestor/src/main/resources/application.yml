@@ -50,6 +50,11 @@ spring:
 
 server:
   port: 8080
+  tomcat:
+    # Independent of servlet.multipart above: Tomcat enforces this cap on the raw POST body
+    # before Spring's multipart resolver ever runs, so without it uploads over Tomcat's 2MB
+    # default 413 regardless of the multipart max-file-size/max-request-size settings.
+    max-http-form-post-size: ${MAX_UPLOAD_SIZE:100MB}
 
 app:
   jwt:
