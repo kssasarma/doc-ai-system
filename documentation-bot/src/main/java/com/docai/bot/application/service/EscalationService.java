@@ -82,13 +82,13 @@ public class EscalationService {
         e = escalationRepository.save(e);
 
         // Notify the question asker
-        String expertUsername = userRepository.findById(principal.userId())
-            .map(User::getUsername).orElse("an expert");
+        String expertEmail = userRepository.findById(principal.userId())
+            .map(User::getEmail).orElse("an expert");
         notificationService.createNotification(
             e.getCreatedBy(),
             "ESCALATION_ANSWERED",
             "Your escalated question was answered",
-            expertUsername + " answered: " + truncate(e.getQuestionText(), 100),
+            expertEmail + " answered: " + truncate(e.getQuestionText(), 100),
             e.getId()
         );
 
@@ -135,10 +135,10 @@ public class EscalationService {
     }
 
     private EscalationDTO toDTO(Escalation e) {
-        String creatorUsername = userRepository.findById(e.getCreatedBy())
-            .map(User::getUsername).orElse(null);
-        String assignedUsername = e.getAssignedTo() != null
-            ? userRepository.findById(e.getAssignedTo()).map(User::getUsername).orElse(null)
+        String creatorEmail = userRepository.findById(e.getCreatedBy())
+            .map(User::getEmail).orElse(null);
+        String assignedEmail = e.getAssignedTo() != null
+            ? userRepository.findById(e.getAssignedTo()).map(User::getEmail).orElse(null)
             : null;
         return EscalationDTO.builder()
             .id(e.getId().toString())
@@ -147,8 +147,8 @@ public class EscalationService {
             .aiAnswerText(e.getAiAnswerText())
             .status(e.getStatus().toString())
             .createdBy(e.getCreatedBy().toString())
-            .createdByUsername(creatorUsername)
-            .assignedTo(assignedUsername)
+            .createdByEmail(creatorEmail)
+            .assignedTo(assignedEmail)
             .expertAnswer(e.getExpertAnswer())
             .product(e.getProduct())
             .version(e.getVersion())
@@ -169,7 +169,7 @@ public class EscalationService {
         private String aiAnswerText;
         private String status;
         private String createdBy;
-        private String createdByUsername;
+        private String createdByEmail;
         private String assignedTo;
         private String expertAnswer;
         private String product;

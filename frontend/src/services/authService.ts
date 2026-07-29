@@ -4,11 +4,11 @@ import { AuthResponse, TenantMembership } from '../types';
 const BOT_URL = BACKEND_URL;
 const AUTH_URL = `${BOT_URL}/api/auth`;
 
-export async function login(username: string, password: string): Promise<AuthResponse> {
+export async function login(email: string, password: string): Promise<AuthResponse> {
   const res = await fetch(`${AUTH_URL}/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username, password }),
+    body: JSON.stringify({ email, password }),
   });
   return res.json();
 }

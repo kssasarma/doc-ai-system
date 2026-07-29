@@ -3,7 +3,6 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { acceptInvite } from '../../services/invitationService';
 import { useAuth } from '../../context/AuthContext';
 import AuthLayout from './AuthLayout';
-import Input from '../ui/Input';
 import PasswordInput from '../ui/PasswordInput';
 import Button from '../ui/Button';
 
@@ -13,7 +12,6 @@ export default function AcceptInvitePage() {
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token') ?? '';
 
-  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
@@ -39,7 +37,7 @@ export default function AcceptInvitePage() {
     }
     setIsSubmitting(true);
     try {
-      const data = await acceptInvite(token, username, password);
+      const data = await acceptInvite(token, password);
       if (data.error || !data.token) {
         setError(data.error || 'Could not accept invitation');
         return;
@@ -54,18 +52,14 @@ export default function AcceptInvitePage() {
   };
 
   return (
-    <AuthLayout title="Accept invitation" subtitle="Choose a username and password to activate your account.">
+    <AuthLayout title="Accept invitation" subtitle="Choose a password to activate your account. Your email is your sign-in ID.">
       <form onSubmit={handleSubmit} className="space-y-4">
         <p className="text-xs text-muted-foreground bg-muted rounded-lg px-3 py-2">
-          Already have an account with this email in another workspace? Enter your existing username and password below to join this workspace too — no new account needed.
+          Already have an account with this email in another workspace? Enter your existing password below to join this workspace too — no new account needed.
         </p>
-        <Input
-          label="Username" type="text" value={username} onChange={e => setUsername(e.target.value)}
-          required minLength={3} maxLength={50} autoFocus placeholder="Choose a username, or your existing one"
-        />
         <PasswordInput
           label="Password" value={password} onChange={e => setPassword(e.target.value)}
-          required minLength={10} showStrength placeholder="At least 10 characters, or your existing password"
+          required minLength={10} showStrength autoFocus placeholder="At least 10 characters, or your existing password"
         />
         <PasswordInput
           label="Confirm password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)}

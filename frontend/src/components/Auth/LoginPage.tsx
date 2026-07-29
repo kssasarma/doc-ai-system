@@ -10,7 +10,7 @@ import Button from '../ui/Button';
 export default function LoginPage() {
   const { login } = useAuth();
   const branding = useBranding();
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -20,7 +20,7 @@ export default function LoginPage() {
     setError('');
     setIsSubmitting(true);
     try {
-      await login(username, password);
+      await login(email, password);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong');
     } finally {
@@ -40,14 +40,13 @@ export default function LoginPage() {
     >
       <form onSubmit={handleSubmit} className="space-y-4">
         <Input
-          label="Username"
-          type="text"
-          value={username}
-          onChange={e => setUsername(e.target.value)}
+          label="Email"
+          type="email"
+          value={email}
+          onChange={e => setEmail(e.target.value)}
           required
-          minLength={3}
           autoFocus
-          placeholder="Enter username"
+          placeholder="Enter email"
         />
         <PasswordInput
           label="Password"

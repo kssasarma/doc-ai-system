@@ -87,7 +87,7 @@ public class GroupService {
             .userId(targetUserId)
             .build());
         log.info("Added user {} to group {}", targetUserId, groupId);
-        return new MemberDTO(targetUser.getId().toString(), targetUser.getUsername(), targetUser.getEmail());
+        return new MemberDTO(targetUser.getId().toString(), targetUser.getEmail());
     }
 
     @Transactional
@@ -111,8 +111,7 @@ public class GroupService {
             .map(m -> {
                 User u = users.get(m.getUserId());
                 return new MemberDTO(m.getUserId().toString(),
-                    u != null ? u.getUsername() : "unknown",
-                    u != null ? u.getEmail() : "");
+                    u != null ? u.getEmail() : "unknown");
             })
             .toList();
     }
@@ -133,5 +132,5 @@ public class GroupService {
 
     public record GroupDTO(String id, String name, long memberCount, String createdAt) {}
 
-    public record MemberDTO(String userId, String username, String email) {}
+    public record MemberDTO(String userId, String email) {}
 }

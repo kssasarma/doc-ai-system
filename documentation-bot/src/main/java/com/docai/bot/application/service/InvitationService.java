@@ -68,6 +68,19 @@ public class InvitationService {
             }
         });
 
+        // One live invite per email per tenant — a second invite while the first is still pending
+        // would mint a second working link (and double-count against the tenant's seat limit).
+        // Revoke the pending invite first to re-send; accepted/revoked/expired ones don't block.
+        boolean duplicatePending = tenantId != null
+            ? invitationRepository.existsByEmailIgnoreCaseAndTenantIdAndAcceptedAtIsNullAndRevokedAtIsNullAndExpiresAtAfter(
+                email, tenantId, LocalDateTime.now())
+            : invitationRepository.existsByEmailIgnoreCaseAndTenantIdIsNullAndAcceptedAtIsNullAndRevokedAtIsNullAndExpiresAtAfter(
+                email, LocalDateTime.now());
+        if (duplicatePending) {
+            throw new IllegalArgumentException(
+                "An invitation for this email is already pending. Revoke it first to send a new one.");
+        }
+
         if (tenantId != null) {
             Tenant tenant = tenantRepository.findById(tenantId)
                 .orElseThrow(() -> new IllegalArgumentException("Tenant not found: " + tenantId));
@@ -130,7 +143,7 @@ public class InvitationService {
     }
 
     @Transactional
-    public User accept(String token, String username, String password) {
+    public User accept(String token, String password) {
         InvitationToken invitation = invitationRepository.findByTokenHash(hash(token))
             .orElseThrow(() -> new IllegalArgumentException("Invalid invitation"));
 
@@ -145,8 +158,8 @@ public class InvitationService {
         }
 
         User user = userRepository.findByEmail(invitation.getEmail())
-            .map(existing -> joinExistingIdentityToTenant(existing, username, password, invitation))
-            .orElseGet(() -> provisionNewIdentity(username, password, invitation));
+            .map(existing -> joinExistingIdentityToTenant(existing, password, invitation))
+            .orElseGet(() -> provisionNewIdentity(password, invitation));
 
         invitation.setAcceptedAt(LocalDateTime.now());
         invitationRepository.save(invitation);
@@ -154,14 +167,14 @@ public class InvitationService {
     }
 
     /**
-     * The invited email already has an account (elsewhere, in another tenant) — {@code username}
-     * and {@code password} here verify that the person accepting is that account's owner, not
-     * set a new password. On success the new tenant becomes their active tenant/role, matching
-     * the "you just joined a new workspace" expectation.
+     * The invited email already has an account (elsewhere, in another tenant) — {@code password}
+     * here verifies that the person accepting is that account's owner, not set a new password.
+     * On success the new tenant becomes their active tenant/role, matching the "you just joined
+     * a new workspace" expectation.
      */
-    private User joinExistingIdentityToTenant(User existing, String username, String password, InvitationToken invitation) {
-        if (!existing.getUsername().equals(username) || !passwordEncoder.matches(password, existing.getPasswordHash())) {
-            throw new IllegalArgumentException("Incorrect username or password for the existing account with this email");
+    private User joinExistingIdentityToTenant(User existing, String password, InvitationToken invitation) {
+        if (!passwordEncoder.matches(password, existing.getPasswordHash())) {
+            throw new IllegalArgumentException("Incorrect password for the existing account with this email");
         }
         if (invitation.getTenantId() != null
                 && membershipRepository.existsByUserIdAndTenantId(existing.getId(), invitation.getTenantId())) {
@@ -174,17 +187,13 @@ public class InvitationService {
         existing.setTenantId(invitation.getTenantId());
         existing.setRole(invitation.getRole());
         User saved = userRepository.save(existing);
-        log.info("Existing identity '{}' joined tenant {} with role {}", username, invitation.getTenantId(), invitation.getRole());
+        log.info("Existing identity '{}' joined tenant {} with role {}",
+            existing.getEmail(), invitation.getTenantId(), invitation.getRole());
         return saved;
     }
 
-    private User provisionNewIdentity(String username, String password, InvitationToken invitation) {
-        if (userRepository.existsByUsername(username)) {
-            throw new IllegalArgumentException("Username already taken");
-        }
-
+    private User provisionNewIdentity(String password, InvitationToken invitation) {
         User user = userRepository.save(User.builder()
-            .username(username)
             .email(invitation.getEmail())
             .passwordHash(passwordEncoder.encode(password))
             .role(invitation.getRole())
@@ -195,7 +204,7 @@ public class InvitationService {
             membershipService.ensureMembership(user.getId(), invitation.getTenantId(), invitation.getRole());
         }
 
-        log.info("Invitation accepted: '{}' provisioned with role {}", username, invitation.getRole());
+        log.info("Invitation accepted: '{}' provisioned with role {}", invitation.getEmail(), invitation.getRole());
         return user;
     }
 

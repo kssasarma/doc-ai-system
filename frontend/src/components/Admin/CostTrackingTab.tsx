@@ -48,7 +48,7 @@ export default function CostTrackingTab() {
   };
   const handleExportByUser = () => {
     if (!cost) return;
-    downloadCsv(`cost-by-user-last-${days}d.csv`, cost.costByUser, ['username', 'queryCount', 'totalCost']);
+    downloadCsv(`cost-by-user-last-${days}d.csv`, cost.costByUser, ['email', 'queryCount', 'totalCost']);
   };
   const handleExportByProduct = () => {
     if (!cost) return;
@@ -157,7 +157,7 @@ export default function CostTrackingTab() {
                   <BarChart data={cost.costByUser} layout="vertical" margin={{ top: 4, right: 16, left: 4, bottom: 0 }}>
                     <CartesianGrid stroke={chart.grid} horizontal={false} />
                     <XAxis type="number" stroke={chart.axis} tick={{ fill: chart.mutedText, fontSize: 11 }} tickLine={false} tickFormatter={(v: number) => `$${v.toFixed(2)}`} />
-                    <YAxis type="category" dataKey="username" stroke={chart.axis} tick={{ fill: chart.mutedText, fontSize: 11 }} tickLine={false} width={80} />
+                    <YAxis type="category" dataKey="email" stroke={chart.axis} tick={{ fill: chart.mutedText, fontSize: 11 }} tickLine={false} width={80} />
                     <RechartsTooltip
                       cursor={{ fill: chart.grid, opacity: 0.4 }}
                       content={({ active, label, payload }) => (

@@ -31,11 +31,11 @@ export async function revokeInvitation(token: string, invitationId: string): Pro
   await axios.delete(`${BOT_URL}/api/admin/invitations/${invitationId}`, { headers: headers(token) });
 }
 
-export async function acceptInvite(token: string, username: string, password: string): Promise<AuthResponse> {
+export async function acceptInvite(token: string, password: string): Promise<AuthResponse> {
   const res = await fetch(`${BOT_URL}/api/auth/accept-invite`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ token, username, password }),
+    body: JSON.stringify({ token, password }),
   });
   const data = await res.json();
   if (!res.ok) {

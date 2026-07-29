@@ -66,7 +66,7 @@ const AnnotationsPanel: React.FC<AnnotationsPanelProps> = ({ chunkId }) => {
                 )}
               </div>
               <p className="text-muted-foreground mt-1">
-                @{a.username} · {formatTimestamp(new Date(a.createdAt).getTime())}
+                {a.email} · {formatTimestamp(new Date(a.createdAt).getTime())}
               </p>
             </div>
           ))}

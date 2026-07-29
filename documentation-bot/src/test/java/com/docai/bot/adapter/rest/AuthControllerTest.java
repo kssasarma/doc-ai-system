@@ -71,18 +71,18 @@ class AuthControllerTest {
     @Test
     void login_validCredentials_returns200WithToken() throws Exception {
         User user = activeUser();
-        when(userService.authenticate("alice", "secret-pass-123")).thenReturn(user);
+        when(userService.authenticate("alice@example.com", "secret-pass-123")).thenReturn(user);
         when(jwtService.generateToken(user)).thenReturn("jwt-token");
         when(refreshTokenService.issue(USER_ID)).thenReturn("refresh-token");
         doNothing().when(auditLogService).log(any(), any(), any(), any(), any(), any(), any());
 
         mockMvc.perform(post("/api/auth/login")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"username\":\"alice\",\"password\":\"secret-pass-123\"}"))
+                .content("{\"email\":\"alice@example.com\",\"password\":\"secret-pass-123\"}"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.token").value("jwt-token"))
             .andExpect(jsonPath("$.refreshToken").value("refresh-token"))
-            .andExpect(jsonPath("$.username").value("alice"))
+            .andExpect(jsonPath("$.email").value("alice@example.com"))
             .andExpect(jsonPath("$.role").value("ADMIN"));
     }
 
@@ -94,7 +94,7 @@ class AuthControllerTest {
 
         mockMvc.perform(post("/api/auth/login")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"username\":\"alice\",\"password\":\"wrong\"}"))
+                .content("{\"email\":\"alice@example.com\",\"password\":\"wrong\"}"))
             .andExpect(status().isUnauthorized())
             .andExpect(jsonPath("$.error").value("Invalid credentials"));
     }
@@ -107,16 +107,16 @@ class AuthControllerTest {
 
         mockMvc.perform(post("/api/auth/login")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"username\":\"alice\",\"password\":\"wrong\"}"))
+                .content("{\"email\":\"alice@example.com\",\"password\":\"wrong\"}"))
             .andExpect(status().isLocked())
             .andExpect(jsonPath("$.error").exists());
     }
 
     @Test
-    void login_missingUsername_returns400() throws Exception {
+    void login_missingEmail_returns400() throws Exception {
         mockMvc.perform(post("/api/auth/login")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"username\":\"\",\"password\":\"pass\"}"))
+                .content("{\"email\":\"\",\"password\":\"pass\"}"))
             .andExpect(status().isBadRequest());
     }
 
@@ -124,7 +124,7 @@ class AuthControllerTest {
     void login_missingPassword_returns400() throws Exception {
         mockMvc.perform(post("/api/auth/login")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"username\":\"alice\",\"password\":\"\"}"))
+                .content("{\"email\":\"alice@example.com\",\"password\":\"\"}"))
             .andExpect(status().isBadRequest());
     }
 
@@ -192,9 +192,9 @@ class AuthControllerTest {
         when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
 
         mockMvc.perform(get("/api/auth/me")
-                .with(authentication(userAuth("alice", "ADMIN"))))
+                .with(authentication(userAuth("alice@example.com", "ADMIN"))))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.username").value("alice"))
+            .andExpect(jsonPath("$.email").value("alice@example.com"))
             .andExpect(jsonPath("$.role").value("ADMIN"));
     }
 
@@ -273,7 +273,7 @@ class AuthControllerTest {
         when(tenantMembershipService.listMyTenants(USER_ID)).thenReturn(List.of(membership));
 
         mockMvc.perform(get("/api/auth/my-tenants")
-                .with(authentication(userAuth("alice", "ADMIN"))))
+                .with(authentication(userAuth("alice@example.com", "ADMIN"))))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$[0].tenantName").value("Acme Corp"))
             .andExpect(jsonPath("$[0].role").value("ADMIN"));
@@ -284,14 +284,14 @@ class AuthControllerTest {
     @Test
     void acceptInvite_validToken_returns201() throws Exception {
         User user = activeUser();
-        when(invitationService.accept(eq("invite-token"), eq("newuser"), any())).thenReturn(user);
+        when(invitationService.accept(eq("invite-token"), any())).thenReturn(user);
         when(jwtService.generateToken(user)).thenReturn("jwt-token");
         when(refreshTokenService.issue(USER_ID)).thenReturn("refresh-token");
         doNothing().when(auditLogService).log(any(), any(), any(), any(), any(), any(), any());
 
         mockMvc.perform(post("/api/auth/accept-invite")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"token\":\"invite-token\",\"username\":\"newuser\",\"password\":\"secure-pass-001\"}"))
+                .content("{\"token\":\"invite-token\",\"password\":\"secure-pass-001\"}"))
             .andExpect(status().isCreated())
             .andExpect(jsonPath("$.token").value("jwt-token"));
     }
@@ -300,14 +300,14 @@ class AuthControllerTest {
     void acceptInvite_shortPassword_returns400() throws Exception {
         mockMvc.perform(post("/api/auth/accept-invite")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"token\":\"token\",\"username\":\"user\",\"password\":\"short\"}"))
+                .content("{\"token\":\"token\",\"password\":\"short\"}"))
             .andExpect(status().isBadRequest());
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────
 
-    private static UsernamePasswordAuthenticationToken userAuth(String username, String role) {
-        UserPrincipal principal = new UserPrincipal(USER_ID, username, role, TENANT_ID, false);
+    private static UsernamePasswordAuthenticationToken userAuth(String email, String role) {
+        UserPrincipal principal = new UserPrincipal(USER_ID, email, role, TENANT_ID, false);
         return new UsernamePasswordAuthenticationToken(
             principal, null, List.of(new SimpleGrantedAuthority("ROLE_" + role)));
     }
@@ -315,7 +315,6 @@ class AuthControllerTest {
     private static User activeUser() {
         return User.builder()
             .id(USER_ID)
-            .username("alice")
             .email("alice@example.com")
             .passwordHash("hashed")
             .role(User.Role.ADMIN)

@@ -178,7 +178,6 @@ public class GdprErasureService {
         sharedChatRecipientRepository.deleteByUserId(userId);
 
         String tombstone = "deleted-" + userId;
-        user.setUsername(tombstone);
         user.setEmail(tombstone + "@erased.invalid");
         user.setPasswordHash(passwordEncoder.encode(UUID.randomUUID().toString()));
         user.setDisplayName(null);

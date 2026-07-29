@@ -50,30 +50,30 @@ class UserServiceTest {
     @Test
     void authenticate_validCredentials_returnsUser() {
         User user = activeUser(RAW_PW);
-        when(userRepository.findByUsername("alice")).thenReturn(Optional.of(user));
+        when(userRepository.findByEmail("alice@example.com")).thenReturn(Optional.of(user));
         // No save() stub: service skips the counter reset when failedLoginAttempts is already 0
 
-        User result = userService.authenticate("alice", RAW_PW);
+        User result = userService.authenticate("alice@example.com", RAW_PW);
 
-        assertThat(result.getUsername()).isEqualTo("alice");
+        assertThat(result.getEmail()).isEqualTo("alice@example.com");
     }
 
     @Test
     void authenticate_wrongPassword_throwsIllegalArgument() {
         User user = activeUser(RAW_PW);
-        when(userRepository.findByUsername("alice")).thenReturn(Optional.of(user));
+        when(userRepository.findByEmail("alice@example.com")).thenReturn(Optional.of(user));
         when(userRepository.save(any())).thenReturn(user);
 
-        assertThatThrownBy(() -> userService.authenticate("alice", "wrong-password"))
+        assertThatThrownBy(() -> userService.authenticate("alice@example.com", "wrong-password"))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("Invalid credentials");
     }
 
     @Test
-    void authenticate_unknownUsername_throwsIllegalArgument() {
-        when(userRepository.findByUsername("nobody")).thenReturn(Optional.empty());
+    void authenticate_unknownEmail_throwsIllegalArgument() {
+        when(userRepository.findByEmail("nobody@example.com")).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> userService.authenticate("nobody", RAW_PW))
+        assertThatThrownBy(() -> userService.authenticate("nobody@example.com", RAW_PW))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("Invalid credentials");
     }
@@ -82,9 +82,9 @@ class UserServiceTest {
     void authenticate_deletedUser_throwsIllegalArgument() {
         User user = activeUser(RAW_PW);
         user.setDeletedAt(LocalDateTime.now());
-        when(userRepository.findByUsername("alice")).thenReturn(Optional.of(user));
+        when(userRepository.findByEmail("alice@example.com")).thenReturn(Optional.of(user));
 
-        assertThatThrownBy(() -> userService.authenticate("alice", RAW_PW))
+        assertThatThrownBy(() -> userService.authenticate("alice@example.com", RAW_PW))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("Invalid credentials");
     }
@@ -93,9 +93,9 @@ class UserServiceTest {
     void authenticate_deactivatedUser_throwsIllegalArgument() {
         User user = activeUser(RAW_PW);
         user.setDeactivatedAt(LocalDateTime.now());
-        when(userRepository.findByUsername("alice")).thenReturn(Optional.of(user));
+        when(userRepository.findByEmail("alice@example.com")).thenReturn(Optional.of(user));
 
-        assertThatThrownBy(() -> userService.authenticate("alice", RAW_PW))
+        assertThatThrownBy(() -> userService.authenticate("alice@example.com", RAW_PW))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("deactivated");
     }
@@ -104,9 +104,9 @@ class UserServiceTest {
     void authenticate_lockedAccount_throwsAccountLockedException() {
         User user = activeUser(RAW_PW);
         user.setLockedUntil(LocalDateTime.now().plusMinutes(10));
-        when(userRepository.findByUsername("alice")).thenReturn(Optional.of(user));
+        when(userRepository.findByEmail("alice@example.com")).thenReturn(Optional.of(user));
 
-        assertThatThrownBy(() -> userService.authenticate("alice", RAW_PW))
+        assertThatThrownBy(() -> userService.authenticate("alice@example.com", RAW_PW))
             .isInstanceOf(AccountLockedException.class)
             .hasMessageContaining("Too many failed login attempts");
     }
@@ -116,11 +116,11 @@ class UserServiceTest {
         User user = activeUser(RAW_PW);
         // Simulate 2 prior failures
         user.setFailedLoginAttempts(2);
-        when(userRepository.findByUsername("alice")).thenReturn(Optional.of(user));
+        when(userRepository.findByEmail("alice@example.com")).thenReturn(Optional.of(user));
         ArgumentCaptor<User> savedUser = ArgumentCaptor.forClass(User.class);
         when(userRepository.save(savedUser.capture())).thenReturn(user);
 
-        assertThatThrownBy(() -> userService.authenticate("alice", "wrong"))
+        assertThatThrownBy(() -> userService.authenticate("alice@example.com", "wrong"))
             .isInstanceOf(IllegalArgumentException.class);
 
         // Third failure should trigger lockout
@@ -133,11 +133,11 @@ class UserServiceTest {
     void authenticate_successAfterPriorFailures_resetsCounter() {
         User user = activeUser(RAW_PW);
         user.setFailedLoginAttempts(2);
-        when(userRepository.findByUsername("alice")).thenReturn(Optional.of(user));
+        when(userRepository.findByEmail("alice@example.com")).thenReturn(Optional.of(user));
         ArgumentCaptor<User> savedUser = ArgumentCaptor.forClass(User.class);
         when(userRepository.save(savedUser.capture())).thenReturn(user);
 
-        userService.authenticate("alice", RAW_PW);
+        userService.authenticate("alice@example.com", RAW_PW);
 
         assertThat(savedUser.getValue().getFailedLoginAttempts()).isEqualTo(0);
         assertThat(savedUser.getValue().getLockedUntil()).isNull();
@@ -196,7 +196,6 @@ class UserServiceTest {
     private User activeUser(String rawPassword) {
         return User.builder()
             .id(USER_ID)
-            .username("alice")
             .email("alice@example.com")
             .passwordHash(passwordEncoder.encode(rawPassword))
             .role(User.Role.ADMIN)

@@ -57,7 +57,7 @@ export interface ProductCoverage {
 
 export interface UserEngagement {
   userId: string;
-  username: string;
+  email: string;
   queryCount: number;
   avgConfidence: number;
   lastActive: string | null;
@@ -74,7 +74,7 @@ export interface CostSummary {
 
 export interface UserCost {
   userId: string;
-  username: string;
+  email: string;
   totalCost: number;
   queryCount: number;
 }

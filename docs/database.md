@@ -128,7 +128,7 @@ CREATE INDEX ON document_chunks USING gin(search_vector);
 | Column | Notes |
 |---|---|
 | `id`, `tenant_id` | Row-level isolation |
-| `username`, `email` | Unique within tenant |
+| `email` | Unique (doubles as the login identifier) |
 | `password_hash` | BCrypt |
 | `role` | `USER`, `ADMIN`, `SUPER_ADMIN` |
 | `must_change_password` | Set true for seeded admin and invited users |
@@ -219,7 +219,7 @@ CREATE INDEX ON document_chunks USING gin(search_vector);
 SELECT id, name, slug, plan, max_users, max_documents FROM tenants;
 
 -- List users in a tenant
-SELECT username, email, role, created_at
+SELECT email, role, created_at
 FROM users
 WHERE tenant_id = '<tenant-uuid>'
 ORDER BY created_at;

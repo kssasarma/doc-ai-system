@@ -52,12 +52,8 @@ public class OidcJitProvisioningService {
 
         User user = userRepository.findByOidcSubAndOidcProvider(sub, provider)
             .orElseGet(() -> {
-                // derive a unique username from email prefix
-                String base     = email != null ? email.split("@")[0] : sub;
-                String username = uniqueUsername(base);
                 log.info("JIT provisioning OIDC user sub={} provider={} tenant={}", sub, provider, tenantId);
                 return userRepository.save(User.builder()
-                    .username(username)
                     .email(email != null ? email : sub + "@" + provider + ".oidc")
                     .passwordHash("")          // no password for SSO users
                     .role(User.Role.USER)
@@ -91,14 +87,5 @@ public class OidcJitProvisioningService {
     private String getString(Map<String, Object> claims, String key) {
         Object v = claims.get(key);
         return v != null ? v.toString() : null;
-    }
-
-    private String uniqueUsername(String base) {
-        String candidate = base;
-        int suffix = 1;
-        while (userRepository.existsByUsername(candidate)) {
-            candidate = base + suffix++;
-        }
-        return candidate;
     }
 }

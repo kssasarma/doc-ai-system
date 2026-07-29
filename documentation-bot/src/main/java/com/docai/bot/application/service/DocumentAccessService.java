@@ -48,7 +48,7 @@ public class DocumentAccessService {
         // in-memory before it's read below — Hibernate doesn't guarantee that until a flush.
         DocumentAccess saved = documentAccessRepository.saveAndFlush(grant);
         log.info("Granted document {} access to user {} (tenant {})", documentId, targetUserId, tenantId);
-        return toDTO(saved, targetUser.getUsername());
+        return toDTO(saved, targetUser.getEmail());
     }
 
     @Transactional
@@ -63,13 +63,13 @@ public class DocumentAccessService {
         requireDocumentInTenant(documentId, tenantId);
 
         List<DocumentAccess> grants = documentAccessRepository.findByDocumentIdAndTenantId(documentId, tenantId);
-        Map<UUID, String> usernames = userRepository.findAllById(
+        Map<UUID, String> emails = userRepository.findAllById(
                 grants.stream().map(DocumentAccess::getUserId).toList())
             .stream()
-            .collect(Collectors.toMap(User::getId, User::getUsername));
+            .collect(Collectors.toMap(User::getId, User::getEmail));
 
         return grants.stream()
-            .map(g -> toDTO(g, usernames.getOrDefault(g.getUserId(), "unknown")))
+            .map(g -> toDTO(g, emails.getOrDefault(g.getUserId(), "unknown")))
             .toList();
     }
 
@@ -83,15 +83,15 @@ public class DocumentAccessService {
             .orElseThrow(() -> new IllegalArgumentException("User not found in this tenant: " + userId));
     }
 
-    private GranteeDTO toDTO(DocumentAccess grant, String username) {
+    private GranteeDTO toDTO(DocumentAccess grant, String email) {
         return new GranteeDTO(
             grant.getId().toString(),
             grant.getUserId().toString(),
-            username,
+            email,
             grant.getGrantedBy().toString(),
             grant.getGrantedAt().toString()
         );
     }
 
-    public record GranteeDTO(String grantId, String userId, String username, String grantedBy, String grantedAt) {}
+    public record GranteeDTO(String grantId, String userId, String email, String grantedBy, String grantedAt) {}
 }

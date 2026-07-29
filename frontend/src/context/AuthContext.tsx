@@ -10,7 +10,7 @@ interface AuthContextValue {
   isAuthenticated: boolean;
   isSuperAdmin: boolean;
   isAdmin: boolean;
-  login: (username: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<void>;
   applySession: (data: AuthResponse) => void;
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
   logout: () => void;
@@ -43,7 +43,6 @@ function toAuthUser(data: AuthResponse, token: string): AuthUser {
   const claims = decodeClaimsFromToken(token);
   return {
     userId: data.userId!,
-    username: data.username!,
     email: data.email!,
     role: data.role as AuthUser['role'],
     tenantId: claims.tenantId,
@@ -140,8 +139,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const login = useCallback(async (username: string, password: string) => {
-    const data = await apiLogin(username, password);
+  const login = useCallback(async (email: string, password: string) => {
+    const data = await apiLogin(email, password);
     if (data.error || !data.token) {
       throw new Error(data.error || 'Login failed');
     }

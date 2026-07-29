@@ -163,7 +163,7 @@ public class TenantController {
             @AuthenticationPrincipal UserPrincipal principal) {
         Pageable pageable = PageRequest.of(page, size);
         return ownTenantOrSuperAdmin(id, principal, () -> userRepository.searchByTenantId(id, q, pageable)
-            .map(u -> new TenantUserDTO(u.getId(), u.getUsername(), u.getEmail(), u.getRole().name(),
+            .map(u -> new TenantUserDTO(u.getId(), u.getEmail(), u.getDisplayName(), u.getRole().name(),
                 u.getDeactivatedAt() == null)));
     }
 
@@ -180,5 +180,5 @@ public class TenantController {
 
     record UpdateTenantRequest(String name, String plan, boolean active, int maxUsers, int maxDocuments) {}
 
-    record TenantUserDTO(UUID userId, String username, String email, String role, boolean active) {}
+    record TenantUserDTO(UUID userId, String email, String displayName, String role, boolean active) {}
 }

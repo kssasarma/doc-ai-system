@@ -278,7 +278,7 @@ function GroupMembersPanel({
         onQueryChange={setUserQuery}
         items={addableUsers}
         getKey={u => u.userId}
-        getLabel={u => `${u.username} (${u.email})`}
+        getLabel={u => u.displayName ? `${u.displayName} (${u.email})` : u.email}
         onSelect={handleAdd}
         placeholder="Search users to add…"
         loading={searchingUsers || !!addingUserId}
@@ -299,7 +299,7 @@ function GroupMembersPanel({
           {members.map(m => (
             <div key={m.userId} className="flex items-center justify-between bg-surface border border-border rounded-lg px-3 py-2">
               <div>
-                <span className="text-sm text-foreground">{m.username}</span>
+                <span className="text-sm text-foreground">{m.email}</span>
                 <span className="text-xs text-muted-foreground ml-2">{m.email}</span>
               </div>
               <IconButton

@@ -10,7 +10,7 @@ function authHeaders(token: string) {
 export interface AuditLogEntry {
   id: string;
   actorId: string | null;
-  actorUsername: string | null;
+  actorEmail: string | null;
   action: string;
   targetType: string | null;
   targetId: string | null;

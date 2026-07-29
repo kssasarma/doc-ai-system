@@ -110,7 +110,6 @@ class RefreshTokenServiceTest extends PostgresTestContainerBase {
     private User persistUser(Tenant tenant) {
         String unique = UUID.randomUUID().toString().substring(0, 8);
         return userRepository.save(User.builder()
-            .username("user-" + unique)
             .email("user-" + unique + "@example.com")
             .passwordHash("irrelevant-for-this-test")
             .role(User.Role.USER)

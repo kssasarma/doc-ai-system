@@ -12,7 +12,7 @@ There is no public self-registration endpoint. Every account is provisioned by i
 
 1. A SUPER_ADMIN creates a tenant and nominates an admin email.
 2. The system emails an invitation link to that address.
-3. The invitee follows the link and sets their username and password.
+3. The invitee follows the link and sets their password — their email is their sign-in ID.
 4. The tenant ADMIN can then invite additional users within their tenant.
 
 This design prevents unauthorized tenant creation and ensures every account traces to a deliberate decision.
@@ -22,7 +22,7 @@ This design prevents unauthorized tenant creation and ensures every account trac
 ```bash
 curl -X POST http://localhost:8080/api/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"username":"alice","password":"<password>"}'
+  -d '{"email":"alice@example.com","password":"<password>"}'
 ```
 
 Response:
@@ -208,7 +208,6 @@ curl -X POST http://localhost:8080/api/auth/accept-invite \
   -H "Content-Type: application/json" \
   -d '{
     "token": "<token-from-email>",
-    "username": "alice",
     "password": "<password>"
   }'
 ```

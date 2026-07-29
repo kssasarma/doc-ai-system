@@ -74,7 +74,7 @@ app:
   seed-admin:
     # First-run SUPER_ADMIN, created by AdminSeeder when the users table is empty.
     # Must change password on first login — override via env vars in production.
-    username: ${SEED_ADMIN_USERNAME:admin}
+    # The email doubles as the login identifier — there is no separate username.
     email: ${SEED_ADMIN_EMAIL:admin@docs-inator.local}
     password: ${SEED_ADMIN_PASSWORD:Opentext123$}
   cors:

@@ -82,7 +82,7 @@ export default function EscalationsTab() {
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-foreground line-clamp-2">{e.questionText}</p>
                       <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
-                        <span>by {e.createdByUsername}</span>
+                        <span>by {e.createdByEmail}</span>
                         {e.product && <span>{e.product} {e.version}</span>}
                         <span>{new Date(e.createdAt).toLocaleDateString()}</span>
                       </div>

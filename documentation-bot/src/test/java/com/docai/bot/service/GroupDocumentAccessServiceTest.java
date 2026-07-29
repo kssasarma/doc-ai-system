@@ -119,7 +119,6 @@ class GroupDocumentAccessServiceTest extends PostgresTestContainerBase {
     private User persistUser(Tenant tenant, User.Role role) {
         String unique = UUID.randomUUID().toString().substring(0, 8);
         return userRepository.save(User.builder()
-            .username(role.name().toLowerCase() + "-" + unique)
             .email(role.name().toLowerCase() + "-" + unique + "@example.com")
             .passwordHash("irrelevant-for-this-test")
             .role(role)

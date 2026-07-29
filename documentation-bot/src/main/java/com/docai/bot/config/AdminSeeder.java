@@ -27,9 +27,6 @@ public class AdminSeeder implements ApplicationRunner {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
 
-    @Value("${app.seed-admin.username}")
-    private String seedUsername;
-
     @Value("${app.seed-admin.email}")
     private String seedEmail;
 
@@ -43,7 +40,6 @@ public class AdminSeeder implements ApplicationRunner {
         }
 
         User admin = User.builder()
-            .username(seedUsername)
             .email(seedEmail)
             .passwordHash(passwordEncoder.encode(seedPassword))
             .role(User.Role.SUPER_ADMIN)
@@ -52,6 +48,6 @@ public class AdminSeeder implements ApplicationRunner {
             .build();
 
         userRepository.save(admin);
-        log.info("Seeded initial SUPER_ADMIN account '{}' — password change required on first login", seedUsername);
+        log.info("Seeded initial SUPER_ADMIN account '{}' — password change required on first login", seedEmail);
     }
 }

@@ -169,8 +169,8 @@ public class SharedChatService {
 
         List<ChatMessage> messages = messageRepository.findByChatIdOrderByCreatedAtAsc(link.getChatId());
 
-        String creatorUsername = userRepository.findById(link.getCreatedBy())
-            .map(User::getUsername).orElse("unknown");
+        String creatorEmail = userRepository.findById(link.getCreatedBy())
+            .map(User::getEmail).orElse("unknown");
 
         return SharedChatViewDTO.builder()
             .token(token)
@@ -178,7 +178,7 @@ public class SharedChatService {
             .title(session.getTitle())
             .product(session.getProduct())
             .version(session.getVersion())
-            .createdByUsername(creatorUsername)
+            .createdByEmail(creatorEmail)
             .expiresAt(link.getExpiresAt())
             .messages(messages.stream().map(m -> SharedMessageDTO.builder()
                 .role(m.getRole().toString())
@@ -279,7 +279,7 @@ public class SharedChatService {
     private RecipientDTO toRecipientDTO(SharedChatRecipient recipient, User user) {
         return RecipientDTO.builder()
             .userId(recipient.getUserId().toString())
-            .username(user != null ? user.getUsername() : "unknown")
+            .email(user != null ? user.getEmail() : "unknown")
             .grantedAt(recipient.getGrantedAt())
             .build();
     }
@@ -301,7 +301,7 @@ public class SharedChatService {
     @lombok.Data @lombok.Builder
     public static class RecipientDTO {
         private String userId;
-        private String username;
+        private String email;
         private LocalDateTime grantedAt;
     }
 
@@ -312,7 +312,7 @@ public class SharedChatService {
         private String title;
         private String product;
         private String version;
-        private String createdByUsername;
+        private String createdByEmail;
         private LocalDateTime expiresAt;
         private List<SharedMessageDTO> messages;
     }

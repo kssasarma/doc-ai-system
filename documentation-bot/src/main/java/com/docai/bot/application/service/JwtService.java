@@ -62,7 +62,7 @@ public class JwtService {
     public String generateToken(User user) {
         return Jwts.builder()
             .subject(user.getId().toString())
-            .claim("username", user.getUsername())
+            .claim("email", user.getEmail())
             .claim("role", user.getRole().name())
             .claim("tenantId", user.getTenantId() != null ? user.getTenantId().toString() : null)
             .claim("mustChangePassword", user.isMustChangePassword())
@@ -88,8 +88,8 @@ public class JwtService {
         return extractAllClaims(token).get("role", String.class);
     }
 
-    public String extractUsername(String token) {
-        return extractAllClaims(token).get("username", String.class);
+    public String extractEmail(String token) {
+        return extractAllClaims(token).get("email", String.class);
     }
 
     /** Null for SUPER_ADMIN, whose accounts are not scoped to any tenant. */

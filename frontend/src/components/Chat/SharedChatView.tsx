@@ -95,7 +95,7 @@ const SharedChatView: React.FC = () => {
                 {chat.title || 'Shared conversation'}
               </h1>
               <p className="text-xs text-muted-foreground">
-                Shared by {chat.createdByUsername}
+                Shared by {chat.createdByEmail}
                 {chat.product && <> · {chat.product} {chat.version}</>}
                 {chat.expiresAt && <> · Expires {new Date(chat.expiresAt).toLocaleDateString()}</>}
               </p>

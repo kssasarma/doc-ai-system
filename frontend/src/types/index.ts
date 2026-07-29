@@ -154,7 +154,6 @@ export type Role = 'SUPER_ADMIN' | 'ADMIN' | 'USER';
 
 export interface AuthUser {
   userId: string;
-  username: string;
   email: string;
   role: Role;
   tenantId: string | null;
@@ -165,7 +164,6 @@ export interface AuthResponse {
   token?: string;
   refreshToken?: string;
   userId?: string;
-  username?: string;
   email?: string;
   role?: string;
   mustChangePassword?: boolean;
@@ -198,8 +196,8 @@ export interface Tenant {
 
 export interface TenantUser {
   userId: string;
-  username: string;
   email: string;
+  displayName: string | null;
   role: Role;
   active: boolean;
 }
@@ -231,7 +229,7 @@ export interface PendingInvitation {
 export interface DocumentGrantee {
   grantId: string;
   userId: string;
-  username: string;
+  email: string;
   grantedBy: string;
   grantedAt: string;
 }
@@ -246,7 +244,6 @@ export interface Group {
 
 export interface GroupMember {
   userId: string;
-  username: string;
   email: string;
 }
 
@@ -330,7 +327,7 @@ export interface ShareLink {
 
 export interface ShareRecipient {
   userId: string;
-  username: string;
+  email: string;
   grantedAt: string;
 }
 
@@ -346,7 +343,7 @@ export interface SharedChatSession {
   title?: string;
   product?: string;
   version?: string;
-  createdByUsername: string;
+  createdByEmail: string;
   expiresAt?: string;
   messages: SharedChatMessage[];
 }
@@ -357,7 +354,7 @@ export interface Collection {
   description?: string;
   publicAccess: boolean;
   createdBy: string;
-  createdByUsername?: string;
+  createdByEmail?: string;
   isOwner: boolean;
   itemCount: number;
   createdAt: string;
@@ -371,7 +368,7 @@ export interface CollectionItem {
   chatId: string;
   messageContent?: string;
   note?: string;
-  addedByUsername?: string;
+  addedByEmail?: string;
   createdAt: string;
 }
 
@@ -388,7 +385,7 @@ export interface Escalation {
   aiAnswerText?: string;
   status: 'PENDING' | 'IN_REVIEW' | 'ANSWERED' | 'CLOSED';
   createdBy: string;
-  createdByUsername?: string;
+  createdByEmail?: string;
   assignedTo?: string;
   expertAnswer?: string;
   product?: string;
@@ -401,7 +398,7 @@ export interface ChunkAnnotation {
   id: string;
   documentChunkId: string;
   userId: string;
-  username?: string;
+  email?: string;
   body: string;
   createdAt: string;
   updatedAt: string;

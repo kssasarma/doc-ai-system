@@ -98,7 +98,7 @@ export default function UsersPage() {
     setActingUserId(targetUser.userId);
     try {
       await changeUserRole(token, targetUser.userId, role as 'ADMIN' | 'USER');
-      toast.success(`${targetUser.username} is now ${role}.`);
+      toast.success(`${targetUser.email} is now ${role}.`);
       reloadUsers();
     } catch (e) {
       const detail = (e as { response?: { data?: { error?: string } } })?.response?.data?.error;
@@ -114,10 +114,10 @@ export default function UsersPage() {
     try {
       if (targetUser.active) {
         await deactivateUser(token, targetUser.userId);
-        toast.success(`${targetUser.username} deactivated.`);
+        toast.success(`${targetUser.email} deactivated.`);
       } else {
         await reactivateUser(token, targetUser.userId);
-        toast.success(`${targetUser.username} reactivated.`);
+        toast.success(`${targetUser.email} reactivated.`);
       }
       reloadUsers();
     } catch (e) {
@@ -132,7 +132,7 @@ export default function UsersPage() {
     if (!token) return;
     const confirmed = await confirm({
       title: 'Erase account',
-      message: `Permanently erase "${targetUser.username}"'s account (GDPR erasure)? This anonymizes their data and cannot be undone.`,
+      message: `Permanently erase "${targetUser.email}"'s account (GDPR erasure)? This anonymizes their data and cannot be undone.`,
       confirmLabel: 'Erase',
       danger: true,
     });
@@ -140,7 +140,7 @@ export default function UsersPage() {
     setActingUserId(targetUser.userId);
     try {
       await eraseUser(token, targetUser.userId);
-      toast.success(`${targetUser.username} erased.`);
+      toast.success(`${targetUser.email} erased.`);
       reloadUsers();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Failed to erase user.');
@@ -230,7 +230,7 @@ export default function UsersPage() {
                 <Input
                   type="text"
                   aria-label="Search users"
-                  placeholder="Search by username or email…"
+                  placeholder="Search by name or email…"
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
                   className="pl-9"
@@ -251,19 +251,19 @@ export default function UsersPage() {
                   return (
                     <div key={u.userId} className={cn('flex items-center gap-3 px-5 py-3', !u.active && 'opacity-60')}>
                       <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-sm font-bold flex-shrink-0">
-                        {u.username.charAt(0).toUpperCase()}
+                        {u.email.charAt(0).toUpperCase()}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-sm font-medium text-foreground">{u.username}</span>
+                          <span className="text-sm font-medium text-foreground">{u.email}</span>
                           {!u.active && <Badge variant="warning">Deactivated</Badge>}
                           {u.role === 'ADMIN' && <Shield size={12} className="text-accent" />}
                         </div>
-                        <span className="text-xs text-muted-foreground truncate">{u.email}</span>
+                        <span className="text-xs text-muted-foreground truncate">{u.displayName ?? ''}</span>
                       </div>
                       <div className="flex items-center gap-1.5 flex-shrink-0">
                         <select
-                          aria-label={`Change role for ${u.username}`}
+                          aria-label={`Change role for ${u.email}`}
                           value={u.role}
                           disabled={isSelf || acting}
                           onChange={e => handleRoleChange(u, e.target.value as Role)}

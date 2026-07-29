@@ -43,7 +43,7 @@ import lombok.extern.slf4j.Slf4j;
  *     no user identity yet to key on, and these are exactly the endpoints a credential-stuffing /
  *     brute-force script would hammer. Deliberately tighter than the chat limit and configured
  *     separately. Complements (does not replace) UserService's per-account lockout — an attacker
- *     spreading guesses across many usernames from one IP is stopped here even though no single
+ *     spreading guesses across many accounts from one IP is stopped here even though no single
  *     account ever accumulates enough failures to lock.
  */
 @Slf4j

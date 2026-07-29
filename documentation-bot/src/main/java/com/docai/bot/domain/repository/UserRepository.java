@@ -14,9 +14,7 @@ import com.docai.bot.domain.entity.User;
 
 @Repository
 public interface UserRepository extends JpaRepository<User, UUID> {
-    Optional<User> findByUsername(String username);
     Optional<User> findByEmail(String email);
-    boolean existsByUsername(String username);
     boolean existsByEmail(String email);
     Optional<User> findByOidcSubAndOidcProvider(String oidcSub, String oidcProvider);
     List<User> findByTenantId(UUID tenantId);
@@ -29,8 +27,8 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     @Query("""
         SELECT u FROM User u
         WHERE u.tenantId = :tenantId
-          AND (:q IS NULL OR :q = '' OR LOWER(u.username) LIKE LOWER(CONCAT('%', :q, '%'))
-               OR LOWER(u.email) LIKE LOWER(CONCAT('%', :q, '%')))
+          AND (:q IS NULL OR :q = '' OR LOWER(u.email) LIKE LOWER(CONCAT('%', :q, '%'))
+               OR LOWER(u.displayName) LIKE LOWER(CONCAT('%', :q, '%')))
         """)
     Page<User> searchByTenantId(UUID tenantId, String q, Pageable pageable);
 }

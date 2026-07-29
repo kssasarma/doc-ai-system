@@ -74,7 +74,7 @@ public class JwtTokenFilter extends OncePerRequestFilter {
                         .getPayload();
 
                     String role = claims.get("role", String.class);
-                    String username = claims.get("username", String.class);
+                    String email = claims.get("email", String.class);
                     UUID userId = UUID.fromString(claims.getSubject());
                     String tenantClaim = claims.get("tenantId", String.class);
                     UUID tenantId = tenantClaim != null ? UUID.fromString(tenantClaim) : null;
@@ -89,7 +89,7 @@ public class JwtTokenFilter extends OncePerRequestFilter {
                         new SimpleGrantedAuthority("ROLE_" + role)
                     );
 
-                    AdminPrincipal principal = new AdminPrincipal(userId, username, role, tenantId);
+                    AdminPrincipal principal = new AdminPrincipal(userId, email, role, tenantId);
                     UsernamePasswordAuthenticationToken auth =
                         new UsernamePasswordAuthenticationToken(principal, null, authorities);
                     auth.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
@@ -120,5 +120,5 @@ public class JwtTokenFilter extends OncePerRequestFilter {
         return Keys.hmacShaKeyFor(Decoders.BASE64.decode(secret));
     }
 
-    public record AdminPrincipal(UUID userId, String username, String role, UUID tenantId) {}
+    public record AdminPrincipal(UUID userId, String email, String role, UUID tenantId) {}
 }

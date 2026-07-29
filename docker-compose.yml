@@ -157,7 +157,6 @@ services:
       REDIS_PORT: 6379
       INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET:-}
       INGESTOR_INTERNAL_URL: ${INGESTOR_INTERNAL_URL:-http://document-ingestor:8080}
-      SEED_ADMIN_USERNAME: ${SEED_ADMIN_USERNAME:-admin}
       SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-admin@docs-inator.local}
       SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-Opentext123$$}
       MAIL_HOST: ${MAIL_HOST:-smtp.gmail.com}

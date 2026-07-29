@@ -93,7 +93,7 @@ export default function AdminLayout({ navItems, title }: { navItems: AdminNavIte
           <h1 className="text-lg font-semibold text-foreground">{title}</h1>
           {user && (
             <p className="text-xs text-muted-foreground mt-1 truncate">
-              {user.username} · {isSuperAdmin ? 'Super Admin' : 'Tenant Admin'}
+              {user.email} · {isSuperAdmin ? 'Super Admin' : 'Tenant Admin'}
             </p>
           )}
         </div>

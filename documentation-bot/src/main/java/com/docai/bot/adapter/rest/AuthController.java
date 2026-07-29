@@ -59,11 +59,11 @@ public class AuthController {
     @PostMapping("/accept-invite")
     public ResponseEntity<AuthResponse> acceptInvite(@Valid @RequestBody AcceptInviteRequest request, HttpServletRequest httpRequest) {
         try {
-            User user = invitationService.accept(request.getToken(), request.getUsername(), request.getPassword());
+            User user = invitationService.accept(request.getToken(), request.getPassword());
             String token = jwtService.generateToken(user);
             String refreshToken = refreshTokenService.issue(user.getId());
             auditLogService.log(user.getId(), user.getTenantId(), "INVITATION_ACCEPT", "USER", user.getId(),
-                "username=" + user.getUsername(), httpRequest.getRemoteAddr());
+                "email=" + user.getEmail(), httpRequest.getRemoteAddr());
             return ResponseEntity.status(HttpStatus.CREATED).body(AuthResponse.of(user, token, refreshToken));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(AuthResponse.error(e.getMessage()));
@@ -75,19 +75,19 @@ public class AuthController {
     @PostMapping("/login")
     public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request, HttpServletRequest httpRequest) {
         try {
-            User user = userService.authenticate(request.getUsername(), request.getPassword());
+            User user = userService.authenticate(request.getEmail(), request.getPassword());
             String token = jwtService.generateToken(user);
             String refreshToken = refreshTokenService.issue(user.getId());
             auditLogService.log(user.getId(), user.getTenantId(), "LOGIN_SUCCESS", "USER", user.getId(),
-                "username=" + user.getUsername(), httpRequest.getRemoteAddr());
+                "email=" + user.getEmail(), httpRequest.getRemoteAddr());
             return ResponseEntity.ok(AuthResponse.of(user, token, refreshToken));
         } catch (AccountLockedException e) {
             auditLogService.log(null, null, "LOGIN_LOCKED", "USER", null,
-                "username=" + request.getUsername(), httpRequest.getRemoteAddr());
+                "email=" + request.getEmail(), httpRequest.getRemoteAddr());
             return ResponseEntity.status(HttpStatus.LOCKED).body(AuthResponse.error(e.getMessage()));
         } catch (IllegalArgumentException e) {
             auditLogService.log(null, null, "LOGIN_FAILURE", "USER", null,
-                "username=" + request.getUsername(), httpRequest.getRemoteAddr());
+                "email=" + request.getEmail(), httpRequest.getRemoteAddr());
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(AuthResponse.error(e.getMessage()));
         }
     }
@@ -195,7 +195,8 @@ public class AuthController {
     @Data
     static class LoginRequest {
         @NotBlank
-        private String username;
+        @jakarta.validation.constraints.Email
+        private String email;
         @NotBlank
         private String password;
     }
@@ -227,9 +228,6 @@ public class AuthController {
         @NotBlank
         private String token;
         @NotBlank
-        @Size(min = 3, max = 50)
-        private String username;
-        @NotBlank
         @Size(min = 10)
         private String password;
     }
@@ -240,7 +238,6 @@ public class AuthController {
         private String token;
         private String refreshToken;
         private String userId;
-        private String username;
         private String email;
         private String role;
         private boolean mustChangePassword;
@@ -255,7 +252,6 @@ public class AuthController {
                 .token(token)
                 .refreshToken(refreshToken)
                 .userId(user.getId().toString())
-                .username(user.getUsername())
                 .email(user.getEmail())
                 .role(user.getRole().name())
                 .mustChangePassword(user.isMustChangePassword())
