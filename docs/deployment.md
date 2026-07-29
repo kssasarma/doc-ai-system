@@ -4,7 +4,7 @@
 
 ## Docker Compose — Development
 
-The default `docker-compose.yml` starts all services including MinIO (S3-compatible local storage) and Redis.
+The default `docker-compose.yml` starts all services including SeaweedFS (S3-compatible local storage) and Redis.
 
 ```bash
 cp .env.example .env
@@ -18,7 +18,7 @@ Services:
 |---|---|---|
 | `docai-postgres` | 5432 | doc-ai-postgres:pg16 (built from `database/Dockerfile`) |
 | `docai-redis` | 6379 | redis:7-alpine |
-| `docai-minio` | 9000 / 9001 | MinIO API / console |
+| `docai-seaweedfs` | 8333 / 9333 | SeaweedFS S3 API / master status |
 | `docai-ingestor` | 8081 | document-ingestor |
 | `docai-bot` | 8082 | documentation-bot |
 | `docai-frontend` | 3000 | React SPA |
@@ -29,7 +29,7 @@ Services:
 
 `docker-compose.prod.yml` is the production variant. Key differences from dev:
 
-- No MinIO — requires real AWS S3 (`S3_ENDPOINT` must be empty)
+- No SeaweedFS — requires real AWS S3 (`S3_ENDPOINT` must be empty)
 - No Redis (single-instance; embedding cache is in-memory)
 - Both Java services run with `SPRING_PROFILES_ACTIVE=prod`
 - Startup fails fast if any of `JWT_SECRET`, `SEED_ADMIN_PASSWORD`, or `SECRETS_ENCRYPTION_KEY` is unset
@@ -186,9 +186,9 @@ This CronJob only applies when PostgreSQL is deployed by this chart. If you poin
 ### Restore procedure
 
 ```bash
-# 1. Download the dump from S3/MinIO
+# 1. Download the dump from S3/SeaweedFS
 aws s3 cp s3://<bucket>/backups/docai-<timestamp>.dump ./docai-restore.dump
-#   (For MinIO: add --endpoint-url http://<minio-host>:9000)
+#   (For SeaweedFS: add --endpoint-url http://<seaweedfs-host>:8333)
 
 # 2. Restore into a new database — never overwrite a live one directly
 createdb -h <host> -U <user> docai_restore_test

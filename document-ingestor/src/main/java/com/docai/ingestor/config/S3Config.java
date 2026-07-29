@@ -24,8 +24,8 @@ import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 
 /**
  * S3-compatible client wiring for {@link com.docai.ingestor.application.service.S3DocumentStorageService}.
- * Points at MinIO in this deployment (custom endpoint + path-style access); pointing at real AWS
- * S3 instead is just an endpoint/credential change, nothing in the code path differs.
+ * Points at SeaweedFS in this deployment (custom endpoint + path-style access); pointing at real
+ * AWS S3 instead is just an endpoint/credential change, nothing in the code path differs.
  */
 @Slf4j
 @Configuration
@@ -82,7 +82,7 @@ public class S3Config {
         return builder.build();
     }
 
-    /** MinIO doesn't auto-create buckets — make the target bucket exist before anything uploads to it. */
+    /** SeaweedFS doesn't auto-create buckets — make the target bucket exist before anything uploads to it. */
     @Bean
     public ApplicationRunner ensureBucketExists(S3Client s3Client) {
         return (ApplicationArguments args) -> {

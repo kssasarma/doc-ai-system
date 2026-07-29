@@ -32,7 +32,7 @@ import com.docai.ingestor.domain.repository.DocumentChunkRepository;
 import com.docai.ingestor.domain.repository.DocumentRepository;
 
 /**
- * DocumentStorageService is mocked here (no real S3/MinIO in this test environment) — resolve()
+ * DocumentStorageService is mocked here (no real S3/SeaweedFS in this test environment) — resolve()
  * is stubbed to hand back the same local file the test itself created, simulating "storage
  * returned a local working copy with this content" without needing a real object store.
  */

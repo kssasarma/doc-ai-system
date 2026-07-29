@@ -14,7 +14,7 @@ data:
   CORS_ALLOWED_ORIGINS: {{ .Values.config.corsAllowedOrigins | quote }}
   APP_URL: {{ .Values.config.appUrl | quote }}
   STORAGE_TYPE: {{ .Values.config.storageType | quote }}
-  # Real AWS S3, not MinIO, in-cluster — leave S3_ENDPOINT empty so the SDK resolves the
+  # Real AWS S3, not SeaweedFS, in-cluster — leave S3_ENDPOINT empty so the SDK resolves the
   # standard regional endpoint, and keep virtual-hosted (non-path-style) addressing. Matches
   # k8s/configmap.yaml — see its comment for the same reasoning.
   S3_REGION: {{ .Values.config.s3Region | quote }}

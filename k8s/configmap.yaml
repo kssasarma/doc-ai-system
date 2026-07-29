@@ -14,7 +14,7 @@ data:
   CORS_ALLOWED_ORIGINS: "https://your-domain.com"
   APP_URL: "https://your-domain.com"
   STORAGE_TYPE: "s3"
-  # Real AWS S3, not MinIO, in-cluster — leave S3_ENDPOINT empty so the SDK resolves the
+  # Real AWS S3, not SeaweedFS, in-cluster — leave S3_ENDPOINT empty so the SDK resolves the
   # standard regional endpoint, and keep virtual-hosted (non-path-style) addressing.
   S3_REGION: "us-east-1"
   S3_ENDPOINT: ""

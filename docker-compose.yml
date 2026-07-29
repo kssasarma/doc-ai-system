@@ -51,20 +51,22 @@ services:
         reservations:
           memory: 128M
 
-  minio:
-    image: minio/minio:latest
-    container_name: docai-minio
+  seaweedfs:
+    build:
+      context: ./storage/seaweedfs
+      dockerfile: Dockerfile
+    image: doc-ai-seaweedfs:latest
+    container_name: docai-seaweedfs
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin123}
-    command: server /data --console-address ":9001"
+      SEAWEEDFS_ACCESS_KEY: ${SEAWEEDFS_ACCESS_KEY:-docai-seaweed}
+      SEAWEEDFS_SECRET_KEY: ${SEAWEEDFS_SECRET_KEY:-docai-seaweed-secret}
     ports:
-      - "9000:9000"   # S3 API
-      - "9001:9001"   # Web console
+      - "8333:8333"   # S3 API
+      - "9333:9333"   # Master status/UI
     volumes:
-      - minio_data:/data
+      - seaweedfs_data:/data
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:9333/cluster/status || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -98,17 +100,17 @@ services:
       CORS_ALLOWED_ORIGINS: http://localhost:3000
       STORAGE_TYPE: s3
       S3_BUCKET: ${S3_BUCKET:-docai-documents}
-      S3_ENDPOINT: http://minio:9000
+      S3_ENDPOINT: http://seaweedfs:8333
       S3_REGION: ${S3_REGION:-us-east-1}
-      S3_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
-      S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin123}
+      S3_ACCESS_KEY: ${SEAWEEDFS_ACCESS_KEY:-docai-seaweed}
+      S3_SECRET_KEY: ${SEAWEEDFS_SECRET_KEY:-docai-seaweed-secret}
       S3_PATH_STYLE_ACCESS: "true"
     ports:
       - "8081:8081"
     depends_on:
       postgres:
         condition: service_healthy
-      minio:
+      seaweedfs:
         condition: service_healthy
       # documentation-bot's V11 migration adds users.tenant_id, which this service's own V7
       # migration backfills from — must not run before that column exists.
@@ -285,7 +287,7 @@ services:
 volumes:
   postgres_data:
     driver: local
-  minio_data:
+  seaweedfs_data:
 
 networks:
   docai-net:

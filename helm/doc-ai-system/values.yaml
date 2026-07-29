@@ -94,7 +94,7 @@ secrets:
   jwtSecret: ""
   seedAdminPassword: ""
   redisPassword: ""
-  # Real AWS IAM credentials for the S3 bucket below — not MinIO (see config.storageType/s3Region).
+  # Real AWS IAM credentials for the S3 bucket below — not SeaweedFS (see config.storageType/s3Region).
   s3AccessKey: ""
   s3SecretKey: ""
   s3Bucket: "docai-documents"

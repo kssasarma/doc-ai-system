@@ -32,7 +32,7 @@ Cited answer + confidence score + follow-up suggestions
 
 ## Quick Start
 
-The fastest path to a running system is Docker Compose. All services — PostgreSQL with pgvector, Redis, MinIO, the two Spring Boot services, and the React frontend — start with one command.
+The fastest path to a running system is Docker Compose. All services — PostgreSQL with pgvector, Redis, SeaweedFS, the two Spring Boot services, and the React frontend — start with one command.
 
 ```bash
 git clone <repo-url> && cd doc-ai-system
@@ -72,7 +72,7 @@ For a full walkthrough — bare metal, first login, uploading your first documen
 | **frontend** | 3000 | React 18, Vite, TypeScript, Tailwind | Web UI |
 | **PostgreSQL + pgvector** | 5432 | pgvector:pg16 | Vector + relational store |
 | **Redis** | 6379 | redis:7-alpine | Embedding cache, rate-limit counters |
-| **MinIO** | 9000/9001 | minio/minio | S3-compatible object store (dev only) |
+| **SeaweedFS** | 8333/9333 | chrislusf/seaweedfs | S3-compatible object store (dev only) |
 
 Both Java services share one PostgreSQL database; their Flyway migration histories are kept in separate tables so they can evolve independently.
 

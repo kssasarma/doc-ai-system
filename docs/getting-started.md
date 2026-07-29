@@ -18,7 +18,7 @@ This guide takes you from zero to a working Docs-inator stack with your first do
 
 ## Path A — Docker Compose (recommended)
 
-The entire stack — PostgreSQL with pgvector, Redis, MinIO, both Java services, and the React frontend — starts with one command.
+The entire stack — PostgreSQL with pgvector, Redis, SeaweedFS, both Java services, and the React frontend — starts with one command.
 
 ### 1. Clone and configure
 
@@ -65,7 +65,7 @@ All five core containers should show `Up (healthy)` or `Up`:
 NAME                STATUS
 docai-postgres      Up (healthy)
 docai-redis         Up (healthy)
-docai-minio         Up
+docai-seaweedfs     Up (healthy)
 docai-ingestor      Up (healthy)
 docai-bot           Up (healthy)
 docai-frontend      Up
@@ -114,31 +114,42 @@ docker run -d \
   doc-ai-postgres:pg16
 ```
 
-### 2. Start MinIO (required by document-ingestor)
+### 2. Start SeaweedFS (required by document-ingestor)
 
 document-ingestor has no local filesystem fallback — it always writes to S3-compatible storage.
+Build the bootstrap image once — it wraps `chrislusf/seaweedfs` with an entrypoint that renders
+the S3 gateway's identity config from `SEAWEEDFS_ACCESS_KEY`/`SEAWEEDFS_SECRET_KEY` (SeaweedFS has
+no MinIO-style env vars for this, it needs a JSON identity file):
+
+```bash
+docker build -t doc-ai-seaweedfs:latest ./storage/seaweedfs
+```
 
 ```bash
 docker run -d \
-  --name docai-minio \
-  -e MINIO_ROOT_USER=minioadmin \
-  -e MINIO_ROOT_PASSWORD=minioadmin123 \
-  -p 9000:9000 -p 9001:9001 \
-  minio/minio server /data --console-address ":9001"
+  --name docai-seaweedfs \
+  -e SEAWEEDFS_ACCESS_KEY=docai-seaweed \
+  -e SEAWEEDFS_SECRET_KEY=docai-seaweed-secret \
+  -p 8333:8333 -p 9333:9333 \
+  doc-ai-seaweedfs:latest
 
 # Create the default bucket
-docker run --rm --network host --entrypoint sh minio/mc -c "
-  mc alias set local http://localhost:9000 minioadmin minioadmin123 &&
-  mc mb -p local/docai-documents
+docker run --rm --network host --entrypoint sh amazon/aws-cli -c "
+  AWS_ACCESS_KEY_ID=docai-seaweed AWS_SECRET_ACCESS_KEY=docai-seaweed-secret \
+  aws --endpoint-url http://localhost:8333 s3 mb s3://docai-documents
 "
 ```
+
+document-ingestor also auto-creates the bucket on startup if it's missing (see `S3Config`), so
+the manual `s3 mb` step above is optional — it's here for parity with a fully manual bare-metal
+setup.
 
 ### 3. Start document-ingestor
 
 ```bash
 cd document-ingestor
 export OPENAI_API_KEY=sk-...
-export S3_ENDPOINT=http://localhost:9000   # override the docker-compose hostname
+export S3_ENDPOINT=http://localhost:8333   # override the docker-compose hostname
 ./mvnw spring-boot:run
 # Listening on http://localhost:8081
 ```

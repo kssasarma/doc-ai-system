@@ -24,7 +24,7 @@ import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
 
 /**
- * Stores documents in an S3-compatible object store — MinIO in this deployment, real AWS S3
+ * Stores documents in an S3-compatible object store — SeaweedFS in this deployment, real AWS S3
  * elsewhere; the only difference is which endpoint/credentials {@code S3Config} wires up.
  * Active when ingestor.storage.type=s3 (the only supported backend — see DocumentStorageService).
  */

@@ -105,12 +105,14 @@ Omit `REDIS_HOST` entirely to disable the embedding cache. The bot falls back to
 
 | Variable | Default | Description |
 |---|---|---|
-| `S3_BUCKET` | `docai-documents` | S3/MinIO bucket name |
-| `S3_ENDPOINT` | `http://minio:9000` | S3 endpoint. **Leave empty** (`S3_ENDPOINT=`) for real AWS S3. Set to `http://localhost:9000` for bare-metal MinIO. |
+| `SEAWEEDFS_ACCESS_KEY` | `docai-seaweed` | Seeds the SeaweedFS S3 gateway's identity config (`storage/seaweedfs/entrypoint.sh`). Must match `S3_ACCESS_KEY` below. |
+| `SEAWEEDFS_SECRET_KEY` | `docai-seaweed-secret` | Seeds the SeaweedFS S3 gateway's identity config. Must match `S3_SECRET_KEY` below. |
+| `S3_BUCKET` | `docai-documents` | S3/SeaweedFS bucket name |
+| `S3_ENDPOINT` | `http://seaweedfs:8333` | S3 endpoint. **Leave empty** (`S3_ENDPOINT=`) for real AWS S3. Set to `http://localhost:8333` for bare-metal SeaweedFS. |
 | `S3_REGION` | `us-east-1` | S3 region |
-| `S3_ACCESS_KEY` | `minioadmin` | S3 access key |
-| `S3_SECRET_KEY` | `minioadmin123` | S3 secret key |
-| `S3_PATH_STYLE_ACCESS` | `true` | Required for MinIO. Set `false` for real AWS S3 (virtual-hosted-style). |
+| `S3_ACCESS_KEY` | `docai-seaweed` | S3 access key — must match `SEAWEEDFS_ACCESS_KEY` above (it's what the SeaweedFS container was configured with) |
+| `S3_SECRET_KEY` | `docai-seaweed-secret` | S3 secret key — must match `SEAWEEDFS_SECRET_KEY` above |
+| `S3_PATH_STYLE_ACCESS` | `true` | Required for SeaweedFS. Set `false` for real AWS S3 (virtual-hosted-style). |
 | `MAX_UPLOAD_SIZE` | `100MB` | Maximum single-file upload size |
 | `MAX_REQUEST_SIZE` | `100MB` | Maximum multipart request size |
 
@@ -177,7 +179,7 @@ Before any real deployment, verify:
 - [ ] `JWT_SECRET` is a freshly generated random value, not the dev default
 - [ ] `SECRETS_ENCRYPTION_KEY` is the same value on both services and stored securely
 - [ ] `SEED_ADMIN_PASSWORD` is set to a strong value (you will be forced to change it on first login anyway)
-- [ ] `S3_ENDPOINT` is empty (real AWS S3) or points at your MinIO instance
+- [ ] `S3_ENDPOINT` is empty (real AWS S3) or points at your SeaweedFS instance
 - [ ] `CORS_ALLOWED_ORIGINS` lists only your actual frontend origins
 - [ ] `APP_URL` points to the public URL of the frontend (for invitation email links)
 - [ ] `INTERNAL_SERVICE_SECRET` is set (bot→ingestor internal API is disabled without it)

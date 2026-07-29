@@ -1,6 +1,6 @@
 # Document Ingestion
 
-document-ingestor (port 8081) accepts documents from multiple sources, parses them, chunks the content, scans for PII, generates vector embeddings, and stores everything in PostgreSQL. Document binaries are stored in S3/MinIO.
+document-ingestor (port 8081) accepts documents from multiple sources, parses them, chunks the content, scans for PII, generates vector embeddings, and stores everything in PostgreSQL. Document binaries are stored in S3/SeaweedFS.
 
 ---
 

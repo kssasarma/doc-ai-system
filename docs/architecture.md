@@ -74,7 +74,7 @@ graph TB
     subgraph DataLayer["Data Layer"]
         PG[("PostgreSQL 16 + pgvector\nHNSW index\nvector_cosine_ops")]
         RD[("Redis 7\nembedding cache\n1-hour TTL")]
-        S3[("S3 / MinIO\ndocument binary storage")]
+        S3[("S3 / SeaweedFS\ndocument binary storage")]
     end
 
     subgraph ExternalAI["LLM Providers"]
@@ -128,7 +128,7 @@ The ingestion pipeline. Accepts documents via upload, webhook, or connector, and
 
 **Core responsibilities:**
 
-- Document upload and binary storage in S3/MinIO
+- Document upload and binary storage in S3/SeaweedFS
 - Parsing via Apache Tika → HTML → Markdown (`StructuredTextExtractor`)
 - PII detection before storage (SSN, credit cards, AWS keys, email, phone, IP) — quarantines flagged documents
 - Semantic chunking with Markdown heading/table/code-block awareness (800-token target, 100-token overlap)
@@ -234,7 +234,7 @@ Per-tenant LLM API keys are encrypted at rest with AES-256-GCM (`SecretsCryptoSe
 |---|---|
 | Shared PostgreSQL + pgvector (no separate vector DB) | Transactional consistency between relational data and vector data without an extra infrastructure component |
 | Row-level tenant isolation (not schema-per-tenant) | Simpler migrations; acceptable for the expected scale; adding schema-per-tenant later is possible via Flyway |
-| S3/MinIO only (no local filesystem) | Forces content-addressable storage, enables horizontal scaling, and simplifies backup |
+| S3/SeaweedFS only (no local filesystem) | Forces content-addressable storage, enables horizontal scaling, and simplifies backup |
 | Invitation-only signup | Prevents unauthorized tenant creation; every account traces back to a SUPER_ADMIN decision |
 | `GrantBasedDocumentAccessPolicy` as the single ACL seam | Adding a new access model (e.g. attribute-based) requires only a new implementation — no retrieval code changes |
 | Embedding cache keyed on SHA-256(model + query text) | Cache automatically invalidated when the embedding model changes; no explicit cache invalidation needed |

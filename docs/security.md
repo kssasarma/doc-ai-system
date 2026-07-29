@@ -177,6 +177,6 @@ The Kubernetes manifests include a default-deny `NetworkPolicy` with explicit al
 | documentation-bot | PostgreSQL | 5432 | JPA |
 | documentation-bot | Redis | 6379 | Rate limiting + embedding cache |
 | document-ingestor | PostgreSQL | 5432 | JPA |
-| document-ingestor | AWS S3 / MinIO | 443 / 9000 | Binary storage |
+| document-ingestor | AWS S3 / SeaweedFS | 443 / 8333 | Binary storage |
 
 All other pod-to-pod traffic is denied.

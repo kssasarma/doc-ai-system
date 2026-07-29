@@ -1,4 +1,4 @@
-# Nightly pg_dump of the shared Postgres DB (all tenants' data) to the same S3/MinIO bucket
+# Nightly pg_dump of the shared Postgres DB (all tenants' data) to the same S3/SeaweedFS bucket
 # document-ingestor already stores documents in, under backups/ — 14-day retention. See
 # k8s/SECRETS.md or the README for the restore procedure.
 apiVersion: batch/v1
