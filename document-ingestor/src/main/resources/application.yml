@@ -29,18 +29,14 @@ spring:
     # absent AND schema non-empty", which a shared schema satisfies immediately once either
     # service has run once, silently skipping that service's own early migrations.
 
+  # No platform-level embedding configuration: key, endpoint and model come from each tenant's
+  # own AI settings (tenant_llm_configs, written by documentation-bot's admin UI). Disabling
+  # Spring AI's model autoconfiguration lets this service boot without any OPENAI_API_KEY —
+  # EmbeddingService builds one-off clients from the tenant's settings at ingest time.
   ai:
-    openai:
-      base-url: ${OPENAI_BASE_URL:https://api.openai.com}
-      api-key: ${OPENAI_API_KEY}
-      embedding:
-        options:
-          # Was "gpt-4o-embedding-4k" — not a real OpenAI model name; this default silently broke
-          # any deployment that didn't override it via OPENAI_EMBEDDING_MODEL (dev compose already
-          # did, masking the bug there). text-embedding-3-small matches the bot service's default
-          # and is what documentation-bot's query-side embedding actually expects to match against.
-          model: ${OPENAI_EMBEDDING_MODEL:text-embedding-3-small}
-          encodingFormat: float
+    model:
+      chat: none
+      embedding: none
 
   servlet:
     multipart:

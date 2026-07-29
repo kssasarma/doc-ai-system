@@ -41,25 +41,15 @@ spring:
             enable: ${MAIL_STARTTLS_ENABLE:true}
             required: ${MAIL_STARTTLS_REQUIRED:true}
 
+  # No platform-level LLM configuration: every AI setting (provider, model, API key, endpoint,
+  # temperature, max tokens) is per-tenant, stored encrypted in tenant_llm_configs and managed by
+  # each tenant's admin in the UI. Disabling Spring AI's model autoconfiguration lets the service
+  # boot without any OPENAI_API_KEY/ANTHROPIC_API_KEY — providers build one-off clients from the
+  # tenant's own settings at call time (see LLMRouter / OpenAILLMProvider / AnthropicLLMProvider).
   ai:
-    openai:
-      base-url: ${OPENAI_BASE_URL:https://api.openai.com}
-      api-key: ${OPENAI_API_KEY}
-      chat:
-        options:
-          model: ${OPENAI_CHAT_MODEL:gpt-4o-mini}
-          temperature: 0.7
-          max-tokens: 5000
-      embedding:
-        options:
-          model: ${OPENAI_EMBEDDING_MODEL:text-embedding-3-small}
-          encodingFormat: float
-    # Phase 7.4 — Anthropic Claude (optional; omit key to disable)
-    anthropic:
-      api-key: ${ANTHROPIC_API_KEY:}
-      chat:
-        options:
-          model: ${ANTHROPIC_CHAT_MODEL:claude-sonnet-4-6}
+    model:
+      chat: none
+      embedding: none
 
   # Phase 7.5 — Redis (optional; omit host to disable embedding cache)
   data:

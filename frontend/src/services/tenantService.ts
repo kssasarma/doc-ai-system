@@ -6,32 +6,51 @@ const BOT_URL = BACKEND_URL;
 
 export type { Tenant };
 
+/**
+ * A tenant's complete AI configuration — every AI-related setting (providers, models, endpoints,
+ * keys, generation options) lives here, per tenant. There is no platform-level fallback key or
+ * endpoint: AI features stay disabled for the tenant until an admin saves a working chat key
+ * (and an embedding key, when the embedding provider differs from the chat provider).
+ */
 export interface TenantLLMConfig {
   chatProvider: string;
   chatModel: string;
+  /** Chat endpoint override — empty/null uses the provider's canonical public endpoint. */
+  chatBaseUrl?: string | null;
   embeddingProvider: string;
   embeddingModel: string;
+  /** Embedding endpoint override — same semantics as chatBaseUrl. */
+  embeddingBaseUrl?: string | null;
   routingEnabled: boolean;
   simpleModel: string;
   complexModel: string;
   azureEndpoint?: string | null;
   azureDeployment?: string | null;
-  /** Whether the tenant has a custom (encrypted-at-rest) API key configured — the key itself is
-   * write-only and never returned by the API. */
-  hasCustomKey: boolean;
-  /** Last 4 characters of the configured key (e.g. "••••ab12"), for confirmation only. */
-  keyHint?: string | null;
-  /** Per-tenant override for the ingestor's embedding batch token ceiling — null/undefined uses
-   * the platform default. Only meaningful when the tenant has its own embedding model, since
-   * different models have different context windows. */
+  /** Whether a chat API key is stored (encrypted at rest) — the key itself is write-only and
+   * never returned by the API. Without one, all AI features are disabled for this tenant. */
+  hasChatKey: boolean;
+  /** Last 4 characters of the stored chat key (e.g. "••••ab12"), for confirmation only. */
+  chatKeyHint?: string | null;
+  /** Whether a dedicated embedding key is stored. When absent, the chat key is reused — but only
+   * if the embedding provider equals the chat provider. */
+  hasEmbeddingKey: boolean;
+  embeddingKeyHint?: string | null;
+  /** Chat sampling temperature (0–2). */
+  temperature: number;
+  /** Max completion tokens per chat call. */
+  maxTokens: number;
+  /** Override for the ingestor's embedding batch token ceiling — null/undefined uses the
+   * built-in default. Set it to match the configured embedding model's context window. */
   maxEmbeddingBatchTokens?: number | null;
 }
 
 export interface TenantLLMConfigUpdate {
   chatProvider: string;
   chatModel: string;
+  chatBaseUrl?: string | null;
   embeddingProvider: string;
   embeddingModel: string;
+  embeddingBaseUrl?: string | null;
   routingEnabled: boolean;
   simpleModel: string;
   complexModel: string;
@@ -39,7 +58,11 @@ export interface TenantLLMConfigUpdate {
   azureDeployment?: string | null;
   /** undefined = leave the stored key untouched; "" = clear it; non-empty = set/replace it. */
   apiKey?: string;
-  /** null = use the platform default; a positive integer = override for this tenant. */
+  /** Same tri-state semantics as apiKey, for the dedicated embedding key. */
+  embeddingApiKey?: string;
+  temperature?: number | null;
+  maxTokens?: number | null;
+  /** null = use the built-in default; a positive integer = override for this tenant. */
   maxEmbeddingBatchTokens?: number | null;
 }
 
@@ -115,7 +138,7 @@ export async function updateTenantLLMConfig(token: string, id: string, config: T
 }
 
 export async function testTenantLLMConnection(
-  token: string, id: string, payload: { provider: string; model: string; apiKey?: string },
+  token: string, id: string, payload: { provider: string; model: string; apiKey?: string; baseUrl?: string },
 ): Promise<TestConnectionResult> {
   const { data } = await axios.post<TestConnectionResult>(
     `${BOT_URL}/api/admin/tenants/${id}/llm-config/test`, payload, { headers: headers(token) });

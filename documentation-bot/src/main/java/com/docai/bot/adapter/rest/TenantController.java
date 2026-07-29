@@ -130,7 +130,7 @@ public class TenantController {
                                                             @RequestBody TestLlmConfigRequest body,
                                                             @AuthenticationPrincipal UserPrincipal principal) {
         return ownTenantOrSuperAdmin(id, principal,
-            () -> tenantService.testConnection(id, body.provider(), body.model(), body.apiKey()));
+            () -> tenantService.testConnection(id, body.provider(), body.model(), body.apiKey(), body.baseUrl()));
     }
 
     @GetMapping("/{id}/retention")
@@ -174,7 +174,7 @@ public class TenantController {
         return ResponseEntity.ok(action.get());
     }
 
-    record TestLlmConfigRequest(String provider, String model, String apiKey) {}
+    record TestLlmConfigRequest(String provider, String model, String apiKey, String baseUrl) {}
 
     record CreateTenantRequest(String name, String slug, String plan, int maxUsers, int maxDocuments, String adminEmail) {}
 

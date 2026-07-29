@@ -148,7 +148,9 @@ The resulting `documentIds` set is injected into the pgvector similarity query a
 
 ## Tenant LLM Configuration
 
-Each tenant can bring their own LLM API keys and choose their own models. Tenant ADMINs configure this via the admin panel or API.
+Every AI-related setting lives here, per tenant: chat/embedding provider, model, API key, endpoint (base URL), temperature, max tokens, and the embedding batch token ceiling. Tenant ADMINs configure this via the admin panel (Settings → AI Configuration) or API. **There is no platform-level fallback key** — AI features (chat, search, ingestion) are disabled for a tenant until its admin saves a working configuration, and requests made before that fail with HTTP 422 `LLM_NOT_CONFIGURED`.
+
+A dedicated `embeddingApiKey` is required when the embedding provider differs from the chat provider (e.g. Anthropic chat + OpenAI embeddings); when both use the same provider, the chat key is reused automatically.
 
 ```bash
 curl -X PUT http://localhost:8080/api/admin/tenants/<tenantId>/llm-config \

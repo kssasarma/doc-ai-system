@@ -51,7 +51,8 @@ docker build -t docai-frontend:latest ./frontend
 
 ```dotenv
 # Both services
-OPENAI_API_KEY=sk-...
+# (No AI keys here — LLM/embedding providers, models, keys and endpoints are configured
+# per tenant by each tenant's admin in the UI, and stored encrypted in the database.)
 JWT_SECRET=<base64-64-byte-random>
 SECRETS_ENCRYPTION_KEY=<base64-32-byte-random>
 INTERNAL_SERVICE_SECRET=<strong-random-string>
@@ -223,7 +224,6 @@ kubectl apply -f https://github.com/bitnami-labs/sealed-secrets/releases/latest/
 kubectl create secret generic doc-ai-secrets -n doc-ai --dry-run=client -o yaml \
   --from-literal=SPRING_DATABASE_USERNAME=<user> \
   --from-literal=SPRING_DATABASE_PASSWORD=<password> \
-  --from-literal=OPENAI_API_KEY=sk-... \
   --from-literal=JWT_SECRET=<jwt-secret> \
   --from-literal=SECRETS_ENCRYPTION_KEY=<aes-key> \
   --from-literal=SEED_ADMIN_PASSWORD=<password> \

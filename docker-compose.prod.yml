@@ -50,9 +50,8 @@ services:
       SPRING_DATABASE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-docai}
       SPRING_DATABASE_USERNAME: ${POSTGRES_USER:-docai}
       SPRING_DATABASE_PASSWORD: ${POSTGRES_PASSWORD}
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
-      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com}
-      OPENAI_EMBEDDING_MODEL: ${OPENAI_EMBEDDING_MODEL:-text-embedding-3-small}
+      # No AI env vars: embedding provider/model/key/endpoint are per-tenant settings, stored
+      # encrypted in the database and managed by each tenant's admin in the UI.
       JWT_SECRET: ${JWT_SECRET}
       SECRETS_ENCRYPTION_KEY: ${SECRETS_ENCRYPTION_KEY}
       WEBHOOK_HMAC_SECRET: ${WEBHOOK_HMAC_SECRET:-}
@@ -108,10 +107,9 @@ services:
       SPRING_DATABASE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-docai}
       SPRING_DATABASE_USERNAME: ${POSTGRES_USER:-docai}
       SPRING_DATABASE_PASSWORD: ${POSTGRES_PASSWORD}
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
-      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com}
-      OPENAI_CHAT_MODEL: ${OPENAI_CHAT_MODEL:-gpt-4o-mini}
-      OPENAI_EMBEDDING_MODEL: ${OPENAI_EMBEDDING_MODEL:-text-embedding-3-small}
+      # No AI env vars: chat/embedding provider, model, API key, endpoint and generation options
+      # are per-tenant settings, stored encrypted in the database and managed by each tenant's
+      # admin in the UI (Settings → AI Configuration).
       JWT_SECRET: ${JWT_SECRET}
       SECRETS_ENCRYPTION_KEY: ${SECRETS_ENCRYPTION_KEY}
       JWT_EXPIRATION_MS: ${JWT_EXPIRATION_MS:-86400000}

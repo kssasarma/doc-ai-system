@@ -22,8 +22,8 @@ VectorSearchService ──── hybrid retrieval ────▶ PostgreSQL + p
      │
      ▼
 AnswerGenerationService ──▶ LLMRouter ──▶ OpenAI / Anthropic
-     │                         (per-tenant config, circuit breaker,
-     │                          automatic fallback)
+     │                         (fully per-tenant config: provider, model,
+     │                          key, endpoint — no platform fallback key)
      ▼
 Cited answer + confidence score + follow-up suggestions
 ```
@@ -37,7 +37,8 @@ The fastest path to a running system is Docker Compose. All services — Postgre
 ```bash
 git clone <repo-url> && cd doc-ai-system
 cp .env.example .env
-# Fill in OPENAI_API_KEY and the three required secrets (see .env.example)
+# Fill in the three required secrets (see .env.example). AI provider keys are NOT set here —
+# each tenant's admin configures them in the UI after first login (Settings → AI Configuration).
 docker compose up -d --build
 ```
 
@@ -54,7 +55,7 @@ For a full walkthrough — bare metal, first login, uploading your first documen
 | **RAG pipeline** | Hybrid dense + lexical search, RRF fusion, MMR re-ranking, semantic chunking, HNSW index |
 | **Intelligence** | Multi-hop reasoning, version diff, auto-FAQ, People Also Asked, answer evolution timeline |
 | **Auth** | JWT, API keys (`dak_` prefix), OIDC/SSO JIT provisioning, invitation-only signup |
-| **Multi-tenancy** | Row-level isolation, per-tenant LLM config, BYO API keys (AES-256-GCM at rest) |
+| **Multi-tenancy** | Row-level isolation, fully per-tenant AI config (provider, model, key, endpoint — no platform fallback), keys AES-256-GCM at rest |
 | **Integrations** | Slack bot, Teams bot, Chrome/Edge extension, VS Code extension, CI/CD webhook ingestion |
 | **Source connectors** | Confluence Cloud, Notion, GitHub/GitLab webhook, directory watcher |
 | **Admin** | Analytics dashboard, documentation gap reports, cost tracking, escalation workflow |
@@ -103,7 +104,7 @@ Both Java services share one PostgreSQL database; their Flyway migration histori
 |---|---|---|
 | Docker | 24+ | Required for the full stack |
 | Docker Compose | v2.20+ | `docker compose version` |
-| OpenAI API key | — | Required for embeddings and chat |
+| OpenAI (or Anthropic) API key | — | Entered per tenant in the admin UI after setup — not an environment variable |
 | Java 21 + Maven 3.9+ | — | Only needed for bare-metal development |
 | Node.js 20+ | — | Only needed for frontend or bot development |
 
@@ -111,7 +112,7 @@ Both Java services share one PostgreSQL database; their Flyway migration histori
 
 | Tool | Enables |
 |---|---|
-| Anthropic API key | Claude as an alternate LLM for any tenant |
+| Anthropic API key (per tenant) | Claude as an alternate chat LLM for any tenant |
 | Redis | Embedding cache (degrades gracefully without it) |
 | SMTP credentials | Email delivery for invitations and digests |
 

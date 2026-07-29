@@ -11,10 +11,6 @@ import java.util.Set;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
-import org.springframework.ai.embedding.Embedding;
-import org.springframework.ai.embedding.EmbeddingModel;
-import org.springframework.ai.embedding.EmbeddingRequest;
-import org.springframework.ai.embedding.EmbeddingResponse;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,6 +20,7 @@ import com.docai.bot.application.service.DocumentAccessPolicy;
 import com.docai.bot.application.service.DocumentAccessService;
 import com.docai.bot.application.service.GroupDocumentAccessService;
 import com.docai.bot.application.service.GroupService;
+import com.docai.bot.application.service.LLMRouter;
 import com.docai.bot.application.service.VectorSearchService;
 import com.docai.bot.domain.entity.Document;
 import com.docai.bot.domain.entity.DocumentChunk;
@@ -55,7 +52,7 @@ class DocumentAccessIsolationTest extends PostgresTestContainerBase {
     @Autowired DocumentChunkRepository chunkRepository;
     @Autowired TenantRepository tenantRepository;
     @Autowired UserRepository userRepository;
-    @MockitoBean EmbeddingModel embeddingModel;
+    @MockitoBean LLMRouter llmRouter;
 
     private static final int DIMS = 1536;
 
@@ -71,7 +68,8 @@ class DocumentAccessIsolationTest extends PostgresTestContainerBase {
 
         List<RetrievedChunk> results = vectorSearchService.search("recipe", scope);
         assertThat(results).isEmpty();
-        verify(embeddingModel, never()).call(any(EmbeddingRequest.class));
+        verify(llmRouter, never()).embed(any(String.class));
+        verify(llmRouter, never()).embed(any(String.class), any(String.class));
     }
 
     @Test
@@ -238,9 +236,10 @@ class DocumentAccessIsolationTest extends PostgresTestContainerBase {
     }
 
     private void stubEmbedding(float[] vector) {
-        Embedding embedding = new Embedding(vector, 0);
-        EmbeddingResponse response = new EmbeddingResponse(List.of(embedding));
-        when(embeddingModel.call(any(EmbeddingRequest.class))).thenReturn(response);
+        List<Double> embedding = new java.util.ArrayList<>(vector.length);
+        for (float v : vector) embedding.add((double) v);
+        org.mockito.Mockito.lenient().when(llmRouter.embed(any(String.class))).thenReturn(embedding);
+        org.mockito.Mockito.lenient().when(llmRouter.embed(any(String.class), any(String.class))).thenReturn(embedding);
     }
 
     private static float[] unitVector() {

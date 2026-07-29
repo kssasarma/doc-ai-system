@@ -9,7 +9,10 @@ import reactor.core.publisher.Flux;
 /**
  * Abstraction over any LLM backend.
  * Implementations: OpenAILLMProvider, AnthropicLLMProvider.
- * The LLMRouter selects the appropriate provider + model at call time.
+ * The LLMRouter selects the appropriate provider at call time and supplies the tenant's own
+ * settings (API key, endpoint, model, generation options). There is no platform-level key or
+ * client anymore — every call is made with credentials the tenant's admin configured, so
+ * {@code apiKey} is required on every settings object.
  */
 public interface LLMProvider {
 
@@ -18,47 +21,40 @@ public interface LLMProvider {
     String providerName();
 
     /**
-     * Synchronous chat completion using this provider's platform-configured (global) API key.
+     * Everything a chat call needs, resolved from the tenant's config by {@link LLMRouter}.
+     *
+     * @param model       model ID (e.g. "gpt-4o-mini", "claude-haiku-4-5-20251001")
+     * @param apiKey      the tenant's decrypted API key — required, never a platform key
+     * @param baseUrl     endpoint override; null/blank = the provider's canonical public endpoint
+     * @param temperature sampling temperature
+     * @param maxTokens   completion token ceiling
+     */
+    record ChatSettings(String model, String apiKey, String baseUrl, double temperature, int maxTokens) {}
+
+    /** Everything an embedding call needs — same key semantics as {@link ChatSettings}. */
+    record EmbedSettings(String model, String apiKey, String baseUrl) {}
+
+    /**
+     * Synchronous chat completion using the tenant's settings.
      * Returns the full {@link ChatResponse} (not just text) so callers can read token usage.
      *
-     * @param systemPrompt  system instruction (nullable — omitted from the prompt when null/blank)
-     * @param userMessage   user turn content
-     * @param model         model ID to use (e.g. "gpt-4o-mini", "claude-haiku-4-5-20251001")
+     * @param systemPrompt system instruction (nullable — omitted from the prompt when null/blank)
+     * @param userMessage  user turn content
      */
-    default ChatResponse chat(String systemPrompt, String userMessage, String model) {
-        return chat(systemPrompt, userMessage, model, null);
-    }
+    ChatResponse chat(String systemPrompt, String userMessage, ChatSettings settings);
+
+    /** Streaming chat completion — emits text deltas as the model generates them. */
+    Flux<String> stream(String systemPrompt, String userMessage, ChatSettings settings);
 
     /**
-     * Synchronous chat completion, optionally overriding the API key for this single call —
-     * used to route a tenant's own (decrypted) BYO key instead of the platform default.
+     * Produce an embedding vector for the given text.
      *
-     * @param apiKeyOverride tenant-specific API key, or null to use the platform default.
+     * @return double list (e.g. length 1536 for text-embedding-3-small)
      */
-    ChatResponse chat(String systemPrompt, String userMessage, String model, String apiKeyOverride);
+    List<Double> embed(String text, EmbedSettings settings);
 
-    /**
-     * Produce an embedding vector for the given text, using the platform-configured API key.
-     *
-     * @param text  text to embed
-     * @param model embedding model ID
-     * @return float array (e.g. length 1536 for text-embedding-3-small)
-     */
-    default List<Double> embed(String text, String model) {
-        return embed(text, model, null);
+    /** Whether this provider can serve embedding requests at all (Anthropic cannot). */
+    default boolean supportsEmbeddings() {
+        return true;
     }
-
-    /** Same as {@link #embed(String, String)}, optionally overriding the API key. */
-    List<Double> embed(String text, String model, String apiKeyOverride);
-
-    /**
-     * Streaming chat completion — emits text deltas as the model generates them, using the
-     * platform-configured API key.
-     */
-    default Flux<String> stream(String systemPrompt, String userMessage, String model) {
-        return stream(systemPrompt, userMessage, model, null);
-    }
-
-    /** Same as {@link #stream(String, String, String)}, optionally overriding the API key. */
-    Flux<String> stream(String systemPrompt, String userMessage, String model, String apiKeyOverride);
 }

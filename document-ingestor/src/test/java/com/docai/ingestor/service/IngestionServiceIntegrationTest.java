@@ -12,17 +12,12 @@ import java.util.List;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
-import org.springframework.ai.embedding.Embedding;
-import org.springframework.ai.embedding.EmbeddingModel;
-import org.springframework.ai.embedding.EmbeddingRequest;
-import org.springframework.ai.embedding.EmbeddingResponse;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
-import static org.mockito.Mockito.mock;
-
 import com.docai.ingestor.PostgresTestContainerBase;
 import com.docai.ingestor.application.service.DocumentStorageService;
+import com.docai.ingestor.application.service.EmbeddingService;
 import com.docai.ingestor.application.service.IngestionService;
 import com.docai.ingestor.application.service.SemanticChunker;
 import com.docai.ingestor.domain.entity.Document;
@@ -42,7 +37,10 @@ class IngestionServiceIntegrationTest extends PostgresTestContainerBase {
     @Autowired DocumentRepository documentRepository;
     @Autowired DocumentChunkRepository chunkRepository;
 
-    @MockitoBean EmbeddingModel embeddingModel;
+    // EmbeddingService is mocked wholesale: it now builds per-tenant clients from each tenant's
+    // own AI config (no platform key/bean exists to mock), and its internals are covered by
+    // EmbeddingServiceTest — this test only cares about the ingestion pipeline around it.
+    @MockitoBean EmbeddingService embeddingService;
     @MockitoBean SemanticChunker semanticChunker;
     @MockitoBean DocumentStorageService documentStorageService;
 
@@ -126,8 +124,9 @@ class IngestionServiceIntegrationTest extends PostgresTestContainerBase {
                 .tokenCount(10).isLeaf(true).build()
         ));
 
-        // Embedding model returns a valid 1024-float vector
-        when(embeddingModel.call(any(EmbeddingRequest.class))).thenReturn(fakeEmbeddingResponse());
+        // Embedding service returns a valid 1024-float vector for the single chunk
+        when(embeddingService.generateEmbeddings(any(), any())).thenReturn(
+            new EmbeddingService.TenantEmbeddingBatchResult(List.of(fakeVector()), "text-embedding-3-small"));
 
         Document doc = documentRepository.save(Document.builder()
             .product("prod").version("2.0")
@@ -193,15 +192,9 @@ class IngestionServiceIntegrationTest extends PostgresTestContainerBase {
         return f;
     }
 
-    @SuppressWarnings("unchecked")
-    private static EmbeddingResponse fakeEmbeddingResponse() {
+    private static float[] fakeVector() {
         float[] vector = new float[1024];
         for (int i = 0; i < 1024; i++) vector[i] = 0.01f;
-        Embedding embedding = mock(Embedding.class);
-        when(embedding.getOutput()).thenReturn(vector);
-        EmbeddingResponse response = mock(EmbeddingResponse.class);
-        when(response.getResults()).thenReturn(List.of(embedding));
-        when(response.getResult()).thenReturn(embedding);
-        return response;
+        return vector;
     }
 }

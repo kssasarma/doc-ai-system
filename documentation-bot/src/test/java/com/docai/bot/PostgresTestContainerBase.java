@@ -37,9 +37,8 @@ public abstract class PostgresTestContainerBase {
         // ddl-auto fills that gap here so every entity this service reads or writes gets a table.
         registry.add("spring.flyway.enabled", () -> "false");
         registry.add("spring.jpa.hibernate.ddl-auto", () -> "create-drop");
-        // Disable embedding/LLM API calls — tests inject mocks for these
-        registry.add("spring.ai.openai.api-key", () -> "test-key");
-        registry.add("spring.ai.anthropic.api-key", () -> "");
+        // No spring.ai properties needed: model autoconfiguration is disabled in application.yml
+        // (all LLM settings are per-tenant), and tests mock LLMRouter where AI calls would occur.
         // Disable Redis
         registry.add("spring.data.redis.host", () -> "");
     }

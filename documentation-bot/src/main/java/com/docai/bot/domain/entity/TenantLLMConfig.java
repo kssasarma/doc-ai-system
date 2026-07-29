@@ -57,6 +57,31 @@ public class TenantLLMConfig {
     @Column(name = "api_key_enc", columnDefinition = "TEXT")
     private String apiKeyEnc;
 
+    /** Separate key for the embedding provider (AES-256-GCM, same scheme as {@code apiKeyEnc}).
+     * Null falls back to {@code apiKeyEnc} only when embeddingProvider equals chatProvider —
+     * never to any platform-level key (none exists). */
+    @Column(name = "embedding_api_key_enc", columnDefinition = "TEXT")
+    private String embeddingApiKeyEnc;
+
+    /** Chat provider endpoint override — null means the provider's canonical public endpoint.
+     * Set for Azure OpenAI, proxies, or OpenAI-compatible self-hosted gateways. */
+    @Column(name = "chat_base_url", length = 500)
+    private String chatBaseUrl;
+
+    /** Embedding provider endpoint override — same semantics as {@code chatBaseUrl}. */
+    @Column(name = "embedding_base_url", length = 500)
+    private String embeddingBaseUrl;
+
+    /** Chat sampling temperature — previously a platform-wide value in application.yml. */
+    @Column(name = "temperature", nullable = false)
+    @Builder.Default
+    private double temperature = 0.7;
+
+    /** Max completion tokens per chat call — previously a platform-wide value in application.yml. */
+    @Column(name = "max_tokens", nullable = false)
+    @Builder.Default
+    private int maxTokens = 5000;
+
     @Column(name = "azure_endpoint", length = 500)
     private String azureEndpoint;
 
