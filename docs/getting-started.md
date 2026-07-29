@@ -122,7 +122,7 @@ the S3 gateway's identity config from `SEAWEEDFS_ACCESS_KEY`/`SEAWEEDFS_SECRET_K
 no MinIO-style env vars for this, it needs a JSON identity file):
 
 ```bash
-docker build -t doc-ai-seaweedfs:latest ./storage/seaweedfs
+docker build -t doc-ai-seaweedfs:latest ./seaweedfs
 ```
 
 ```bash

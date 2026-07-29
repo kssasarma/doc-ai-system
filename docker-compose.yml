@@ -53,7 +53,7 @@ services:
 
   seaweedfs:
     build:
-      context: ./storage/seaweedfs
+      context: ./seaweedfs
       dockerfile: Dockerfile
     image: doc-ai-seaweedfs:latest
     container_name: docai-seaweedfs

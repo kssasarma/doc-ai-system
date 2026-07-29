@@ -105,7 +105,7 @@ Omit `REDIS_HOST` entirely to disable the embedding cache. The bot falls back to
 
 | Variable | Default | Description |
 |---|---|---|
-| `SEAWEEDFS_ACCESS_KEY` | `docai-seaweed` | Seeds the SeaweedFS S3 gateway's identity config (`storage/seaweedfs/entrypoint.sh`). Must match `S3_ACCESS_KEY` below. |
+| `SEAWEEDFS_ACCESS_KEY` | `docai-seaweed` | Seeds the SeaweedFS S3 gateway's identity config (`seaweedfs/entrypoint.sh`). Must match `S3_ACCESS_KEY` below. |
 | `SEAWEEDFS_SECRET_KEY` | `docai-seaweed-secret` | Seeds the SeaweedFS S3 gateway's identity config. Must match `S3_SECRET_KEY` below. |
 | `S3_BUCKET` | `docai-documents` | S3/SeaweedFS bucket name |
 | `S3_ENDPOINT` | `http://seaweedfs:8333` | S3 endpoint. **Leave empty** (`S3_ENDPOINT=`) for real AWS S3. Set to `http://localhost:8333` for bare-metal SeaweedFS. |
