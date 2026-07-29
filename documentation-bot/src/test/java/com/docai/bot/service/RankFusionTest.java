@@ -3,12 +3,35 @@ package com.docai.bot.service;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.List;
+import java.util.Map;
 
 import org.junit.jupiter.api.Test;
 
 import com.docai.bot.domain.model.RankFusion;
 
 class RankFusionTest {
+
+    @Test
+    void fuseWithScores_idRankedFirstInOnlyOneList_stillCarriesARealScore() {
+        List<String> dense = List.of("a", "b");
+        List<String> lexical = List.of("c");
+
+        Map<String, Double> scores = RankFusion.fuseWithScores(List.of(dense, lexical));
+
+        assertThat(scores.get("c")).isGreaterThan(0.0);
+        assertThat(scores.keySet()).containsExactlyInAnyOrder("a", "b", "c");
+    }
+
+    @Test
+    void fuseWithScores_orderingMatchesFuse() {
+        List<String> dense = List.of("b", "a", "c");
+        List<String> lexical = List.of("a", "d", "e");
+
+        Map<String, Double> scores = RankFusion.fuseWithScores(List.of(dense, lexical));
+        List<String> fused = RankFusion.fuse(List.of(dense, lexical));
+
+        assertThat(scores.keySet()).containsExactlyElementsOf(fused);
+    }
 
     @Test
     void idRankedFirstByBothSignals_risesToTop() {

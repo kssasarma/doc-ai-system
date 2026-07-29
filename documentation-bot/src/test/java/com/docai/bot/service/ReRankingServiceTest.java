@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -76,6 +77,37 @@ class ReRankingServiceTest {
     }
 
     @Test
+    void mmr_strongLexicalWinnerWithWeakEmbeddingSimilarity_stillMakesFinalCut() {
+        // Reproduces the hybrid-retrieval regression: a chunk that lexical search ranked #1 (e.g.
+        // an exact-phrase match like "key server") but whose own embedding is only a mediocre
+        // match to the query — plausible when the matching sentence sits in a larger chunk whose
+        // embedding gets diluted by surrounding text (see VectorSearchService's class javadoc).
+        // Before blending the fusion score into MMR's relevance term, this candidate would lose
+        // the final cut to purely dense-only candidates with higher raw cosine similarity, even
+        // though it's the one hit that actually contains the answer.
+        ReflectionTestUtils.setField(service, "llmRerankEnabled", false);
+        ReflectionTestUtils.setField(service, "mmrLambda", 1.0); // isolate relevance from diversity
+        ReflectionTestUtils.setField(service, "fusionWeight", 0.7);
+
+        float[] query = {1f, 0f};
+        double weakAngle = Math.toRadians(60); // ~0.5 cosine similarity — a real but modest match
+        ScoredCandidate lexicalWinner = candidate("phraseMatch",
+            new float[]{(float) Math.cos(weakAngle), (float) Math.sin(weakAngle)}, query, 1.0);
+
+        List<ScoredCandidate> denseOnly = List.of(
+            candidate("d1", angleEmbedding(5), query, 0.0),
+            candidate("d2", angleEmbedding(8), query, 0.0),
+            candidate("d3", angleEmbedding(10), query, 0.0)
+        );
+        List<ScoredCandidate> all = new ArrayList<>(denseOnly);
+        all.add(lexicalWinner);
+
+        List<RetrievedChunk> result = service.rerank("question", query, all, 1);
+
+        assertThat(result).extracting(RetrievedChunk::getChunkId).containsExactly("phraseMatch");
+    }
+
+    @Test
     void singleCandidate_returnedAsIs_withoutInvokingLlm() {
         float[] query = {1f, 0f};
         ScoredCandidate only = candidate("solo", new float[]{1f, 0f}, query);
@@ -142,14 +174,23 @@ class ReRankingServiceTest {
 
     // ── helpers ───────────────────────────────────────────────────────────────
 
+    private static float[] angleEmbedding(double degrees) {
+        double rad = Math.toRadians(degrees);
+        return new float[]{(float) Math.cos(rad), (float) Math.sin(rad)};
+    }
+
     private ScoredCandidate candidate(String id, float[] embedding, float[] query) {
+        return candidate(id, embedding, query, 0.0);
+    }
+
+    private ScoredCandidate candidate(String id, float[] embedding, float[] query, double fusionScore) {
         RetrievedChunk chunk = RetrievedChunk.builder()
             .chunkId(id)
             .content("content for " + id)
             .documentName("doc.pdf")
             .similarity(com.docai.bot.domain.model.CosineSimilarity.of(query, embedding))
             .build();
-        return new ScoredCandidate(chunk, embedding);
+        return new ScoredCandidate(chunk, embedding, fusionScore);
     }
 
     private void stubLlmResponse(String content) {

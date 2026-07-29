@@ -3,6 +3,7 @@ package com.docai.bot.domain.model;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * Reciprocal Rank Fusion — combines any number of independently-ranked ID lists (e.g. a dense
@@ -23,6 +24,23 @@ public final class RankFusion {
     }
 
     public static List<String> fuse(List<List<String>> rankedIdLists, int k) {
+        return List.copyOf(fuseWithScores(rankedIdLists, k).keySet());
+    }
+
+    /**
+     * Same fusion as {@link #fuse}, but keeps each ID's numeric RRF score instead of discarding
+     * it once the order is decided. Callers that only need a ranking should use {@link #fuse};
+     * this exists for callers (e.g. re-ranking) that need to know *how strongly* an ID was agreed
+     * on by the fused signals, not just where it landed relative to its neighbors — an ID that's
+     * rank 1 in one list and absent from the other still carries a real, comparable score here,
+     * rather than that agreement-strength information being lost the moment fusion produces an
+     * ordering.
+     */
+    public static Map<String, Double> fuseWithScores(List<List<String>> rankedIdLists) {
+        return fuseWithScores(rankedIdLists, DEFAULT_K);
+    }
+
+    public static Map<String, Double> fuseWithScores(List<List<String>> rankedIdLists, int k) {
         Map<String, Double> scores = new LinkedHashMap<>();
         for (List<String> ranked : rankedIdLists) {
             for (int i = 0; i < ranked.size(); i++) {
@@ -31,7 +49,7 @@ public final class RankFusion {
         }
         return scores.entrySet().stream()
             .sorted(Map.Entry.<String, Double>comparingByValue().reversed())
-            .map(Map.Entry::getKey)
-            .toList();
+            .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue,
+                (a, b) -> a, LinkedHashMap::new));
     }
 }

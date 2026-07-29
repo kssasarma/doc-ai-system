@@ -32,7 +32,11 @@ import lombok.extern.slf4j.Slf4j;
  * This exists because dense-only retrieval under-ranks short, specific factual queries (e.g.
  * "supported application servers") whenever the matching sentence's embedding gets diluted by
  * surrounding unrelated text in the same chunk — lexical search catches exactly that case, and
- * fusing the two signals (rather than picking one) means neither one's blind spot is fatal.
+ * fusing the two signals (rather than picking one) means neither one's blind spot is fatal. Each
+ * candidate's RRF fusion score is carried through to {@link ReRankingService} (not just the fused
+ * order) so a strong lexical-only hit can still win the final MMR cut even when its own embedding
+ * similarity is mediocre — otherwise that MMR step silently re-collapses this back to a dense-only
+ * ranking right before the LLM sees it, undoing the fusion above.
  *
  * Every candidate's {@code similarity} is recomputed uniformly in Java from its raw embedding —
  * not trusted from whichever query happened to surface it — so a lexical-only hit (one dense
@@ -103,15 +107,18 @@ public class VectorSearchService {
         denseResults.forEach(c -> byId.putIfAbsent(c.getChunkId(), c));
         lexicalResults.forEach(c -> byId.putIfAbsent(c.getChunkId(), c));
 
-        List<String> fusedOrder = RankFusion.fuse(List.of(
+        // Score, not just order: ReRankingService's MMR step needs each candidate's fusion
+        // strength to avoid re-collapsing hybrid retrieval back down to a dense-only ranking (see
+        // ReRankingService.fusionWeight javadoc) — a plain ordered fuse() would throw that away.
+        Map<String, Double> fusionScores = RankFusion.fuseWithScores(List.of(
             denseResults.stream().map(HybridCandidate::getChunkId).toList(),
             lexicalResults.stream().map(HybridCandidate::getChunkId).toList()
         ));
 
-        return fusedOrder.stream()
-            .map(byId::get)
-            .filter(Objects::nonNull)
-            .map(c -> {
+        return fusionScores.entrySet().stream()
+            .map(entry -> {
+                HybridCandidate c = byId.get(entry.getKey());
+                if (c == null) return null;
                 float[] embedding = PgVectorText.parse(c.getEmbeddingText());
                 RetrievedChunk chunk = RetrievedChunk.builder()
                     .chunkId(c.getChunkId())
@@ -122,8 +129,9 @@ public class VectorSearchService {
                     .version(c.getVersion())
                     .similarity(CosineSimilarity.of(queryEmbedding, embedding))
                     .build();
-                return new ReRankingService.ScoredCandidate(chunk, embedding);
+                return new ReRankingService.ScoredCandidate(chunk, embedding, entry.getValue());
             })
+            .filter(Objects::nonNull)
             .toList();
     }
 
