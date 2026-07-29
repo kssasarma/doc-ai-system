@@ -4,7 +4,7 @@ Both services expose an OpenAPI specification and a Swagger UI for interactive e
 
 | Service | Swagger UI | OpenAPI JSON |
 |---|---|---|
-| documentation-bot (port 8082) | http://localhost:8082/swagger-ui.html | http://localhost:8082/v3/api-docs |
+| documentation-bot (port 8080) | http://localhost:8080/swagger-ui.html | http://localhost:8080/v3/api-docs |
 | document-ingestor (port 8081) | http://localhost:8081/swagger-ui.html | http://localhost:8081/v3/api-docs |
 
 ---
@@ -25,7 +25,7 @@ See [Authentication](authentication.md) for how to obtain these credentials.
 
 ---
 
-## documentation-bot (port 8082)
+## documentation-bot (port 8080)
 
 ### Auth
 

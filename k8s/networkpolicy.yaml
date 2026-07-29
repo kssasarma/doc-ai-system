@@ -75,14 +75,14 @@ spec:
               app: documentation-bot
       ports:
         - protocol: TCP
-          port: 8082
+          port: 8080
     - to:
         - podSelector:
             matchLabels:
               app: document-ingestor
       ports:
         - protocol: TCP
-          port: 8081
+          port: 8080
 
 ---
 apiVersion: networking.k8s.io/v1
@@ -102,7 +102,7 @@ spec:
               app: frontend
       ports:
         - protocol: TCP
-          port: 8082
+          port: 8080
 
 ---
 # document-ingestor accepts from frontend (normal API traffic) and from documentation-bot
@@ -127,7 +127,7 @@ spec:
               app: documentation-bot
       ports:
         - protocol: TCP
-          port: 8081
+          port: 8080
 
 ---
 # documentation-bot -> document-ingestor (see above).
@@ -148,7 +148,7 @@ spec:
               app: document-ingestor
       ports:
         - protocol: TCP
-          port: 8081
+          port: 8080
 
 ---
 # documentation-bot + document-ingestor -> postgres.

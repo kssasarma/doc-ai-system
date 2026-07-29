@@ -88,7 +88,7 @@ Per-tenant LLM API keys and connector integration tokens entered via the admin p
 A user can download all their personal data as a JSON archive:
 
 ```bash
-curl http://localhost:8082/api/user/gdpr/export \
+curl http://localhost:8080/api/user/gdpr/export \
   -H "Authorization: Bearer <jwt>" \
   --output my-data.json
 ```
@@ -98,7 +98,7 @@ The archive includes: profile info, all chat sessions and messages, bookmarks, c
 ### Account erasure (Art. 17)
 
 ```bash
-curl -X DELETE http://localhost:8082/api/user/gdpr/me \
+curl -X DELETE http://localhost:8080/api/user/gdpr/me \
   -H "Authorization: Bearer <jwt>"
 ```
 
@@ -171,9 +171,9 @@ The Kubernetes manifests include a default-deny `NetworkPolicy` with explicit al
 
 | Source | Destination | Port | Purpose |
 |---|---|---|---|
-| Ingress controller | documentation-bot | 8082 | User-facing API |
-| Ingress controller | document-ingestor | 8081 | Upload and webhook endpoints |
-| documentation-bot | document-ingestor | 8081 | Internal API (citation presigned URLs) |
+| Ingress controller | documentation-bot | 8080 | User-facing API |
+| Ingress controller | document-ingestor | 8080 | Upload and webhook endpoints |
+| documentation-bot | document-ingestor | 8080 | Internal API (citation presigned URLs) |
 | documentation-bot | PostgreSQL | 5432 | JPA |
 | documentation-bot | Redis | 6379 | Rate limiting + embedding cache |
 | document-ingestor | PostgreSQL | 5432 | JPA |

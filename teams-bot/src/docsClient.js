@@ -1,6 +1,6 @@
 import fetch from 'node-fetch';
 
-const API_URL = process.env.DOCS_API_URL || 'http://localhost:8082';
+const API_URL = process.env.DOCS_API_URL || 'http://localhost:8080';
 const API_KEY  = process.env.DOCS_API_KEY || '';
 
 // Fail fast at startup, not on the first confusing 401 a user hits mid-conversation — an unset

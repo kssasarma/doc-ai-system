@@ -69,7 +69,10 @@ services:
       S3_SECRET_KEY: ${S3_SECRET_KEY}
       S3_PATH_STYLE_ACCESS: ${S3_PATH_STYLE_ACCESS:-false}
     ports:
-      - "8081:8081"
+      # Host side stays 8081 (documentation-bot already publishes 8080, so the two containers
+      # can't both publish host 8080); container side now listens on 8080 like every other
+      # service image in this stack.
+      - "8081:8080"
     depends_on:
       postgres:
         condition: service_healthy
@@ -78,7 +81,7 @@ services:
       documentation-bot:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8081/actuator/health || exit 1"]
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/actuator/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -125,7 +128,7 @@ services:
       # documentation-bot=N`), add a redis service back (see docker-compose.yml's dev setup) and
       # set REDIS_HOST/REDIS_PORT here — otherwise each replica's rate limit/cache is independent.
       INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET}
-      INGESTOR_INTERNAL_URL: ${INGESTOR_INTERNAL_URL:-http://document-ingestor:8081}
+      INGESTOR_INTERNAL_URL: ${INGESTOR_INTERNAL_URL:-http://document-ingestor:8080}
       MAIL_HOST: ${MAIL_HOST:-smtp.gmail.com}
       MAIL_PORT: ${MAIL_PORT:-587}
       MAIL_USERNAME: ${MAIL_USERNAME:-}
@@ -137,12 +140,12 @@ services:
       MAIL_FROM_NAME: ${MAIL_FROM_NAME:-Docs-inator}
       APP_URL: ${APP_URL:-http://localhost:5173}
     ports:
-      - "8082:8082"
+      - "8080:8080"
     depends_on:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8082/actuator/health || exit 1"]
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/actuator/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3

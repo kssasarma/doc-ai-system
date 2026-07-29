@@ -20,7 +20,7 @@ Services:
 | `docai-redis` | 6379 | redis:7-alpine |
 | `docai-seaweedfs` | 8333 / 9333 | SeaweedFS S3 API / master status |
 | `docai-ingestor` | 8081 | document-ingestor |
-| `docai-bot` | 8082 | documentation-bot |
+| `docai-bot` | 8080 | documentation-bot |
 | `docai-frontend` | 3000 | React SPA |
 
 ---
@@ -120,8 +120,8 @@ Both services have `minAvailable: 1` — rolling updates and node drains never t
 
 Default-deny with explicit allows matching actual traffic:
 
-- Ingress → bot (8082) and ingestor (8081)
-- Bot → ingestor (internal API, port 8081)
+- Ingress → bot (8080) and ingestor (8080)
+- Bot → ingestor (internal API, port 8080)
 - Bot → PostgreSQL (5432) and Redis (6379)
 - Ingestor → PostgreSQL (5432) and S3 (443)
 - No pod can initiate outbound connections outside the allowed set

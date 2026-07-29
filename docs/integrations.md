@@ -5,7 +5,7 @@ Docs-inator ships with four optional client integrations. All of them call the [
 Create an API key before configuring any integration:
 
 ```bash
-curl -X POST http://localhost:8082/api/user/api-keys \
+curl -X POST http://localhost:8080/api/user/api-keys \
   -H "Authorization: Bearer <jwt>" \
   -H "Content-Type: application/json" \
   -d '{"name":"slack-bot"}'
@@ -59,7 +59,7 @@ npm install
 
 SLACK_BOT_TOKEN=xoxb-...       \
 SLACK_APP_TOKEN=xapp-...       \
-DOCS_AI_URL=http://localhost:8082   \
+DOCS_AI_URL=http://localhost:8080   \
 DOCS_AI_TOKEN=dak_...          \
 node src/index.js
 # Listening on port 3001
@@ -106,7 +106,7 @@ npm install
 
 MicrosoftAppId=<azure-app-id>            \
 MicrosoftAppPassword=<azure-app-secret>  \
-DOCS_AI_URL=http://localhost:8082        \
+DOCS_AI_URL=http://localhost:8080        \
 DOCS_AI_TOKEN=dak_...                   \
 node src/index.js
 # Listening on port 3002

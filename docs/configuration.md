@@ -95,7 +95,7 @@ Omit `REDIS_HOST` entirely to disable the embedding cache. The bot falls back to
 
 | Variable | Default | Description |
 |---|---|---|
-| `INGESTOR_INTERNAL_URL` | `http://document-ingestor:8081` | document-ingestor base URL for resolving presigned citation download URLs |
+| `INGESTOR_INTERNAL_URL` | `http://document-ingestor:8080` | document-ingestor base URL for resolving presigned citation download URLs |
 
 ---
 
@@ -145,7 +145,7 @@ These are baked into the frontend at build time by Vite (from `frontend/.env` fo
 | Variable | Default | Description |
 |---|---|---|
 | `VITE_BASE_PATH` | `/docs-inator/` | Base path the app is served under — drives asset URLs, the react-router basename, and (via the `BASE_PATH` Docker build arg) the nginx redirect/alias locations |
-| `VITE_BACKEND_URL` | `http://localhost:8082` | documentation-bot base URL as seen from the browser; empty string = same-origin relative paths (production nginx proxy) |
+| `VITE_BACKEND_URL` | `http://localhost:8080` | documentation-bot base URL as seen from the browser; empty string = same-origin relative paths (production nginx proxy) |
 | `VITE_INGESTOR_URL` | `http://localhost:8081` | document-ingestor base URL as seen from the browser; empty string = same-origin relative paths |
 | `VITE_APP_TITLE` | `Docs-inator` | Product name shown in the UI, HTML `<title>`, and meta tags |
 | `VITE_APP_SUBTITLE` | `AI-Powered Documentation Assistant` | Tagline appended to the HTML `<title>` and meta tags |

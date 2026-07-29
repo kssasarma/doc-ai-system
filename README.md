@@ -67,7 +67,7 @@ For a full walkthrough — bare metal, first login, uploading your first documen
 
 | Service | Port | Stack | Role |
 |---|---|---|---|
-| **documentation-bot** | 8082 | Spring Boot 4, Java 21 | Chat, auth, intelligence, admin APIs |
+| **documentation-bot** | 8080 | Spring Boot 4, Java 21 | Chat, auth, intelligence, admin APIs |
 | **document-ingestor** | 8081 | Spring Boot 4, Java 21 | Ingestion pipeline, embeddings, storage |
 | **frontend** | 3000 | React 18, Vite, TypeScript, Tailwind | Web UI |
 | **PostgreSQL + pgvector** | 5432 | pgvector:pg16 | Vector + relational store |

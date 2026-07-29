@@ -20,7 +20,7 @@ graph TB
         NGX["nginx Ingress\n(TLS termination)"]
     end
 
-    subgraph BotService["documentation-bot  :8082"]
+    subgraph BotService["documentation-bot  :8080"]
         direction TB
         CHAT["ChatController"]
         AUTH["AuthController + OIDC"]
@@ -51,7 +51,7 @@ graph TB
         end
     end
 
-    subgraph IngestorService["document-ingestor  :8081"]
+    subgraph IngestorService["document-ingestor  :8080"]
         direction TB
         ING["IngestionController\n/api/ingest"]
         WBH["WebhookController"]
@@ -105,7 +105,7 @@ graph TB
 
 ## Service Responsibilities
 
-### documentation-bot (port 8082)
+### documentation-bot (port 8080)
 
 The user-facing API. All user interactions — chat, authentication, admin operations — flow through here.
 
@@ -122,7 +122,7 @@ The user-facing API. All user interactions — chat, authentication, admin opera
 - Admin: analytics, gap reports, cost tracking, escalation workflow, audit log
 - GDPR: data export (Art. 20) and erasure (Art. 17) with 7-day grace period, nightly processor
 
-### document-ingestor (port 8081)
+### document-ingestor (port 8080)
 
 The ingestion pipeline. Accepts documents via upload, webhook, or connector, and builds the vector index.
 

@@ -48,7 +48,7 @@ The current tenant is stored in `TenantContext` (ThreadLocal) for the lifetime o
 Requires SUPER_ADMIN JWT.
 
 ```bash
-curl -X POST http://localhost:8082/api/admin/tenants \
+curl -X POST http://localhost:8080/api/admin/tenants \
   -H "Authorization: Bearer <super-admin-token>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -73,21 +73,21 @@ Tenant ADMINs invite users to their own tenant:
 
 ```bash
 # Invite a user
-curl -X POST http://localhost:8082/api/admin/users/invite \
+curl -X POST http://localhost:8080/api/admin/users/invite \
   -H "Authorization: Bearer <admin-token>" \
   -H "Content-Type: application/json" \
   -d '{"email":"bob@acme.com"}'
 
 # List members
-curl http://localhost:8082/api/admin/users \
+curl http://localhost:8080/api/admin/users \
   -H "Authorization: Bearer <admin-token>"
 
 # Deactivate a member
-curl -X POST http://localhost:8082/api/admin/users/<userId>/deactivate \
+curl -X POST http://localhost:8080/api/admin/users/<userId>/deactivate \
   -H "Authorization: Bearer <admin-token>"
 
 # Revoke a pending invitation
-curl -X DELETE http://localhost:8082/api/admin/invitations/<invitationId> \
+curl -X DELETE http://localhost:8080/api/admin/invitations/<invitationId> \
   -H "Authorization: Bearer <admin-token>"
 ```
 
@@ -101,13 +101,13 @@ Documents belong to exactly one tenant and are invisible to every other tenant. 
 
 ```bash
 # Grant user access to a document
-curl -X POST http://localhost:8082/api/admin/documents/<documentId>/access \
+curl -X POST http://localhost:8080/api/admin/documents/<documentId>/access \
   -H "Authorization: Bearer <admin-token>" \
   -H "Content-Type: application/json" \
   -d '{"userId":"<userId>"}'
 
 # Revoke access
-curl -X DELETE http://localhost:8082/api/admin/documents/<documentId>/access/<userId> \
+curl -X DELETE http://localhost:8080/api/admin/documents/<documentId>/access/<userId> \
   -H "Authorization: Bearer <admin-token>"
 ```
 
@@ -117,19 +117,19 @@ Groups make it easy to grant a set of users access to a set of documents at once
 
 ```bash
 # Create a group
-curl -X POST http://localhost:8082/api/admin/groups \
+curl -X POST http://localhost:8080/api/admin/groups \
   -H "Authorization: Bearer <admin-token>" \
   -H "Content-Type: application/json" \
   -d '{"name":"Engineering","description":"All engineers"}'
 
 # Add a user to the group
-curl -X POST http://localhost:8082/api/admin/groups/<groupId>/members \
+curl -X POST http://localhost:8080/api/admin/groups/<groupId>/members \
   -H "Authorization: Bearer <admin-token>" \
   -H "Content-Type: application/json" \
   -d '{"userId":"<userId>"}'
 
 # Grant a group access to a document
-curl -X POST http://localhost:8082/api/admin/documents/<documentId>/group-access \
+curl -X POST http://localhost:8080/api/admin/documents/<documentId>/group-access \
   -H "Authorization: Bearer <admin-token>" \
   -H "Content-Type: application/json" \
   -d '{"groupId":"<groupId>"}'
@@ -151,7 +151,7 @@ The resulting `documentIds` set is injected into the pgvector similarity query a
 Each tenant can bring their own LLM API keys and choose their own models. Tenant ADMINs configure this via the admin panel or API.
 
 ```bash
-curl -X PUT http://localhost:8082/api/admin/tenants/<tenantId>/llm-config \
+curl -X PUT http://localhost:8080/api/admin/tenants/<tenantId>/llm-config \
   -H "Authorization: Bearer <admin-token>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -172,7 +172,7 @@ The `apiKey` is encrypted at rest with AES-256-GCM before storage. Available pro
 ## Tenant Branding
 
 ```bash
-curl -X PUT http://localhost:8082/api/admin/tenants/<tenantId>/branding \
+curl -X PUT http://localhost:8080/api/admin/tenants/<tenantId>/branding \
   -H "Authorization: Bearer <admin-token>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -187,7 +187,7 @@ curl -X PUT http://localhost:8082/api/admin/tenants/<tenantId>/branding \
 ## Data Retention
 
 ```bash
-curl -X PUT http://localhost:8082/api/admin/tenants/<tenantId>/retention \
+curl -X PUT http://localhost:8080/api/admin/tenants/<tenantId>/retention \
   -H "Authorization: Bearer <admin-token>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -205,7 +205,7 @@ The nightly `DataRetentionService` (runs at 03:00 UTC) deletes records older tha
 A user can belong to more than one tenant (stored in `tenant_memberships`). Switch tenants without logging out:
 
 ```bash
-curl -X POST http://localhost:8082/api/auth/switch-tenant/<targetTenantId> \
+curl -X POST http://localhost:8080/api/auth/switch-tenant/<targetTenantId> \
   -H "Authorization: Bearer <current-token>"
 ```
 

@@ -20,7 +20,7 @@ This design prevents unauthorized tenant creation and ensures every account trac
 ### Login
 
 ```bash
-curl -X POST http://localhost:8082/api/auth/login \
+curl -X POST http://localhost:8080/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{"username":"alice","password":"<password>"}'
 ```
@@ -51,7 +51,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiJ9...
 ### Refreshing
 
 ```bash
-curl -X POST http://localhost:8082/api/auth/refresh \
+curl -X POST http://localhost:8080/api/auth/refresh \
   -H "Content-Type: application/json" \
   -d '{"refreshToken":"eyJhbGciOiJIUzI1NiJ9..."}'
 ```
@@ -59,7 +59,7 @@ curl -X POST http://localhost:8082/api/auth/refresh \
 ### Password change
 
 ```bash
-curl -X POST http://localhost:8082/api/auth/change-password \
+curl -X POST http://localhost:8080/api/auth/change-password \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{"currentPassword":"old","newPassword":"new-strong-password"}'
@@ -69,12 +69,12 @@ curl -X POST http://localhost:8082/api/auth/change-password \
 
 ```bash
 # 1. Request a reset link (delivered by email if SMTP is configured)
-curl -X POST http://localhost:8082/api/auth/forgot-password \
+curl -X POST http://localhost:8080/api/auth/forgot-password \
   -H "Content-Type: application/json" \
   -d '{"email":"alice@example.com"}'
 
 # 2. Complete the reset using the token from the email
-curl -X POST http://localhost:8082/api/auth/reset-password \
+curl -X POST http://localhost:8080/api/auth/reset-password \
   -H "Content-Type: application/json" \
   -d '{"token":"<token-from-email>","newPassword":"<new-password>"}'
 ```
@@ -92,7 +92,7 @@ API keys allow non-interactive clients (Slack bot, CI/CD pipeline, browser exten
 ### Create a key
 
 ```bash
-curl -X POST http://localhost:8082/api/user/api-keys \
+curl -X POST http://localhost:8080/api/user/api-keys \
   -H "Authorization: Bearer <jwt>" \
   -H "Content-Type: application/json" \
   -d '{"name":"CI pipeline","expiresInDays":90}'
@@ -119,14 +119,14 @@ X-API-Key: dak_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ### Revoking a key
 
 ```bash
-curl -X DELETE http://localhost:8082/api/user/api-keys/<key-id> \
+curl -X DELETE http://localhost:8080/api/user/api-keys/<key-id> \
   -H "Authorization: Bearer <jwt>"
 ```
 
 ### Listing your keys
 
 ```bash
-curl http://localhost:8082/api/user/api-keys \
+curl http://localhost:8080/api/user/api-keys \
   -H "Authorization: Bearer <jwt>"
 ```
 
@@ -159,7 +159,7 @@ GET /api/auth/oidc/config?slug=acme
 # Response includes authorization URL, client ID, scopes needed
 
 # 2. After IdP authenticates the user, exchange the IdP claims for a Docs-inator JWT
-curl -X POST http://localhost:8082/api/auth/oidc/callback \
+curl -X POST http://localhost:8080/api/auth/oidc/callback \
   -H "Content-Type: application/json" \
   -d '{
     "provider": "google",
@@ -182,7 +182,7 @@ The returned token is a standard Docs-inator JWT and is used identically to pass
 A user who belongs to multiple tenants can switch without logging out:
 
 ```bash
-curl -X POST http://localhost:8082/api/auth/switch-tenant/<tenantId> \
+curl -X POST http://localhost:8080/api/auth/switch-tenant/<tenantId> \
   -H "Authorization: Bearer <current-token>"
 # Returns a new token scoped to the target tenant
 ```
@@ -204,7 +204,7 @@ SUPER_ADMIN has no tenant of its own. Tenant ADMIN cannot elevate their own role
 ## Accepting an Invitation
 
 ```bash
-curl -X POST http://localhost:8082/api/auth/accept-invite \
+curl -X POST http://localhost:8080/api/auth/accept-invite \
   -H "Content-Type: application/json" \
   -d '{
     "token": "<token-from-email>",

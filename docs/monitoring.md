@@ -13,12 +13,12 @@ Both services expose Spring Boot Actuator endpoints for health checks, Prometheu
 | `GET /actuator/health/readiness` | Kubernetes readiness probe | Fails → pod removed from load balancer |
 | `GET /actuator/info` | Build and version info | |
 
-Available on both services (ports 8081 and 8082).
+Available on both services (ports 8081 and 8080).
 
 ### Example health check
 
 ```bash
-curl http://localhost:8082/actuator/health
+curl http://localhost:8080/actuator/health
 # {"status":"UP","components":{"db":{"status":"UP"},"redis":{"status":"UP"}}}
 
 curl http://localhost:8081/actuator/health
@@ -95,13 +95,13 @@ Add the following to your `prometheus.yml` scrape config:
 scrape_configs:
   - job_name: 'docai-bot'
     static_configs:
-      - targets: ['documentation-bot:8082']
+      - targets: ['documentation-bot:8080']
     metrics_path: '/actuator/prometheus'
     scrape_interval: 30s
 
   - job_name: 'docai-ingestor'
     static_configs:
-      - targets: ['document-ingestor:8081']
+      - targets: ['document-ingestor:8080']
     metrics_path: '/actuator/prometheus'
     scrape_interval: 30s
 ```
@@ -185,12 +185,12 @@ Set log levels at runtime without redeployment via Spring Boot Actuator:
 
 ```bash
 # Set a package to DEBUG
-curl -X POST http://localhost:8082/actuator/loggers/com.docai.bot.application \
+curl -X POST http://localhost:8080/actuator/loggers/com.docai.bot.application \
   -H "Content-Type: application/json" \
   -d '{"configuredLevel":"DEBUG"}'
 
 # Reset to default
-curl -X POST http://localhost:8082/actuator/loggers/com.docai.bot.application \
+curl -X POST http://localhost:8080/actuator/loggers/com.docai.bot.application \
   -H "Content-Type: application/json" \
   -d '{"configuredLevel":null}'
 ```

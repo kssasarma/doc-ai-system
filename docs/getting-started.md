@@ -81,7 +81,7 @@ docker compose logs -f documentation-bot document-ingestor
 
 ```bash
 curl http://localhost:8081/actuator/health   # ingestor → {"status":"UP"}
-curl http://localhost:8082/actuator/health   # bot     → {"status":"UP"}
+curl http://localhost:8080/actuator/health   # bot     → {"status":"UP"}
 ```
 
 ### 5. Open the web UI
@@ -150,6 +150,10 @@ setup.
 cd document-ingestor
 export OPENAI_API_KEY=sk-...
 export S3_ENDPOINT=http://localhost:8333   # override the docker-compose hostname
+# document-ingestor and documentation-bot both ship with server.port=8080 by default (Docker
+# gives each its own network namespace, so that's fine there) — running both directly on the
+# same machine needs one of them overridden, or they'll fail to bind the same port.
+export SERVER_PORT=8081
 ./mvnw spring-boot:run
 # Listening on http://localhost:8081
 ```
@@ -161,7 +165,7 @@ cd documentation-bot
 export OPENAI_API_KEY=sk-...
 export JWT_SECRET=$(openssl rand -base64 64)
 ./mvnw spring-boot:run
-# Listening on http://localhost:8082
+# Listening on http://localhost:8080
 ```
 
 ### 5. Start the frontend
@@ -173,7 +177,7 @@ npm run dev
 # Opens http://localhost:5173/docs-inator
 ```
 
-> **Note:** In bare-metal mode the frontend runs on port 5173, not 3000. `VITE_BACKEND_URL` and `VITE_INGESTOR_URL` default to `localhost:8082` and `localhost:8081` — that's correct for local development.
+> **Note:** In bare-metal mode the frontend runs on port 5173, not 3000. `VITE_BACKEND_URL` and `VITE_INGESTOR_URL` default to `localhost:8080` and `localhost:8081` — that's correct for local development given the `SERVER_PORT=8081` override in step 3 above.
 
 ---
 
@@ -194,11 +198,11 @@ This account has no tenant of its own — it exists only to create tenants and i
 ### 1. Log in and change the password
 
 ```bash
-TOKEN=$(curl -s -X POST http://localhost:8082/api/auth/login \
+TOKEN=$(curl -s -X POST http://localhost:8080/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{"username":"admin","password":"Opentext123$"}' | jq -r .token)
 
-curl -s -X POST http://localhost:8082/api/auth/change-password \
+curl -s -X POST http://localhost:8080/api/auth/change-password \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"currentPassword":"Opentext123$","newPassword":"<new-password>"}'
@@ -207,7 +211,7 @@ curl -s -X POST http://localhost:8082/api/auth/change-password \
 ### 2. Create your first tenant
 
 ```bash
-curl -s -X POST http://localhost:8082/api/admin/tenants \
+curl -s -X POST http://localhost:8080/api/admin/tenants \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -225,7 +229,7 @@ This creates an invitation for `adminEmail` to become the tenant's first ADMIN. 
 ### 3. Accept the invitation
 
 ```bash
-curl -s -X POST http://localhost:8082/api/auth/accept-invite \
+curl -s -X POST http://localhost:8080/api/auth/accept-invite \
   -H "Content-Type: application/json" \
   -d '{
     "token": "<token-from-email>",
@@ -242,7 +246,7 @@ You now have a tenant ADMIN account. Log in as `alice` through the web UI or API
 
 ```bash
 # Log in as the tenant admin
-TOKEN=$(curl -s -X POST http://localhost:8082/api/auth/login \
+TOKEN=$(curl -s -X POST http://localhost:8080/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{"username":"alice","password":"<password>"}' | jq -r .token)
 

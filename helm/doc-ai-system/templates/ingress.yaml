@@ -24,19 +24,19 @@ spec:
               service:
                 name: document-ingestor-service
                 port:
-                  number: 8081
+                  number: 8080
           - path: /api/documents
             pathType: Prefix
             backend:
               service:
                 name: document-ingestor-service
                 port:
-                  number: 8081
+                  number: 8080
           - path: /
             pathType: Prefix
             backend:
               service:
                 name: documentation-bot-service
                 port:
-                  number: 8082
+                  number: 8080
 {{- end }}

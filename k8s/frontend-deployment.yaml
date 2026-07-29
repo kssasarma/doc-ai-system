@@ -26,9 +26,9 @@ spec:
             # relative /api calls) — nginx inside this container proxies them on to the two
             # backend Services using these upstream hostnames.
             - name: BOT_UPSTREAM
-              value: "documentation-bot-service:8082"
+              value: "documentation-bot-service:8080"
             - name: INGESTOR_UPSTREAM
-              value: "document-ingestor-service:8081"
+              value: "document-ingestor-service:8080"
           readinessProbe:
             httpGet:
               path: /healthz

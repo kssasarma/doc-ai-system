@@ -70,7 +70,7 @@ spring:
       timeout: 2000ms
 
 server:
-  port: 8082
+  port: 8080
 
 app:
   jwt:
@@ -157,6 +157,6 @@ bot:
     # document-ingestor's internal API base URL, and the shared secret this service signs its
     # calls to it with (must match document-ingestor's own INTERNAL_SERVICE_SECRET) — see
     # InternalDocumentDownloadService. Backs "open citation" in the chat UI.
-    ingestor-url: ${INGESTOR_INTERNAL_URL:http://document-ingestor:8081}
+    ingestor-url: ${INGESTOR_INTERNAL_URL:http://document-ingestor:8080}
     service-secret: ${INTERNAL_SERVICE_SECRET:}
 

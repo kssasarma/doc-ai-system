@@ -18,7 +18,7 @@ spec:
           image: {{ .Values.global.imageRegistry }}/{{ .Values.ingestor.image.repository }}:{{ .Values.ingestor.image.tag }}
           imagePullPolicy: {{ .Values.global.imagePullPolicy }}
           ports:
-            - containerPort: 8081
+            - containerPort: 8080
           envFrom:
             - configMapRef:
                 name: doc-ai-config
@@ -27,13 +27,13 @@ spec:
           readinessProbe:
             httpGet:
               path: /actuator/health/readiness
-              port: 8081
+              port: 8080
             initialDelaySeconds: 30
             periodSeconds: 10
           livenessProbe:
             httpGet:
               path: /actuator/health/liveness
-              port: 8081
+              port: 8080
             initialDelaySeconds: 60
             periodSeconds: 30
           resources:
@@ -48,8 +48,8 @@ spec:
   selector:
     app: document-ingestor
   ports:
-    - port: 8081
-      targetPort: 8081
+    - port: 8080
+      targetPort: 8080
 {{- if .Values.ingestor.hpa.enabled }}
 ---
 apiVersion: autoscaling/v2

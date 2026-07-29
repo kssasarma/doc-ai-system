@@ -30,7 +30,7 @@ spec:
             - sh
             - -c
             - |
-              until curl -sf http://documentation-bot-service:8082/actuator/health/readiness; do
+              until curl -sf http://documentation-bot-service:8080/actuator/health/readiness; do
                 echo "Waiting for documentation-bot (owns the shared users/tenants tables) to become ready…"
                 sleep 5
               done
@@ -40,7 +40,7 @@ spec:
           # Pin an explicit release tag before applying — never :latest. Bump per release.
           image: your-registry/document-ingestor:1.0.0
           ports:
-            - containerPort: 8081
+            - containerPort: 8080
           envFrom:
             - configMapRef:
                 name: doc-ai-config
@@ -49,13 +49,13 @@ spec:
           readinessProbe:
             httpGet:
               path: /actuator/health/readiness
-              port: 8081
+              port: 8080
             initialDelaySeconds: 30
             periodSeconds: 10
           livenessProbe:
             httpGet:
               path: /actuator/health/liveness
-              port: 8081
+              port: 8080
             initialDelaySeconds: 60
             periodSeconds: 30
           resources:
@@ -76,8 +76,8 @@ spec:
     app: document-ingestor
   ports:
     - protocol: TCP
-      port: 8081
-      targetPort: 8081
+      port: 8080
+      targetPort: 8080
 ---
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler

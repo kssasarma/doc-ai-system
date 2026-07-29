@@ -18,7 +18,7 @@ spec:
           image: {{ .Values.global.imageRegistry }}/{{ .Values.bot.image.repository }}:{{ .Values.bot.image.tag }}
           imagePullPolicy: {{ .Values.global.imagePullPolicy }}
           ports:
-            - containerPort: 8082
+            - containerPort: 8080
           envFrom:
             - configMapRef:
                 name: doc-ai-config
@@ -27,13 +27,13 @@ spec:
           readinessProbe:
             httpGet:
               path: /actuator/health/readiness
-              port: 8082
+              port: 8080
             initialDelaySeconds: 30
             periodSeconds: 10
           livenessProbe:
             httpGet:
               path: /actuator/health/liveness
-              port: 8082
+              port: 8080
             initialDelaySeconds: 60
             periodSeconds: 30
           resources:
@@ -48,8 +48,8 @@ spec:
   selector:
     app: documentation-bot
   ports:
-    - port: 8082
-      targetPort: 8082
+    - port: 8080
+      targetPort: 8080
 {{- if .Values.bot.hpa.enabled }}
 ---
 apiVersion: autoscaling/v2

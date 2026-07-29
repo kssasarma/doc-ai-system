@@ -30,7 +30,7 @@ public abstract class PlaywrightTestBase {
     protected static final String BASE_URL =
         System.getProperty("app.base.url", "http://localhost:3000");
     protected static final String BOT_API_URL =
-        System.getProperty("bot.api.url", "http://localhost:8082");
+        System.getProperty("bot.api.url", "http://localhost:8080");
 
     /** Default credentials for admin E2E tests — override via system property or env. */
     protected static final String ADMIN_USERNAME =

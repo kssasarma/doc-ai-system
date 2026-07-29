@@ -32,8 +32,8 @@ FROM nginx:alpine
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY templates/default.conf.template /etc/nginx/templates/default.conf.template
 # Matches the docker-compose service names; override for k8s (Service names differ there).
-ENV BOT_UPSTREAM=documentation-bot:8082
-ENV INGESTOR_UPSTREAM=document-ingestor:8081
+ENV BOT_UPSTREAM=documentation-bot:8080
+ENV INGESTOR_UPSTREAM=document-ingestor:8080
 # Baked from the same build arg as the bundle so nginx's redirect/alias locations agree with the
 # JS routing. Overriding BASE_PATH at *runtime* alone won't work — the bundle's base path is
 # fixed at build time; rebuild with --build-arg BASE_PATH=... instead.
