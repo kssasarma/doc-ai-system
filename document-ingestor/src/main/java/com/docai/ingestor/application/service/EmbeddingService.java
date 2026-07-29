@@ -41,6 +41,12 @@ public class EmbeddingService {
     @Value("${spring.ai.openai.embedding.options.model}")
     private String platformDefaultModel;
 
+    @Value("${ingestor.embedding-batch-size:64}")
+    private int batchSize;
+
+    @Value("${ingestor.embedding-batch-max-tokens:4000}")
+    private int maxBatchTokens;
+
     public EmbeddingService(EmbeddingModel embeddingModel,
                             @Qualifier("embeddingCircuitBreaker") CircuitBreaker embeddingCircuitBreaker,
                             @Qualifier("embeddingBulkhead") Bulkhead embeddingBulkhead,
@@ -88,17 +94,22 @@ public class EmbeddingService {
         return texts.stream().map(this::generateEmbedding).toList();
     }
 
-    private static final int BATCH_SIZE = 64;
-
     public record TenantEmbeddingBatchResult(List<float[]> embeddings, String modelUsed) {}
 
     /**
-     * Batches {@code texts} into groups of {@value #BATCH_SIZE} (OpenAI's embeddings endpoint
-     * accepts an array of inputs per call) so ingesting a large document costs a handful of
-     * round-trips instead of one per chunk — the resilience wrappers (circuit breaker/bulkhead)
-     * apply per batch, not per chunk, same as the single-text path. Same tenant-config resolution
-     * as {@link #generateEmbedding(String, UUID)}: every chunk in the document uses the same
-     * resolved client+model, since they're all being embedded for the same ingest.
+     * Batches {@code texts} into groups bounded by both {@code ingestor.embedding-batch-size}
+     * inputs and a max-tokens-per-request ceiling (OpenAI-compatible embeddings endpoints accept
+     * an array of inputs per call, but count tokens across the whole request against the model's
+     * context window — e.g. snowflake-arctic's 8192 — so batching purely by count can still
+     * overflow it once chunks average more than a couple hundred tokens) so ingesting a large
+     * document costs a handful of round-trips instead of one per chunk — the resilience wrappers
+     * (circuit breaker/bulkhead) apply per batch, not per chunk, same as the single-text path.
+     * Same tenant-config resolution as {@link #generateEmbedding(String, UUID)}: every chunk in
+     * the document uses the same resolved client+model, since they're all being embedded for the
+     * same ingest. The token ceiling itself is also tenant-resolved: a tenant's
+     * {@code max_embedding_batch_tokens} override (set by their admin to match their own
+     * embedding model's context window) takes precedence over the platform-wide
+     * {@code ingestor.embedding-batch-max-tokens} default.
      */
     public TenantEmbeddingBatchResult generateEmbeddings(List<String> texts, UUID tenantId) {
         TenantLlmConfig config = tenantId != null
@@ -113,15 +124,39 @@ public class EmbeddingService {
                 model = config.getEmbeddingModel();
             }
         }
+        int effectiveMaxBatchTokens = (config != null
+            && config.getMaxEmbeddingBatchTokens() != null
+            && config.getMaxEmbeddingBatchTokens() > 0)
+            ? config.getMaxEmbeddingBatchTokens() : maxBatchTokens;
 
         List<float[]> results = new java.util.ArrayList<>(texts.size());
         EmbeddingModel finalClient = client;
         String finalModel = model;
-        for (int start = 0; start < texts.size(); start += BATCH_SIZE) {
-            List<String> batch = texts.subList(start, Math.min(start + BATCH_SIZE, texts.size()));
+        int start = 0;
+        while (start < texts.size()) {
+            int end = nextBatchEnd(texts, start, effectiveMaxBatchTokens);
+            List<String> batch = texts.subList(start, end);
             results.addAll(withResilience(() -> callEmbeddingBatch(batch, finalClient, finalModel)));
+            start = end;
         }
         return new TenantEmbeddingBatchResult(results, model);
+    }
+
+    /** Grows the batch from {@code start} while staying within {@code ingestor.embedding-batch-size}
+     * inputs and {@code effectiveMaxBatchTokens} cumulative estimated tokens. Always includes at
+     * least one input (even an oversized one alone) so a single very large chunk can't stall the
+     * loop. */
+    private int nextBatchEnd(List<String> texts, int start, int effectiveMaxBatchTokens) {
+        int end = start;
+        int tokenBudget = 0;
+        while (end < texts.size()) {
+            if (end > start && (end - start) >= batchSize) break;
+            int tokens = SemanticChunker.estimateTokens(texts.get(end));
+            if (end > start && tokenBudget + tokens > effectiveMaxBatchTokens) break;
+            tokenBudget += tokens;
+            end++;
+        }
+        return end;
     }
 
     private List<float[]> callEmbeddingBatch(List<String> batch, EmbeddingModel client, String model) {

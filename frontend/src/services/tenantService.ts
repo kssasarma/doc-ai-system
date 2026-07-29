@@ -21,6 +21,10 @@ export interface TenantLLMConfig {
   hasCustomKey: boolean;
   /** Last 4 characters of the configured key (e.g. "••••ab12"), for confirmation only. */
   keyHint?: string | null;
+  /** Per-tenant override for the ingestor's embedding batch token ceiling — null/undefined uses
+   * the platform default. Only meaningful when the tenant has its own embedding model, since
+   * different models have different context windows. */
+  maxEmbeddingBatchTokens?: number | null;
 }
 
 export interface TenantLLMConfigUpdate {
@@ -35,6 +39,8 @@ export interface TenantLLMConfigUpdate {
   azureDeployment?: string | null;
   /** undefined = leave the stored key untouched; "" = clear it; non-empty = set/replace it. */
   apiKey?: string;
+  /** null = use the platform default; a positive integer = override for this tenant. */
+  maxEmbeddingBatchTokens?: number | null;
 }
 
 export interface TestConnectionResult {

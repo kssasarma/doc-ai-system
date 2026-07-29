@@ -38,13 +38,14 @@ public class TenantService {
     public record LlmConfigView(String chatProvider, String chatModel, String embeddingProvider,
                                  String embeddingModel, boolean routingEnabled, String simpleModel,
                                  String complexModel, String azureEndpoint, String azureDeployment,
-                                 boolean hasCustomKey, String keyHint) {}
+                                 boolean hasCustomKey, String keyHint, Integer maxEmbeddingBatchTokens) {}
 
-    /** {@code apiKey}: null = leave the stored key untouched, "" = clear it, non-blank = set/replace it. */
+    /** {@code apiKey}: null = leave the stored key untouched, "" = clear it, non-blank = set/replace it.
+     * {@code maxEmbeddingBatchTokens}: null = use the ingestor's platform default for this tenant. */
     public record LlmConfigUpdate(String chatProvider, String chatModel, String embeddingProvider,
                                    String embeddingModel, boolean routingEnabled, String simpleModel,
                                    String complexModel, String azureEndpoint, String azureDeployment,
-                                   String apiKey) {}
+                                   String apiKey, Integer maxEmbeddingBatchTokens) {}
 
     public record TestConnectionResult(boolean success, String message) {}
 
@@ -136,6 +137,9 @@ public class TenantService {
             throw new IllegalArgumentException(
                 "Unknown embedding provider '" + update.embeddingProvider() + "' — must be one of " + validProviders);
         }
+        if (update.maxEmbeddingBatchTokens() != null && update.maxEmbeddingBatchTokens() <= 0) {
+            throw new IllegalArgumentException("maxEmbeddingBatchTokens must be positive, or null to use the platform default");
+        }
 
         TenantLLMConfig config = llmConfigRepository.findByTenantId(tenantId)
             .orElseGet(() -> TenantLLMConfig.builder().tenantId(tenantId).build());
@@ -146,6 +150,7 @@ public class TenantService {
         config.setRoutingEnabled(update.routingEnabled());
         config.setSimpleModel(update.simpleModel());
         config.setComplexModel(update.complexModel());
+        config.setMaxEmbeddingBatchTokens(update.maxEmbeddingBatchTokens());
         if (update.azureEndpoint() != null) config.setAzureEndpoint(update.azureEndpoint());
         if (update.azureDeployment() != null) config.setAzureDeployment(update.azureDeployment());
 
@@ -206,7 +211,7 @@ public class TenantService {
         return new LlmConfigView(config.getChatProvider(), config.getChatModel(),
             config.getEmbeddingProvider(), config.getEmbeddingModel(), config.isRoutingEnabled(),
             config.getSimpleModel(), config.getComplexModel(), config.getAzureEndpoint(),
-            config.getAzureDeployment(), hasCustomKey, hint);
+            config.getAzureDeployment(), hasCustomKey, hint, config.getMaxEmbeddingBatchTokens());
     }
 
     public DataRetentionPolicy getRetentionPolicy(UUID tenantId) {

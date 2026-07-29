@@ -46,6 +46,7 @@ export default function LlmConfigForm({ token, tenantId, config, onSaved, size =
     azureDeployment: form.azureDeployment,
     // Untouched input = leave the stored key as-is; the field is never pre-filled with it.
     apiKey: apiKeyInput === '' ? undefined : apiKeyInput,
+    maxEmbeddingBatchTokens: form.maxEmbeddingBatchTokens ?? null,
   });
 
   const save = async () => {
@@ -123,6 +124,16 @@ export default function LlmConfigForm({ token, tenantId, config, onSaved, size =
               label="Embedding Model"
               value={form.embeddingModel}
               onChange={e => setForm(c => ({ ...c, embeddingModel: e.target.value }))}
+            />
+            <Input
+              label="Max embedding batch tokens"
+              type="number"
+              placeholder="Platform default"
+              value={form.maxEmbeddingBatchTokens ?? ''}
+              onChange={e => setForm(c => ({
+                ...c,
+                maxEmbeddingBatchTokens: e.target.value === '' ? null : Number(e.target.value),
+              }))}
             />
           </>
         )}

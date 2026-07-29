@@ -48,6 +48,12 @@ public class TenantLLMConfig {
     @Builder.Default
     private String embeddingModel = "text-embedding-3-small";
 
+    /** Overrides the ingestor's platform-default embedding batch token ceiling — null means "use
+     * the platform default". Needed because a tenant's chosen embedding model may have a smaller
+     * (or larger) context window than the platform default model. */
+    @Column(name = "max_embedding_batch_tokens")
+    private Integer maxEmbeddingBatchTokens;
+
     @Column(name = "api_key_enc", columnDefinition = "TEXT")
     private String apiKeyEnc;
 

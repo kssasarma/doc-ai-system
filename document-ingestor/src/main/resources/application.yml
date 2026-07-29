@@ -103,6 +103,11 @@ springdoc:
 ingestor:
   chunk-size: 800
   chunk-overlap: 100
+  # Embedding request batching: bounded by both count and estimated cumulative tokens, since the
+  # embeddings API counts tokens across the whole request against the model's context window
+  # (e.g. snowflake-arctic's 8192), not per chunk.
+  embedding-batch-size: 64
+  embedding-batch-max-tokens: 4000
   parallel-processing: true
   max-threads: 4
   # A document stuck in PROCESSING longer than this (pod died mid-ingestion, etc.) is reaped —

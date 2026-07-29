@@ -33,6 +33,12 @@ public class TenantLlmConfig {
     @Column(name = "embedding_model", nullable = false, length = 100)
     private String embeddingModel;
 
+    /** Per-tenant override for the embedding batch token ceiling (see EmbeddingService) — null
+     * means fall back to this service's platform-wide default. Written only by documentation-bot's
+     * tenant admin settings, never by this service. */
+    @Column(name = "max_embedding_batch_tokens")
+    private Integer maxEmbeddingBatchTokens;
+
     /** AES-256-GCM ciphertext (see documentation-bot's SecretsCryptoService) — decrypt with the
      * ingestor's own copy of the same service, sharing SECRETS_ENCRYPTION_KEY. */
     @Column(name = "api_key_enc", columnDefinition = "TEXT")
