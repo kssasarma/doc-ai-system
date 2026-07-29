@@ -107,6 +107,7 @@ Omit `REDIS_HOST` entirely to disable the embedding cache. The bot falls back to
 |---|---|---|
 | `SEAWEEDFS_ACCESS_KEY` | `docai-seaweed` | Seeds the SeaweedFS S3 gateway's identity config (`seaweedfs/entrypoint.sh`). Must match `S3_ACCESS_KEY` below. |
 | `SEAWEEDFS_SECRET_KEY` | `docai-seaweed-secret` | Seeds the SeaweedFS S3 gateway's identity config. Must match `S3_SECRET_KEY` below. |
+| `SEAWEEDFS_ADVERTISE_IP` | `seaweedfs` | The hostname `weed server -ip` advertises for itself — must match the Docker Compose *service name* (not `container_name`) this container is reachable at on its network, since that's the only name Compose registers as a network alias. Only needs overriding if you rename the `seaweedfs` service in your own compose file; leaving it mismatched makes the master fail to start with `lookup <name> ... server misbehaving`, since it's trying to resolve a hostname nothing on the network answers to. |
 | `S3_BUCKET` | `docai-documents` | S3/SeaweedFS bucket name |
 | `S3_ENDPOINT` | `http://seaweedfs:8333` | S3 endpoint. **Leave empty** (`S3_ENDPOINT=`) for real AWS S3. Set to `http://localhost:8333` for bare-metal SeaweedFS. |
 | `S3_REGION` | `us-east-1` | S3 region |
