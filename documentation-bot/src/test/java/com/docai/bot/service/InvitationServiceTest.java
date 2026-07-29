@@ -40,7 +40,7 @@ class InvitationServiceTest extends PostgresTestContainerBase {
         User admin = persistUser(tenant, User.Role.ADMIN);
 
         InvitationService.InviteResult invitation = invitationService.invite("newperson@example.com", User.Role.USER, tenant.getId(), admin.getId());
-        User created = invitationService.accept(invitation.rawToken(), "newperson", "SecurePass123!");
+        User created = invitationService.accept(invitation.rawToken(), "SecurePass123!");
 
         assertThat(created.getEmail()).isEqualTo("newperson@example.com");
         assertThat(created.getTenantId()).isEqualTo(tenant.getId());
@@ -74,12 +74,61 @@ class InvitationServiceTest extends PostgresTestContainerBase {
     }
 
     @Test
+    void invite_duplicatePendingInviteSameTenant_throws() {
+        Tenant tenant = persistTenant("tenant-dup-invite");
+        User admin = persistUser(tenant, User.Role.ADMIN);
+        invitationService.invite("pending@example.com", User.Role.USER, tenant.getId(), admin.getId());
+
+        assertThatThrownBy(() -> invitationService.invite("pending@example.com", User.Role.USER, tenant.getId(), admin.getId()))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("already pending");
+    }
+
+    @Test
+    void invite_duplicatePendingInvite_isCaseInsensitiveOnEmail() {
+        Tenant tenant = persistTenant("tenant-dup-invite-case");
+        User admin = persistUser(tenant, User.Role.ADMIN);
+        invitationService.invite("Pending.Case@Example.com", User.Role.USER, tenant.getId(), admin.getId());
+
+        assertThatThrownBy(() -> invitationService.invite("pending.case@example.com", User.Role.USER, tenant.getId(), admin.getId()))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("already pending");
+    }
+
+    @Test
+    void invite_sameEmailDifferentTenant_isAllowed() {
+        Tenant tenantA = persistTenant("tenant-a-dup-scope");
+        Tenant tenantB = persistTenant("tenant-b-dup-scope");
+        User adminA = persistUser(tenantA, User.Role.ADMIN);
+        User adminB = persistUser(tenantB, User.Role.ADMIN);
+        invitationService.invite("crosstenant@example.com", User.Role.USER, tenantA.getId(), adminA.getId());
+
+        InvitationService.InviteResult second =
+            invitationService.invite("crosstenant@example.com", User.Role.USER, tenantB.getId(), adminB.getId());
+
+        assertThat(second.invitation().getTenantId()).isEqualTo(tenantB.getId());
+    }
+
+    @Test
+    void invite_afterRevokingPendingInvite_isAllowed() {
+        Tenant tenant = persistTenant("tenant-reinvite-after-revoke");
+        User admin = persistUser(tenant, User.Role.ADMIN);
+        InvitationService.InviteResult first =
+            invitationService.invite("reinvite@example.com", User.Role.USER, tenant.getId(), admin.getId());
+        invitationService.revoke(first.invitation().getId(), tenant.getId());
+
+        InvitationService.InviteResult second =
+            invitationService.invite("reinvite@example.com", User.Role.USER, tenant.getId(), admin.getId());
+
+        assertThat(second.invitation().getEmail()).isEqualTo("reinvite@example.com");
+    }
+
+    @Test
     void accept_existingIdentity_withCorrectCredentials_joinsSecondTenantAndSwitchesActive() {
         Tenant tenantA = persistTenant("tenant-a-join");
         Tenant tenantB = persistTenant("tenant-b-join");
         User adminB = persistUser(tenantB, User.Role.ADMIN);
         User existingPerson = userRepository.save(User.builder()
-            .username("existing-person")
             .email("existing-person@example.com")
             .passwordHash(passwordEncoder.encode("MyRealPassword1!"))
             .role(User.Role.USER)
@@ -88,7 +137,7 @@ class InvitationServiceTest extends PostgresTestContainerBase {
         membershipService.ensureMembership(existingPerson.getId(), tenantA.getId(), User.Role.USER);
 
         InvitationService.InviteResult invitation = invitationService.invite(existingPerson.getEmail(), User.Role.ADMIN, tenantB.getId(), adminB.getId());
-        User result = invitationService.accept(invitation.rawToken(), "existing-person", "MyRealPassword1!");
+        User result = invitationService.accept(invitation.rawToken(), "MyRealPassword1!");
 
         assertThat(result.getId()).isEqualTo(existingPerson.getId());
         assertThat(result.getTenantId()).isEqualTo(tenantB.getId());
@@ -104,7 +153,6 @@ class InvitationServiceTest extends PostgresTestContainerBase {
         Tenant tenantB = persistTenant("tenant-b-wrongpass");
         User adminB = persistUser(tenantB, User.Role.ADMIN);
         User existingPerson = userRepository.save(User.builder()
-            .username("existing-person-2")
             .email("existing-person-2@example.com")
             .passwordHash(passwordEncoder.encode("MyRealPassword1!"))
             .role(User.Role.USER)
@@ -113,15 +161,15 @@ class InvitationServiceTest extends PostgresTestContainerBase {
 
         InvitationService.InviteResult invitation = invitationService.invite(existingPerson.getEmail(), User.Role.USER, tenantB.getId(), adminB.getId());
 
-        assertThatThrownBy(() -> invitationService.accept(invitation.rawToken(), "existing-person-2", "WrongPassword"))
+        assertThatThrownBy(() -> invitationService.accept(invitation.rawToken(), "WrongPassword"))
             .isInstanceOf(IllegalArgumentException.class)
-            .hasMessageContaining("Incorrect username or password");
+            .hasMessageContaining("Incorrect password");
         assertThat(membershipRepository.existsByUserIdAndTenantId(existingPerson.getId(), tenantB.getId())).isFalse();
     }
 
     @Test
     void accept_invalidToken_throws() {
-        assertThatThrownBy(() -> invitationService.accept("not-a-real-token", "someone", "password123"))
+        assertThatThrownBy(() -> invitationService.accept("not-a-real-token", "password123"))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("Invalid invitation");
     }
@@ -131,9 +179,9 @@ class InvitationServiceTest extends PostgresTestContainerBase {
         Tenant tenant = persistTenant("tenant-double-accept");
         User admin = persistUser(tenant, User.Role.ADMIN);
         InvitationService.InviteResult invitation = invitationService.invite("doubleaccept@example.com", User.Role.USER, tenant.getId(), admin.getId());
-        invitationService.accept(invitation.rawToken(), "doubleaccept", "SecurePass123!");
+        invitationService.accept(invitation.rawToken(), "SecurePass123!");
 
-        assertThatThrownBy(() -> invitationService.accept(invitation.rawToken(), "doubleaccept2", "SecurePass123!"))
+        assertThatThrownBy(() -> invitationService.accept(invitation.rawToken(), "SecurePass123!"))
             .isInstanceOf(IllegalStateException.class)
             .hasMessageContaining("already been used");
     }
@@ -147,7 +195,6 @@ class InvitationServiceTest extends PostgresTestContainerBase {
     private User persistUser(Tenant tenant, User.Role role) {
         String unique = UUID.randomUUID().toString().substring(0, 8);
         return userRepository.save(User.builder()
-            .username(role.name().toLowerCase() + "-" + unique)
             .email(role.name().toLowerCase() + "-" + unique + "@example.com")
             .passwordHash("irrelevant-for-this-test")
             .role(role)

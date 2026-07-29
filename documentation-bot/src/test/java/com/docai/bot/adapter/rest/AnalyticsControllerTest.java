@@ -140,8 +140,8 @@ class AnalyticsControllerTest {
 
     // ── helpers ───────────────────────────────────────────────────────────────
 
-    private static UsernamePasswordAuthenticationToken userAuth(String username, String role) {
-        UserPrincipal principal = new UserPrincipal(USER_ID, username, role, TENANT_ID, false);
+    private static UsernamePasswordAuthenticationToken userAuth(String email, String role) {
+        UserPrincipal principal = new UserPrincipal(USER_ID, email, role, TENANT_ID, false);
         return new UsernamePasswordAuthenticationToken(
             principal, null, List.of(new SimpleGrantedAuthority("ROLE_" + role)));
     }

@@ -189,7 +189,7 @@ On first startup (empty `users` table), `AdminSeeder` creates one SUPER_ADMIN ac
 
 | Field | Default |
 |---|---|
-| Username | `admin` |
+| Email | `admin@docs-inator.local` |
 | Password | `Opentext123$` (or `SEED_ADMIN_PASSWORD` if you set it) |
 | Role | `SUPER_ADMIN` |
 
@@ -200,7 +200,7 @@ This account has no tenant of its own — it exists only to create tenants and i
 ```bash
 TOKEN=$(curl -s -X POST http://localhost:8080/api/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"Opentext123$"}' | jq -r .token)
+  -d '{"email":"admin@docs-inator.local","password":"Opentext123$"}' | jq -r .token)
 
 curl -s -X POST http://localhost:8080/api/auth/change-password \
   -H "Authorization: Bearer $TOKEN" \
@@ -233,7 +233,6 @@ curl -s -X POST http://localhost:8080/api/auth/accept-invite \
   -H "Content-Type: application/json" \
   -d '{
     "token": "<token-from-email>",
-    "username": "alice",
     "password": "<password>"
   }'
 ```
@@ -248,7 +247,7 @@ You now have a tenant ADMIN account. Log in as `alice` through the web UI or API
 # Log in as the tenant admin
 TOKEN=$(curl -s -X POST http://localhost:8080/api/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"username":"alice","password":"<password>"}' | jq -r .token)
+  -d '{"email":"alice@example.com","password":"<password>"}' | jq -r .token)
 
 # Upload a PDF
 curl -X POST http://localhost:8081/api/ingest \

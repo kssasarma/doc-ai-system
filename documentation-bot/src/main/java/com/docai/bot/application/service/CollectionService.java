@@ -143,16 +143,16 @@ public class CollectionService {
                         ? m.getContent().substring(0, 500) + "…"
                         : m.getContent())
                     .orElse(null);
-                String addedByUsername = userRepository.findById(item.getAddedBy())
-                    .map(User::getUsername).orElse(null);
-                return toItemDTO(item, content, addedByUsername);
+                String addedByEmail = userRepository.findById(item.getAddedBy())
+                    .map(User::getEmail).orElse(null);
+                return toItemDTO(item, content, addedByEmail);
             })
             .collect(Collectors.toList());
     }
 
     private CollectionDTO toDTO(Collection c, UUID requestingUserId) {
-        String creatorUsername = userRepository.findById(c.getCreatedBy())
-            .map(User::getUsername).orElse(null);
+        String creatorEmail = userRepository.findById(c.getCreatedBy())
+            .map(User::getEmail).orElse(null);
         long itemCount = itemRepository.findByCollectionIdOrderByDisplayOrderAsc(c.getId()).size();
         return CollectionDTO.builder()
             .id(c.getId().toString())
@@ -160,7 +160,7 @@ public class CollectionService {
             .description(c.getDescription())
             .publicAccess(c.isPublicAccess())
             .createdBy(c.getCreatedBy().toString())
-            .createdByUsername(creatorUsername)
+            .createdByEmail(creatorEmail)
             .isOwner(c.getCreatedBy().equals(requestingUserId))
             .itemCount((int) itemCount)
             .createdAt(c.getCreatedAt())
@@ -172,7 +172,7 @@ public class CollectionService {
         return toItemDTO(item, content, null);
     }
 
-    private CollectionItemDTO toItemDTO(CollectionItem item, String content, String addedByUsername) {
+    private CollectionItemDTO toItemDTO(CollectionItem item, String content, String addedByEmail) {
         return CollectionItemDTO.builder()
             .id(item.getId().toString())
             .collectionId(item.getCollectionId().toString())
@@ -180,7 +180,7 @@ public class CollectionService {
             .chatId(item.getChatId().toString())
             .messageContent(content)
             .note(item.getNote())
-            .addedByUsername(addedByUsername)
+            .addedByEmail(addedByEmail)
             .createdAt(item.getCreatedAt())
             .build();
     }
@@ -194,7 +194,7 @@ public class CollectionService {
         private String description;
         private boolean publicAccess;
         private String createdBy;
-        private String createdByUsername;
+        private String createdByEmail;
         private boolean isOwner;
         private int itemCount;
         private LocalDateTime createdAt;
@@ -209,7 +209,7 @@ public class CollectionService {
         private String chatId;
         private String messageContent;
         private String note;
-        private String addedByUsername;
+        private String addedByEmail;
         private LocalDateTime createdAt;
     }
 }

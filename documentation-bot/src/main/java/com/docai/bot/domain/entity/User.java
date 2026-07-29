@@ -21,7 +21,6 @@ import lombok.NoArgsConstructor;
 
 @Entity
 @Table(name = "users", indexes = {
-    @Index(name = "idx_user_username", columnList = "username", unique = true),
     @Index(name = "idx_user_email", columnList = "email", unique = true)
 })
 @Data
@@ -34,9 +33,8 @@ public class User {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
-    @Column(nullable = false, unique = true, length = 50)
-    private String username;
-
+    /** The user-facing identifier: users log in with their email, and it's what other users see.
+     * The UUID {@link #id} is a purely internal surrogate key for foreign-key references. */
     @Column(nullable = false, unique = true, length = 100)
     private String email;
 

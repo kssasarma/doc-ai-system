@@ -58,15 +58,15 @@ public class AuditLogService {
 
         Page<AuditLog> raw = auditLogRepository.search(tenantId, actionFilter, sinceTime, actorId, pageable);
 
-        Map<UUID, String> usernameMap = userRepository.findByTenantId(tenantId).stream()
-            .collect(Collectors.toMap(User::getId, User::getUsername));
+        Map<UUID, String> emailMap = userRepository.findByTenantId(tenantId).stream()
+            .collect(Collectors.toMap(User::getId, User::getEmail));
 
         List<AuditLogDTO> dtos = raw.getContent().stream()
             .map(entry -> AuditLogDTO.builder()
                 .id(entry.getId().toString())
                 .actorId(entry.getActorId() != null ? entry.getActorId().toString() : null)
-                .actorUsername(entry.getActorId() != null
-                    ? usernameMap.get(entry.getActorId()) : null)
+                .actorEmail(entry.getActorId() != null
+                    ? emailMap.get(entry.getActorId()) : null)
                 .action(entry.getAction())
                 .targetType(entry.getTargetType())
                 .targetId(entry.getTargetId() != null ? entry.getTargetId().toString() : null)
@@ -83,7 +83,7 @@ public class AuditLogService {
     public static class AuditLogDTO {
         private String id;
         private String actorId;
-        private String actorUsername;
+        private String actorEmail;
         private String action;
         private String targetType;
         private String targetId;

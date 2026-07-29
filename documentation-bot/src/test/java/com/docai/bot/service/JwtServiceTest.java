@@ -60,10 +60,10 @@ class JwtServiceTest {
     }
 
     @Test
-    void extractUsername_fromGeneratedToken_matchesOriginal() {
+    void extractEmail_fromGeneratedToken_matchesOriginal() {
         User user = adminUser();
         String token = jwtService.generateToken(user);
-        assertThat(jwtService.extractUsername(token)).isEqualTo("alice");
+        assertThat(jwtService.extractEmail(token)).isEqualTo("alice@example.com");
     }
 
     @Test
@@ -77,7 +77,6 @@ class JwtServiceTest {
     void extractTenantId_superAdmin_returnsNull() {
         User superAdmin = User.builder()
             .id(UUID.randomUUID())
-            .username("superadmin")
             .email("super@example.com")
             .passwordHash("hash")
             .role(User.Role.SUPER_ADMIN)
@@ -92,7 +91,6 @@ class JwtServiceTest {
     void extractMustChangePassword_whenTrue_returnsTrue() {
         User user = User.builder()
             .id(UUID.randomUUID())
-            .username("newuser")
             .email("new@example.com")
             .passwordHash("hash")
             .role(User.Role.USER)
@@ -140,7 +138,6 @@ class JwtServiceTest {
     private static User adminUser() {
         return User.builder()
             .id(UUID.randomUUID())
-            .username("alice")
             .email("alice@example.com")
             .passwordHash("hash")
             .role(User.Role.ADMIN)

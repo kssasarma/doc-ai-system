@@ -16,6 +16,12 @@ public interface InvitationTokenRepository extends JpaRepository<InvitationToken
 
     long countByTenantIdAndAcceptedAtIsNullAndRevokedAtIsNullAndExpiresAtAfter(UUID tenantId, LocalDateTime now);
 
+    boolean existsByEmailIgnoreCaseAndTenantIdAndAcceptedAtIsNullAndRevokedAtIsNullAndExpiresAtAfter(
+        String email, UUID tenantId, LocalDateTime now);
+
+    boolean existsByEmailIgnoreCaseAndTenantIdIsNullAndAcceptedAtIsNullAndRevokedAtIsNullAndExpiresAtAfter(
+        String email, LocalDateTime now);
+
     List<InvitationToken> findByTenantIdAndAcceptedAtIsNullAndRevokedAtIsNullAndExpiresAtAfterOrderByCreatedAtDesc(
         UUID tenantId, LocalDateTime now);
 }

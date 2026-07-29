@@ -195,7 +195,7 @@ const ShareModal: React.FC<ShareModalProps> = ({ chatId, onClose }) => {
                       onQueryChange={setUserQuery}
                       items={grantableUsers}
                       getKey={u => u.userId}
-                      getLabel={u => `${u.username} (${u.email})`}
+                      getLabel={u => u.displayName ? `${u.displayName} (${u.email})` : u.email}
                       onSelect={handleAddRecipient}
                       placeholder="Search people to share with…"
                       loading={searchingUsers || addingRecipient}
@@ -204,9 +204,9 @@ const ShareModal: React.FC<ShareModalProps> = ({ chatId, onClose }) => {
                       <div className="space-y-1">
                         {recipients.map(r => (
                           <div key={r.userId} className="flex items-center justify-between bg-muted border border-border rounded-lg px-3 py-1.5">
-                            <span className="text-xs text-foreground">{r.username}</span>
+                            <span className="text-xs text-foreground">{r.email}</span>
                             <IconButton
-                              label={`Remove ${r.username}'s access`}
+                              label={`Remove ${r.email}'s access`}
                               variant="danger"
                               size="sm"
                               onClick={() => handleRemoveRecipient(r.userId)}

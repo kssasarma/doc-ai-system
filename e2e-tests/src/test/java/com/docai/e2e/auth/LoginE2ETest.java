@@ -25,7 +25,7 @@ class LoginE2ETest extends PlaywrightTestBase {
         navigate("/login");
         waitForLoginPage();
 
-        assertThat(page.locator("input[placeholder='Enter username']")).isVisible();
+        assertThat(page.locator("input[placeholder='Enter email']")).isVisible();
         assertThat(page.locator("input[placeholder='Enter password']")).isVisible();
         assertThat(page.locator("button[type='submit']")).isVisible();
         assertThat(page.locator("a[href='/forgot-password']")).isVisible();
@@ -70,7 +70,7 @@ class LoginE2ETest extends PlaywrightTestBase {
         navigate("/login");
         waitForLoginPage();
 
-        page.fill("input[placeholder='Enter username']", ADMIN_USERNAME);
+        page.fill("input[placeholder='Enter email']", ADMIN_EMAIL);
         page.fill("input[placeholder='Enter password']", "wrong-password-xyz");
         page.click("button[type='submit']");
 
@@ -81,11 +81,11 @@ class LoginE2ETest extends PlaywrightTestBase {
     }
 
     @Test
-    void login_unknownUsername_showsError() {
+    void login_unknownEmail_showsError() {
         navigate("/login");
         waitForLoginPage();
 
-        page.fill("input[placeholder='Enter username']", "no_such_user_xyz_9999");
+        page.fill("input[placeholder='Enter email']", "no_such_user_xyz_9999@example.com");
         page.fill("input[placeholder='Enter password']", "any-password");
         page.click("button[type='submit']");
 
@@ -94,12 +94,12 @@ class LoginE2ETest extends PlaywrightTestBase {
     }
 
     @Test
-    void login_emptyUsername_browserValidationPreventsSubmit() {
+    void login_emptyEmail_browserValidationPreventsSubmit() {
         navigate("/login");
         waitForLoginPage();
 
         page.fill("input[placeholder='Enter password']", "somePassword");
-        // Try to click submit without filling username (required field)
+        // Try to click submit without filling email (required field)
         page.click("button[type='submit']");
 
         // Page should still be on /login — browser native required validation fires

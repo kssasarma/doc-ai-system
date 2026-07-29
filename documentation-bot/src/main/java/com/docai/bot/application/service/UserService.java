@@ -47,12 +47,12 @@ public class UserService {
      * guessing right on the boundary attempt. Successful login resets the counter.
      */
     @Transactional
-    public User authenticate(String username, String password) {
-        User user = userRepository.findByUsername(username)
+    public User authenticate(String email, String password) {
+        User user = userRepository.findByEmail(email)
             .orElseThrow(() -> new IllegalArgumentException("Invalid credentials"));
 
         // Same error as a wrong password — an erased account should look exactly like one that
-        // never existed, not confirm to the caller that this username used to belong to someone.
+        // never existed, not confirm to the caller that this email used to belong to someone.
         if (user.getDeletedAt() != null) {
             throw new IllegalArgumentException("Invalid credentials");
         }
@@ -89,7 +89,7 @@ public class UserService {
         if (attempts >= maxFailedAttempts) {
             user.setLockedUntil(LocalDateTime.now().plusMinutes(lockoutDurationMinutes));
             log.warn("Account {} locked for {} minutes after {} consecutive failed login attempts",
-                user.getUsername(), lockoutDurationMinutes, attempts);
+                user.getEmail(), lockoutDurationMinutes, attempts);
         }
         userRepository.save(user);
     }

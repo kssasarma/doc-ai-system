@@ -32,11 +32,11 @@ export default function AccountMenu({
           compact ? (
             <button
               type="button"
-              aria-label={`Account menu (${user.username})`}
-              title={user.username}
+              aria-label={`Account menu (${user.email})`}
+              title={user.email}
               className="w-7 h-7 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold flex-shrink-0 hover:opacity-90 transition-opacity"
             >
-              {user.username.charAt(0).toUpperCase()}
+              {user.email.charAt(0).toUpperCase()}
             </button>
           ) : (
             <button
@@ -44,10 +44,10 @@ export default function AccountMenu({
               className="flex items-center gap-2 pl-1.5 pr-2 py-1 rounded-lg hover:bg-surface-hover transition-colors"
             >
               <div className="w-7 h-7 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold flex-shrink-0">
-                {user.username.charAt(0).toUpperCase()}
+                {user.email.charAt(0).toUpperCase()}
               </div>
               <div className="hidden sm:block text-left leading-tight">
-                <div className="text-sm font-medium text-foreground">{user.username}</div>
+                <div className="text-sm font-medium text-foreground">{user.email}</div>
                 <div className="text-xs text-muted-foreground">{user.role}</div>
               </div>
               <ChevronDown size={14} className="text-muted-foreground flex-shrink-0" />

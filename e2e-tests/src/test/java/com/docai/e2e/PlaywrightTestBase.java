@@ -32,15 +32,16 @@ public abstract class PlaywrightTestBase {
     protected static final String BOT_API_URL =
         System.getProperty("bot.api.url", "http://localhost:8080");
 
-    /** Default credentials for admin E2E tests — override via system property or env. */
-    protected static final String ADMIN_USERNAME =
-        System.getProperty("e2e.admin.username", "admin");
+    /** Default credentials for admin E2E tests — override via system property or env.
+     * The email is the login identifier (matches SEED_ADMIN_EMAIL's default). */
+    protected static final String ADMIN_EMAIL =
+        System.getProperty("e2e.admin.email", "admin@docs-inator.local");
     protected static final String ADMIN_PASSWORD =
         System.getProperty("e2e.admin.password", "Admin123!");
 
     /** Default credentials for regular user E2E tests. */
-    protected static final String USER_USERNAME =
-        System.getProperty("e2e.user.username", "testuser");
+    protected static final String USER_EMAIL =
+        System.getProperty("e2e.user.email", "testuser@example.com");
     protected static final String USER_PASSWORD =
         System.getProperty("e2e.user.password", "User123!");
 
@@ -98,10 +99,10 @@ public abstract class PlaywrightTestBase {
     }
 
     /** Navigate to login, fill credentials, submit, and wait for redirect away from /login. */
-    protected void loginAs(String username, String password) {
+    protected void loginAs(String email, String password) {
         navigate("/login");
         waitForLoginPage();
-        page.fill("input[placeholder='Enter username']", username);
+        page.fill("input[placeholder='Enter email']", email);
         page.fill("input[placeholder='Enter password']", password);
         page.click("button[type='submit']");
         // Wait until we're no longer on the login page
@@ -113,7 +114,7 @@ public abstract class PlaywrightTestBase {
     }
 
     protected void loginAsAdmin() {
-        loginAs(ADMIN_USERNAME, ADMIN_PASSWORD);
+        loginAs(ADMIN_EMAIL, ADMIN_PASSWORD);
     }
 
     // ── Assertion helpers ─────────────────────────────────────────────────────

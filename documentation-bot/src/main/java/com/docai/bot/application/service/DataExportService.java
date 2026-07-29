@@ -40,7 +40,6 @@ public class DataExportService {
         Map<String, Object> export = new LinkedHashMap<>();
         export.put("exportedAt", LocalDateTime.now().toString());
         export.put("userId", userId.toString());
-        export.put("username", user.getUsername());
         export.put("email", user.getEmail());
         export.put("role", user.getRole().name());
         export.put("createdAt", user.getCreatedAt().toString());

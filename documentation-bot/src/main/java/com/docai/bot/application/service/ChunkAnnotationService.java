@@ -77,13 +77,13 @@ public class ChunkAnnotationService {
     }
 
     private AnnotationDTO toDTO(ChunkAnnotation a) {
-        String username = userRepository.findById(a.getUserId())
-            .map(User::getUsername).orElse("unknown");
+        String email = userRepository.findById(a.getUserId())
+            .map(User::getEmail).orElse("unknown");
         return AnnotationDTO.builder()
             .id(a.getId().toString())
             .documentChunkId(a.getDocumentChunkId().toString())
             .userId(a.getUserId().toString())
-            .username(username)
+            .email(email)
             .body(a.getBody())
             .createdAt(a.getCreatedAt())
             .updatedAt(a.getUpdatedAt())
@@ -95,7 +95,7 @@ public class ChunkAnnotationService {
         private String id;
         private String documentChunkId;
         private String userId;
-        private String username;
+        private String email;
         private String body;
         private LocalDateTime createdAt;
         private LocalDateTime updatedAt;

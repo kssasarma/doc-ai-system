@@ -193,7 +193,7 @@ const CollectionsPage: React.FC = () => {
                   </div>
                   <div className="flex items-center gap-2 mt-0.5">
                     <span className="text-xs text-muted-foreground">{c.itemCount} items</span>
-                    {!c.isOwner && <span className="text-xs text-primary flex items-center gap-0.5"><Users size={9} /> {c.createdByUsername}</span>}
+                    {!c.isOwner && <span className="text-xs text-primary flex items-center gap-0.5"><Users size={9} /> {c.createdByEmail}</span>}
                   </div>
                 </div>
                 {c.isOwner && (
@@ -259,8 +259,8 @@ const CollectionsPage: React.FC = () => {
                             </p>
                           )}
                           <div className="flex items-center gap-3 mt-2">
-                            {item.addedByUsername && (
-                              <span className="text-xs text-muted-foreground">by {item.addedByUsername}</span>
+                            {item.addedByEmail && (
+                              <span className="text-xs text-muted-foreground">by {item.addedByEmail}</span>
                             )}
                             <span className="text-xs text-muted-foreground">
                               {formatTimestamp(new Date(item.createdAt).getTime())}

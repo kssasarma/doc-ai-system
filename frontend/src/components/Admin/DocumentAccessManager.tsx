@@ -141,7 +141,7 @@ export default function DocumentAccessManager({
           onQueryChange={setUserQuery}
           items={grantableUsers}
           getKey={u => u.userId}
-          getLabel={u => `${u.username} (${u.email})`}
+          getLabel={u => u.displayName ? `${u.displayName} (${u.email})` : u.email}
           onSelect={handleGrant}
           placeholder="Search users to grant access…"
           loading={searchingUsers || !!grantingUserId}
@@ -161,7 +161,7 @@ export default function DocumentAccessManager({
           <div className="space-y-1.5">
             {grantees.map(g => (
               <div key={g.userId} className="flex items-center justify-between bg-muted border border-border rounded-lg px-3 py-2">
-                <span className="text-sm text-foreground">{g.username}</span>
+                <span className="text-sm text-foreground">{g.email}</span>
                 <IconButton
                   label="Revoke access"
                   variant="danger"

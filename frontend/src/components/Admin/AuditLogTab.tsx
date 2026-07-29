@@ -106,7 +106,7 @@ export default function AuditLogTab() {
             >
               <option value="">All actors</option>
               {(tenantUsers?.content ?? []).map(u => (
-                <option key={u.userId} value={u.userId}>{u.username}</option>
+                <option key={u.userId} value={u.userId}>{u.email}</option>
               ))}
             </Select>
           </div>
@@ -147,7 +147,7 @@ export default function AuditLogTab() {
                         {new Date(e.createdAt).toLocaleString()}
                       </td>
                       <td className="px-4 py-3 text-foreground font-medium">
-                        {e.actorUsername ?? 'system'}
+                        {e.actorEmail ?? 'system'}
                       </td>
                       <td className="px-4 py-3">
                         <ActionBadge action={e.action} />

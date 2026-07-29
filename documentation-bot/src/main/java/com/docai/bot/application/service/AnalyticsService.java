@@ -166,16 +166,16 @@ public class AnalyticsService {
 
     @Transactional(readOnly = true)
     public List<UserEngagementDTO> getUserEngagement(UUID tenantId) {
-        // Build userId→username map, scoped to this tenant's own users
-        Map<String, String> usernameMap = userRepository.findByTenantId(tenantId).stream()
-            .collect(Collectors.toMap(u -> u.getId().toString(), User::getUsername));
+        // Build userId→email map, scoped to this tenant's own users
+        Map<String, String> emailMap = userRepository.findByTenantId(tenantId).stream()
+            .collect(Collectors.toMap(u -> u.getId().toString(), User::getEmail));
 
         return queryLogRepository.getUserEngagementStats(tenantId).stream()
             .map(row -> {
                 String uid = str(row[0]);
                 return UserEngagementDTO.builder()
                     .userId(uid)
-                    .username(usernameMap.getOrDefault(uid, "unknown"))
+                    .email(emailMap.getOrDefault(uid, "unknown"))
                     .queryCount(toLong(row[1]))
                     .avgConfidence(toDouble(row[2]))
                     .lastActive(str(row[3]))
@@ -189,8 +189,8 @@ public class AnalyticsService {
     @Transactional(readOnly = true)
     public CostSummaryDTO getCostSummary(UUID tenantId, int days) {
         LocalDateTime since = LocalDateTime.now().minusDays(days);
-        Map<String, String> usernameMap = userRepository.findByTenantId(tenantId).stream()
-            .collect(Collectors.toMap(u -> u.getId().toString(), User::getUsername));
+        Map<String, String> emailMap = userRepository.findByTenantId(tenantId).stream()
+            .collect(Collectors.toMap(u -> u.getId().toString(), User::getEmail));
 
         double totalThisMonth = queryLogRepository.sumCostSince(tenantId, since);
         double totalAllTime   = queryLogRepository.sumCostAllTime(tenantId);
@@ -205,7 +205,7 @@ public class AnalyticsService {
                 String uid = str(row[0]);
                 return UserCostDTO.builder()
                     .userId(uid)
-                    .username(usernameMap.getOrDefault(uid, "unknown"))
+                    .email(emailMap.getOrDefault(uid, "unknown"))
                     .totalCost(toDouble(row[1]))
                     .queryCount(toLong(row[2]))
                     .build();
@@ -325,7 +325,7 @@ public class AnalyticsService {
     @lombok.Data @lombok.Builder
     public static class UserEngagementDTO {
         private String userId;
-        private String username;
+        private String email;
         private long queryCount;
         private double avgConfidence;
         private String lastActive;
@@ -344,7 +344,7 @@ public class AnalyticsService {
     @lombok.Data @lombok.Builder
     public static class UserCostDTO {
         private String userId;
-        private String username;
+        private String email;
         private double totalCost;
         private long queryCount;
     }

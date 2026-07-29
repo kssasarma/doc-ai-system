@@ -44,7 +44,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         if (token != null && jwtService.isTokenValid(token)) {
             UUID userId = jwtService.extractUserId(token);
             String role = jwtService.extractRole(token);
-            String username = jwtService.extractUsername(token);
+            String email = jwtService.extractEmail(token);
             UUID tenantId = jwtService.extractTenantId(token);
             boolean mustChangePassword = jwtService.extractMustChangePassword(token);
 
@@ -55,7 +55,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 return;
             }
 
-            UserPrincipal principal = new UserPrincipal(userId, username, role, tenantId, mustChangePassword);
+            UserPrincipal principal = new UserPrincipal(userId, email, role, tenantId, mustChangePassword);
             List<SimpleGrantedAuthority> authorities = List.of(new SimpleGrantedAuthority("ROLE_" + role));
 
             UsernamePasswordAuthenticationToken auth =

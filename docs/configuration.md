@@ -45,8 +45,7 @@ Copy `.env.example` to `.env` and fill in your values. Docker Compose reads `.en
 
 | Variable | Default | Description |
 |---|---|---|
-| `SEED_ADMIN_USERNAME` | `admin` | SUPER_ADMIN username, created only when the `users` table is empty |
-| `SEED_ADMIN_EMAIL` | `admin@docs-inator.local` | SUPER_ADMIN email |
+| `SEED_ADMIN_EMAIL` | `admin@docs-inator.local` | SUPER_ADMIN email (also the login identifier), created only when the `users` table is empty |
 | `SEED_ADMIN_PASSWORD` | `Opentext123$` | SUPER_ADMIN initial password. **Always override.** The account is forced to change this on first login regardless. |
 
 ### Rate limiting
