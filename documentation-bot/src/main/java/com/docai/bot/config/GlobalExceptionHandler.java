@@ -54,6 +54,15 @@ public class GlobalExceptionHandler {
             .body(ErrorResponse.of("TENANT_NOT_RESOLVED", ex.getMessage(), request));
     }
 
+    @ExceptionHandler(com.docai.bot.application.service.LlmNotConfiguredException.class)
+    public ResponseEntity<ErrorResponse> handleLlmNotConfigured(
+            com.docai.bot.application.service.LlmNotConfiguredException ex, WebRequest request) {
+        // 422 rather than 500: the request was fine, the tenant's AI settings are incomplete —
+        // the frontend uses the code to point admins at Settings → AI Configuration.
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
+            .body(ErrorResponse.of("LLM_NOT_CONFIGURED", ex.getMessage(), request));
+    }
+
     @ExceptionHandler(IllegalStateException.class)
     public ResponseEntity<ErrorResponse> handleIllegalState(
             IllegalStateException ex, WebRequest request) {

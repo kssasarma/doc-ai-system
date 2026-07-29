@@ -10,15 +10,12 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 import org.junit.jupiter.api.Test;
-import org.springframework.ai.embedding.Embedding;
-import org.springframework.ai.embedding.EmbeddingModel;
-import org.springframework.ai.embedding.EmbeddingRequest;
-import org.springframework.ai.embedding.EmbeddingResponse;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.docai.bot.PostgresTestContainerBase;
+import com.docai.bot.application.service.LLMRouter;
 import com.docai.bot.application.service.VectorSearchService;
 import com.docai.bot.domain.entity.Document;
 import com.docai.bot.domain.entity.DocumentChunk;
@@ -33,8 +30,9 @@ import com.docai.bot.domain.repository.TenantRepository;
  * Integration test: VectorSearchService against a real PostgreSQL + pgvector container,
  * focused on the optional product/version narrowing a {@link SearchScope} can carry
  * ({@link SearchScope#withVersionNarrow}) — the access-gate side of the scope is covered
- * separately by {@link DocumentAccessIsolationTest}. The EmbeddingModel is mocked to return
- * a fixed unit vector so results are predictable.
+ * separately by {@link DocumentAccessIsolationTest}. LLMRouter (which resolves each tenant's
+ * own AI config — there is no platform embedding client anymore) is mocked to return a fixed
+ * unit vector so results are predictable.
  */
 @Transactional
 class VectorSearchServiceIntegrationTest extends PostgresTestContainerBase {
@@ -43,7 +41,7 @@ class VectorSearchServiceIntegrationTest extends PostgresTestContainerBase {
     @Autowired DocumentRepository documentRepository;
     @Autowired DocumentChunkRepository chunkRepository;
     @Autowired TenantRepository tenantRepository;
-    @MockitoBean EmbeddingModel embeddingModel;
+    @MockitoBean LLMRouter llmRouter;
 
     private static final int DIMS = 1536;
 
@@ -153,9 +151,10 @@ class VectorSearchServiceIntegrationTest extends PostgresTestContainerBase {
     }
 
     private void stubEmbedding(float[] vector) {
-        Embedding embedding = new Embedding(vector, 0);
-        EmbeddingResponse response = new EmbeddingResponse(List.of(embedding));
-        when(embeddingModel.call(any(EmbeddingRequest.class))).thenReturn(response);
+        List<Double> embedding = new java.util.ArrayList<>(vector.length);
+        for (float v : vector) embedding.add((double) v);
+        org.mockito.Mockito.lenient().when(llmRouter.embed(any(String.class))).thenReturn(embedding);
+        org.mockito.Mockito.lenient().when(llmRouter.embed(any(String.class), any(String.class))).thenReturn(embedding);
     }
 
     private static float[] unitVector() {

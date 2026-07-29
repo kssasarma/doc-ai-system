@@ -117,7 +117,7 @@ The user-facing API. All user interactions — chat, authentication, admin opera
 - Rate limiting (Bucket4j, 30 req/min per user by default)
 - Multi-tenancy: resolves tenant from JWT, scopes every query via `TenantContext`
 - ACL enforcement: `GrantBasedDocumentAccessPolicy` computes which document IDs each user can search before retrieval
-- LLM routing with circuit breaker, bulkhead, and automatic fallback
+- LLM routing driven entirely by each tenant's own AI config (circuit breaker + bulkhead around calls; no platform fallback key)
 - Intelligence features: multi-hop reasoning, version diff, auto-FAQ, People Also Asked, answer evolution
 - Admin: analytics, gap reports, cost tracking, escalation workflow, audit log
 - GDPR: data export (Art. 20) and erasure (Art. 17) with 7-day grace period, nightly processor
@@ -179,7 +179,7 @@ ChatService.sendMessage()
     │           EmbeddingCacheService: Redis SHA-256 cache (model name included in key)
     │
     ├── AnswerGenerationService  or  MultiHopReasoningService
-    │     LLMRouter selects provider (per-tenant config + circuit breaker + fallback)
+    │     LLMRouter selects provider from the tenant's own AI config (no platform fallback)
     │     Minimum similarity threshold: 0.55 (refuses to answer below this)
     │
     ├── QueryLog saved (async)
@@ -211,16 +211,16 @@ If none resolve and the endpoint requires a tenant, the request is rejected. The
 ## LLM Routing
 
 ```text
-Tenant has LLM config?
+Tenant has LLM config with an API key?
   ├─ YES, smartRouting = true
   │     simple query   → simpleQueryModel  (e.g. gpt-4o-mini)
   │     complex query  → complexQueryModel (e.g. gpt-4o)
   ├─ YES, smartRouting = false
   │     always use     → chatModel
-  └─ NO  → OpenAI gpt-4o-mini (platform default)
+  └─ NO  → 422 LLM_NOT_CONFIGURED — AI features stay off until the tenant's
+           admin completes the AI settings (there is no platform default key)
 
-Any provider exception → automatic fallback to OpenAI gpt-4o-mini
-
+Every call uses the tenant's own key, endpoint (base URL), temperature and max tokens.
 Wrapped in: Resilience4j circuit breaker + bulkhead (max 5 concurrent LLM calls)
 ```
 

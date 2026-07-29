@@ -16,20 +16,12 @@ Copy `.env.example` to `.env` and fill in your values. Docker Compose reads `.en
 | `JWT_SECRET` | Yes | Base64-encoded secret for signing JWTs. Must decode to ≥32 bytes. **Generate:** `openssl rand -base64 64` |
 | `SECRETS_ENCRYPTION_KEY` | Yes | Base64-encoded AES-256 key for encrypting per-tenant LLM keys and integration tokens at rest. Must decode to exactly 32 bytes. **Generate:** `openssl rand -base64 32`. **Both services must have the same value.** |
 | `INTERNAL_SERVICE_SECRET` | Yes | HMAC secret for bot→ingestor internal API calls. Unset disables the internal API. |
-| `OPENAI_API_KEY` | Yes | OpenAI API key — used for embeddings by the ingestor and for chat completions by the bot. |
+
+> **AI/LLM settings are not environment variables.** Every AI-related setting — chat/embedding provider, model, API key, endpoint (base URL), temperature, max tokens, embedding batch token ceiling — is configured **per tenant** by that tenant's admin in the UI (Settings → AI Configuration) and stored encrypted (AES-256-GCM) in the database. There is no platform-level fallback key: AI features stay disabled for a tenant until its admin saves a working configuration.
 
 ---
 
 ## documentation-bot
-
-### Core
-
-| Variable | Default | Description |
-|---|---|---|
-| `OPENAI_CHAT_MODEL` | `gpt-4o-mini` | Default chat model when no tenant-level config overrides it |
-| `OPENAI_EMBEDDING_MODEL` | `text-embedding-3-small` | Must match document-ingestor's embedding model |
-| `ANTHROPIC_API_KEY` | *(disabled)* | Enables Anthropic Claude; without this key Anthropic provider is unavailable and tenants configured to use it fall back to OpenAI |
-| `ANTHROPIC_CHAT_MODEL` | `claude-sonnet-4-6` | Anthropic model to use when `ANTHROPIC_API_KEY` is set |
 
 ### Authentication
 

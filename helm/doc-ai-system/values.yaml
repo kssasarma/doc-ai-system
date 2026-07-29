@@ -89,8 +89,6 @@ ingress:
 secrets:
   dbUsername: ""
   dbPassword: ""
-  openaiApiKey: ""
-  anthropicApiKey: ""
   jwtSecret: ""
   seedAdminPassword: ""
   redisPassword: ""
@@ -105,8 +103,6 @@ secrets:
 config:
   corsAllowedOrigins: "https://your-frontend-domain.com"
   appUrl: "https://your-frontend-domain.com"
-  openaiChatModel: "gpt-4o-mini"
-  openaiEmbeddingModel: "text-embedding-3-small"
   storageType: "s3"
   s3Region: "us-east-1"
   rateLimitPerMinute: "30"

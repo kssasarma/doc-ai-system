@@ -31,8 +31,6 @@ cp .env.example .env
 Open `.env` and fill in these required values:
 
 ```dotenv
-OPENAI_API_KEY=sk-...
-
 # Generate with: openssl rand -base64 64
 JWT_SECRET=<base64-64-byte-random>
 
@@ -148,7 +146,6 @@ setup.
 
 ```bash
 cd document-ingestor
-export OPENAI_API_KEY=sk-...
 export S3_ENDPOINT=http://localhost:8333   # override the docker-compose hostname
 # document-ingestor and documentation-bot both ship with server.port=8080 by default (Docker
 # gives each its own network namespace, so that's fine there) — running both directly on the
@@ -162,7 +159,6 @@ export SERVER_PORT=8081
 
 ```bash
 cd documentation-bot
-export OPENAI_API_KEY=sk-...
 export JWT_SECRET=$(openssl rand -base64 64)
 ./mvnw spring-boot:run
 # Listening on http://localhost:8080

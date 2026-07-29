@@ -34,18 +34,27 @@ public class TenantService {
     private final List<LLMProvider> llmProviders;
     private final SecretsCryptoService cryptoService;
 
-    /** API key never leaves the server once saved — this is what the admin UI/API actually reads. */
-    public record LlmConfigView(String chatProvider, String chatModel, String embeddingProvider,
-                                 String embeddingModel, boolean routingEnabled, String simpleModel,
-                                 String complexModel, String azureEndpoint, String azureDeployment,
-                                 boolean hasCustomKey, String keyHint, Integer maxEmbeddingBatchTokens) {}
+    /** API keys never leave the server once saved — this is what the admin UI/API actually reads.
+     * {@code hasChatKey}/{@code hasEmbeddingKey} + last-4 hints stand in for the keys themselves.
+     * A tenant with no chat key has AI features disabled entirely: there is no platform fallback. */
+    public record LlmConfigView(String chatProvider, String chatModel, String chatBaseUrl,
+                                 String embeddingProvider, String embeddingModel, String embeddingBaseUrl,
+                                 boolean routingEnabled, String simpleModel, String complexModel,
+                                 String azureEndpoint, String azureDeployment,
+                                 boolean hasChatKey, String chatKeyHint,
+                                 boolean hasEmbeddingKey, String embeddingKeyHint,
+                                 double temperature, int maxTokens, Integer maxEmbeddingBatchTokens) {}
 
-    /** {@code apiKey}: null = leave the stored key untouched, "" = clear it, non-blank = set/replace it.
-     * {@code maxEmbeddingBatchTokens}: null = use the ingestor's platform default for this tenant. */
-    public record LlmConfigUpdate(String chatProvider, String chatModel, String embeddingProvider,
-                                   String embeddingModel, boolean routingEnabled, String simpleModel,
-                                   String complexModel, String azureEndpoint, String azureDeployment,
-                                   String apiKey, Integer maxEmbeddingBatchTokens) {}
+    /** {@code apiKey}/{@code embeddingApiKey}: null = leave the stored key untouched, "" = clear it,
+     * non-blank = set/replace it. {@code maxEmbeddingBatchTokens}: null = use the ingestor's
+     * built-in default for this tenant. Base URLs: null/blank = the provider's canonical public
+     * endpoint. */
+    public record LlmConfigUpdate(String chatProvider, String chatModel, String chatBaseUrl,
+                                   String embeddingProvider, String embeddingModel, String embeddingBaseUrl,
+                                   boolean routingEnabled, String simpleModel, String complexModel,
+                                   String azureEndpoint, String azureDeployment,
+                                   String apiKey, String embeddingApiKey,
+                                   Double temperature, Integer maxTokens, Integer maxEmbeddingBatchTokens) {}
 
     public record TestConnectionResult(boolean success, String message) {}
 
@@ -124,9 +133,8 @@ public class TenantService {
 
     @Transactional
     public LlmConfigView updateLLMConfig(UUID tenantId, LlmConfigUpdate update) {
-        // LLMRouter silently falls back to OpenAI for any provider name it doesn't recognize —
-        // reject an unregistered one here instead of letting an admin "configure" a provider
-        // that's actually never used.
+        // Reject an unregistered provider here instead of letting an admin "configure" a provider
+        // that LLMRouter would refuse at call time.
         Set<String> validProviders = llmProviders.stream()
             .map(LLMProvider::providerName).collect(Collectors.toSet());
         if (!validProviders.contains(update.chatProvider())) {
@@ -137,36 +145,72 @@ public class TenantService {
             throw new IllegalArgumentException(
                 "Unknown embedding provider '" + update.embeddingProvider() + "' — must be one of " + validProviders);
         }
+        llmProviders.stream()
+            .filter(p -> p.providerName().equals(update.embeddingProvider()) && !p.supportsEmbeddings())
+            .findAny()
+            .ifPresent(p -> {
+                throw new IllegalArgumentException("Provider '" + p.providerName()
+                    + "' has no embedding API — choose one that does (e.g. openai) as the embedding provider");
+            });
         if (update.maxEmbeddingBatchTokens() != null && update.maxEmbeddingBatchTokens() <= 0) {
-            throw new IllegalArgumentException("maxEmbeddingBatchTokens must be positive, or null to use the platform default");
+            throw new IllegalArgumentException("maxEmbeddingBatchTokens must be positive, or null for the default");
         }
+        if (update.temperature() != null && (update.temperature() < 0 || update.temperature() > 2)) {
+            throw new IllegalArgumentException("temperature must be between 0 and 2");
+        }
+        if (update.maxTokens() != null && update.maxTokens() <= 0) {
+            throw new IllegalArgumentException("maxTokens must be positive");
+        }
+        validateBaseUrl(update.chatBaseUrl(), "chatBaseUrl");
+        validateBaseUrl(update.embeddingBaseUrl(), "embeddingBaseUrl");
 
         TenantLLMConfig config = llmConfigRepository.findByTenantId(tenantId)
             .orElseGet(() -> TenantLLMConfig.builder().tenantId(tenantId).build());
         config.setChatProvider(update.chatProvider());
         config.setChatModel(update.chatModel());
+        config.setChatBaseUrl(blankToNull(update.chatBaseUrl()));
         config.setEmbeddingProvider(update.embeddingProvider());
         config.setEmbeddingModel(update.embeddingModel());
+        config.setEmbeddingBaseUrl(blankToNull(update.embeddingBaseUrl()));
         config.setRoutingEnabled(update.routingEnabled());
         config.setSimpleModel(update.simpleModel());
         config.setComplexModel(update.complexModel());
         config.setMaxEmbeddingBatchTokens(update.maxEmbeddingBatchTokens());
+        if (update.temperature() != null) config.setTemperature(update.temperature());
+        if (update.maxTokens() != null) config.setMaxTokens(update.maxTokens());
         if (update.azureEndpoint() != null) config.setAzureEndpoint(update.azureEndpoint());
         if (update.azureDeployment() != null) config.setAzureDeployment(update.azureDeployment());
 
-        // apiKey: null = leave stored key untouched, "" = clear it, non-blank = set/replace it.
+        // Keys: null = leave stored key untouched, "" = clear it, non-blank = set/replace it.
         if (update.apiKey() != null) {
             config.setApiKeyEnc(update.apiKey().isBlank() ? null : cryptoService.encrypt(update.apiKey()));
+        }
+        if (update.embeddingApiKey() != null) {
+            config.setEmbeddingApiKeyEnc(update.embeddingApiKey().isBlank()
+                ? null : cryptoService.encrypt(update.embeddingApiKey()));
         }
 
         return toView(llmConfigRepository.save(config));
     }
 
-    /** Tests a chat provider/model/key combination without persisting anything — used by the
-     * admin UI's "Test connection" action before saving. Empty apiKey means "use whatever key is
-     * already stored for this tenant, or the platform default" (matches updateLLMConfig's null-
-     * apiKey semantics) so an admin can re-verify an already-saved custom key. */
-    public TestConnectionResult testConnection(UUID tenantId, String provider, String model, String apiKey) {
+    private static void validateBaseUrl(String url, String field) {
+        if (url == null || url.isBlank()) return;
+        if (!url.startsWith("https://") && !url.startsWith("http://")) {
+            throw new IllegalArgumentException(field + " must be an http(s) URL");
+        }
+    }
+
+    private static String blankToNull(String s) {
+        return s == null || s.isBlank() ? null : s;
+    }
+
+    /** Tests a chat provider/model/key/endpoint combination without persisting anything — used by
+     * the admin UI's "Test connection" action before saving. Empty apiKey means "use whatever key
+     * is already stored for this tenant" (matches updateLLMConfig's null-apiKey semantics) so an
+     * admin can re-verify an already-saved key. There is no platform key to fall back to: with
+     * nothing entered and nothing stored, the test fails with an actionable message. */
+    public TestConnectionResult testConnection(UUID tenantId, String provider, String model,
+                                                String apiKey, String baseUrl) {
         LLMProvider llmProvider = llmProviders.stream()
             .filter(p -> p.providerName().equals(provider))
             .findFirst()
@@ -175,9 +219,17 @@ public class TenantService {
             return new TestConnectionResult(false, "Unknown provider '" + provider + "'");
         }
         String effectiveKey = (apiKey != null && !apiKey.isBlank()) ? apiKey : decryptStoredKey(tenantId);
+        if (effectiveKey == null) {
+            return new TestConnectionResult(false,
+                "No API key to test — enter one above or save one first (there is no platform default key)");
+        }
+        TenantLLMConfig stored = llmConfigRepository.findByTenantId(tenantId).orElse(null);
+        String effectiveBaseUrl = (baseUrl != null && !baseUrl.isBlank())
+            ? baseUrl : (stored != null ? stored.getChatBaseUrl() : null);
+        double temperature = stored != null ? stored.getTemperature() : 0.7;
         try {
-            var response = llmProvider.chat(null,
-                "Reply with exactly one word: OK", model, effectiveKey);
+            var response = llmProvider.chat(null, "Reply with exactly one word: OK",
+                new LLMProvider.ChatSettings(model, effectiveKey, effectiveBaseUrl, temperature, 16));
             String text = response != null && response.getResult() != null
                 ? response.getResult().getOutput().getText() : null;
             if (text == null || text.isBlank()) {
@@ -200,18 +252,23 @@ public class TenantService {
     }
 
     private LlmConfigView toView(TenantLLMConfig config) {
-        boolean hasCustomKey = config.getApiKeyEnc() != null && !config.getApiKeyEnc().isBlank();
-        String hint = null;
-        if (hasCustomKey) {
-            String decrypted = cryptoService.decrypt(config.getApiKeyEnc());
-            hint = decrypted != null && decrypted.length() >= 4
-                ? "••••" + decrypted.substring(decrypted.length() - 4)
-                : "••••";
-        }
-        return new LlmConfigView(config.getChatProvider(), config.getChatModel(),
-            config.getEmbeddingProvider(), config.getEmbeddingModel(), config.isRoutingEnabled(),
-            config.getSimpleModel(), config.getComplexModel(), config.getAzureEndpoint(),
-            config.getAzureDeployment(), hasCustomKey, hint, config.getMaxEmbeddingBatchTokens());
+        boolean hasChatKey = config.getApiKeyEnc() != null && !config.getApiKeyEnc().isBlank();
+        boolean hasEmbeddingKey = config.getEmbeddingApiKeyEnc() != null && !config.getEmbeddingApiKeyEnc().isBlank();
+        return new LlmConfigView(config.getChatProvider(), config.getChatModel(), config.getChatBaseUrl(),
+            config.getEmbeddingProvider(), config.getEmbeddingModel(), config.getEmbeddingBaseUrl(),
+            config.isRoutingEnabled(), config.getSimpleModel(), config.getComplexModel(),
+            config.getAzureEndpoint(), config.getAzureDeployment(),
+            hasChatKey, keyHint(config.getApiKeyEnc()),
+            hasEmbeddingKey, keyHint(config.getEmbeddingApiKeyEnc()),
+            config.getTemperature(), config.getMaxTokens(), config.getMaxEmbeddingBatchTokens());
+    }
+
+    private String keyHint(String encrypted) {
+        if (encrypted == null || encrypted.isBlank()) return null;
+        String decrypted = cryptoService.decrypt(encrypted);
+        return decrypted != null && decrypted.length() >= 4
+            ? "••••" + decrypted.substring(decrypted.length() - 4)
+            : "••••";
     }
 
     public DataRetentionPolicy getRetentionPolicy(UUID tenantId) {

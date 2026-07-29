@@ -27,11 +27,20 @@ public class TenantLlmConfig {
     @Column(name = "tenant_id", nullable = false, unique = true)
     private UUID tenantId;
 
+    /** Needed to decide whether the chat key ({@code apiKeyEnc}) may serve embedding calls — it
+     * may only when embeddingProvider equals chatProvider. */
+    @Column(name = "chat_provider", nullable = false, length = 50)
+    private String chatProvider;
+
     @Column(name = "embedding_provider", nullable = false, length = 50)
     private String embeddingProvider;
 
     @Column(name = "embedding_model", nullable = false, length = 100)
     private String embeddingModel;
+
+    /** Endpoint override for the embedding provider — null means its canonical public endpoint. */
+    @Column(name = "embedding_base_url", length = 500)
+    private String embeddingBaseUrl;
 
     /** Per-tenant override for the embedding batch token ceiling (see EmbeddingService) — null
      * means fall back to this service's platform-wide default. Written only by documentation-bot's
@@ -43,4 +52,9 @@ public class TenantLlmConfig {
      * ingestor's own copy of the same service, sharing SECRETS_ENCRYPTION_KEY. */
     @Column(name = "api_key_enc", columnDefinition = "TEXT")
     private String apiKeyEnc;
+
+    /** Dedicated embedding key (same encryption scheme). Null falls back to {@code apiKeyEnc}
+     * only when embeddingProvider equals chatProvider — never to a platform key (none exists). */
+    @Column(name = "embedding_api_key_enc", columnDefinition = "TEXT")
+    private String embeddingApiKeyEnc;
 }

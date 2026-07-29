@@ -22,24 +22,32 @@ import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import lombok.extern.slf4j.Slf4j;
 
+/**
+ * Embeds chunks using the owning tenant's configuration (provider key, endpoint, model), read
+ * from the bot-owned {@code tenant_llm_configs} table. There is no platform-level OpenAI key or
+ * client anymore — a tenant without a complete embedding configuration cannot ingest documents,
+ * and the resulting {@link TenantLlmNotConfiguredException} carries the message shown on the
+ * failed document so the tenant's admin knows to finish the AI settings.
+ */
 @Slf4j
 @Service
 public class EmbeddingService {
 
     private static final int MAX_ATTEMPTS = 3;
     private static final long INITIAL_BACKOFF_MS = 1000L;
+    private static final String DEFAULT_OPENAI_BASE_URL = "https://api.openai.com";
 
-    private final EmbeddingModel embeddingModel;
+    /** Thrown when a tenant tries to ingest without a usable embedding configuration. */
+    public static class TenantLlmNotConfiguredException extends RuntimeException {
+        public TenantLlmNotConfiguredException(String message) {
+            super(message);
+        }
+    }
+
     private final CircuitBreaker embeddingCircuitBreaker;
     private final Bulkhead embeddingBulkhead;
     private final TenantLlmConfigRepository tenantLlmConfigRepository;
     private final SecretsCryptoService cryptoService;
-
-    @Value("${spring.ai.openai.base-url}")
-    private String baseUrl;
-
-    @Value("${spring.ai.openai.embedding.options.model}")
-    private String platformDefaultModel;
 
     @Value("${ingestor.embedding-batch-size:64}")
     private int batchSize;
@@ -47,51 +55,25 @@ public class EmbeddingService {
     @Value("${ingestor.embedding-batch-max-tokens:4000}")
     private int maxBatchTokens;
 
-    public EmbeddingService(EmbeddingModel embeddingModel,
-                            @Qualifier("embeddingCircuitBreaker") CircuitBreaker embeddingCircuitBreaker,
+    public EmbeddingService(@Qualifier("embeddingCircuitBreaker") CircuitBreaker embeddingCircuitBreaker,
                             @Qualifier("embeddingBulkhead") Bulkhead embeddingBulkhead,
                             TenantLlmConfigRepository tenantLlmConfigRepository,
                             SecretsCryptoService cryptoService) {
-        this.embeddingModel = embeddingModel;
         this.embeddingCircuitBreaker = embeddingCircuitBreaker;
         this.embeddingBulkhead = embeddingBulkhead;
         this.tenantLlmConfigRepository = tenantLlmConfigRepository;
         this.cryptoService = cryptoService;
     }
 
-    /** Platform-default embedding, no tenant context. Prefer {@link #generateEmbedding(String, UUID)}. */
-    public float[] generateEmbedding(String text) {
-        return withResilience(() -> callEmbeddingOnce(text, embeddingModel, null));
-    }
-
     /** Result also reports which model actually produced the embedding, so the caller can persist
      * it on the document (see IngestionService) for later query-time reuse. */
     public record TenantEmbeddingResult(float[] embedding, String modelUsed) {}
 
-    /**
-     * Embeds using the tenant's configured embedding provider/key/model when one exists and
-     * decrypts successfully; falls back to the platform default client+model otherwise (no
-     * config row, no custom key, or a wrong/rotated SECRETS_ENCRYPTION_KEY — same
-     * degrade-gracefully behavior as the bot's LLMRouter).
-     */
+    /** Embeds one text with the tenant's configured embedding client — see class docs. */
     public TenantEmbeddingResult generateEmbedding(String text, UUID tenantId) {
-        TenantLlmConfig config = tenantId != null
-            ? tenantLlmConfigRepository.findByTenantId(tenantId).orElse(null) : null;
-
-        if (config != null && config.getApiKeyEnc() != null && "openai".equalsIgnoreCase(config.getEmbeddingProvider())) {
-            String apiKey = cryptoService.decrypt(config.getApiKeyEnc());
-            if (apiKey != null) {
-                EmbeddingModel tenantClient = tenantEmbeddingModel(apiKey);
-                float[] result = withResilience(() -> callEmbeddingOnce(text, tenantClient, config.getEmbeddingModel()));
-                return new TenantEmbeddingResult(result, config.getEmbeddingModel());
-            }
-        }
-        float[] result = withResilience(() -> callEmbeddingOnce(text, embeddingModel, null));
-        return new TenantEmbeddingResult(result, platformDefaultModel);
-    }
-
-    public List<float[]> generateEmbeddings(List<String> texts) {
-        return texts.stream().map(this::generateEmbedding).toList();
+        ResolvedEmbeddingClient resolved = resolveClient(tenantId);
+        float[] result = withResilience(() -> callEmbeddingOnce(text, resolved.client(), resolved.model()));
+        return new TenantEmbeddingResult(result, resolved.model());
     }
 
     public record TenantEmbeddingBatchResult(List<float[]> embeddings, String modelUsed) {}
@@ -104,42 +86,76 @@ public class EmbeddingService {
      * overflow it once chunks average more than a couple hundred tokens) so ingesting a large
      * document costs a handful of round-trips instead of one per chunk — the resilience wrappers
      * (circuit breaker/bulkhead) apply per batch, not per chunk, same as the single-text path.
-     * Same tenant-config resolution as {@link #generateEmbedding(String, UUID)}: every chunk in
-     * the document uses the same resolved client+model, since they're all being embedded for the
-     * same ingest. The token ceiling itself is also tenant-resolved: a tenant's
-     * {@code max_embedding_batch_tokens} override (set by their admin to match their own
-     * embedding model's context window) takes precedence over the platform-wide
-     * {@code ingestor.embedding-batch-max-tokens} default.
+     * Every chunk in the document uses the same resolved tenant client+model, since they're all
+     * being embedded for the same ingest. The token ceiling is also tenant-configured: a tenant's
+     * {@code max_embedding_batch_tokens} (set by their admin to match their embedding model's
+     * context window) takes precedence over this service's built-in default.
      */
     public TenantEmbeddingBatchResult generateEmbeddings(List<String> texts, UUID tenantId) {
-        TenantLlmConfig config = tenantId != null
-            ? tenantLlmConfigRepository.findByTenantId(tenantId).orElse(null) : null;
-
-        EmbeddingModel client = embeddingModel;
-        String model = platformDefaultModel;
-        if (config != null && config.getApiKeyEnc() != null && "openai".equalsIgnoreCase(config.getEmbeddingProvider())) {
-            String apiKey = cryptoService.decrypt(config.getApiKeyEnc());
-            if (apiKey != null) {
-                client = tenantEmbeddingModel(apiKey);
-                model = config.getEmbeddingModel();
-            }
-        }
-        int effectiveMaxBatchTokens = (config != null
-            && config.getMaxEmbeddingBatchTokens() != null
-            && config.getMaxEmbeddingBatchTokens() > 0)
-            ? config.getMaxEmbeddingBatchTokens() : maxBatchTokens;
+        ResolvedEmbeddingClient resolved = resolveClient(tenantId);
+        int effectiveMaxBatchTokens = resolved.maxBatchTokens();
 
         List<float[]> results = new java.util.ArrayList<>(texts.size());
-        EmbeddingModel finalClient = client;
-        String finalModel = model;
         int start = 0;
         while (start < texts.size()) {
             int end = nextBatchEnd(texts, start, effectiveMaxBatchTokens);
             List<String> batch = texts.subList(start, end);
-            results.addAll(withResilience(() -> callEmbeddingBatch(batch, finalClient, finalModel)));
+            results.addAll(withResilience(() -> callEmbeddingBatch(batch, resolved.client(), resolved.model())));
             start = end;
         }
-        return new TenantEmbeddingBatchResult(results, model);
+        return new TenantEmbeddingBatchResult(results, resolved.model());
+    }
+
+    private record ResolvedEmbeddingClient(EmbeddingModel client, String model, int maxBatchTokens) {}
+
+    /**
+     * Resolves the tenant's embedding client entirely from its own config: dedicated embedding key
+     * first, else the chat key when chat and embedding share a provider. Missing config, missing
+     * key, an undecryptable key (wrong/rotated SECRETS_ENCRYPTION_KEY), or a provider without an
+     * embedding API all fail ingestion with an actionable message — never a silent fallback to a
+     * platform key, which no longer exists.
+     */
+    private ResolvedEmbeddingClient resolveClient(UUID tenantId) {
+        TenantLlmConfig config = tenantId != null
+            ? tenantLlmConfigRepository.findByTenantId(tenantId).orElse(null) : null;
+        if (config == null) {
+            throw new TenantLlmNotConfiguredException(
+                "AI is not configured for this tenant — an admin must complete the AI settings "
+                    + "(embedding provider, model and API key) before documents can be ingested");
+        }
+        if (!"openai".equalsIgnoreCase(config.getEmbeddingProvider())) {
+            throw new TenantLlmNotConfiguredException(
+                "Embedding provider '" + config.getEmbeddingProvider() + "' has no embedding API — "
+                    + "this tenant's admin must select 'openai' (or an OpenAI-compatible endpoint "
+                    + "via the embedding base URL) in the AI settings");
+        }
+        String keyEnc = config.getEmbeddingApiKeyEnc() != null && !config.getEmbeddingApiKeyEnc().isBlank()
+            ? config.getEmbeddingApiKeyEnc()
+            : (config.getEmbeddingProvider() != null
+                && config.getEmbeddingProvider().equalsIgnoreCase(config.getChatProvider())
+                ? config.getApiKeyEnc() : null);
+        String apiKey = keyEnc != null && !keyEnc.isBlank() ? cryptoService.decrypt(keyEnc) : null;
+        if (apiKey == null) {
+            throw new TenantLlmNotConfiguredException(
+                "No embedding API key is configured for this tenant — an admin must save one in "
+                    + "the AI settings before documents can be ingested");
+        }
+        String baseUrl = config.getEmbeddingBaseUrl() != null && !config.getEmbeddingBaseUrl().isBlank()
+            ? config.getEmbeddingBaseUrl() : DEFAULT_OPENAI_BASE_URL;
+        int effectiveMaxBatchTokens = config.getMaxEmbeddingBatchTokens() != null
+            && config.getMaxEmbeddingBatchTokens() > 0
+            ? config.getMaxEmbeddingBatchTokens() : maxBatchTokens;
+
+        return new ResolvedEmbeddingClient(buildClient(baseUrl, apiKey),
+            config.getEmbeddingModel(), effectiveMaxBatchTokens);
+    }
+
+    /** Builds a one-off client bound to the tenant's key/endpoint. Not cached — building one is
+     * cheap (no network call), and always-fresh avoids any stale-key-after-rotation risk.
+     * Protected so tests can substitute a mock client. */
+    protected EmbeddingModel buildClient(String baseUrl, String apiKey) {
+        OpenAiApi api = OpenAiApi.builder().baseUrl(baseUrl).apiKey(apiKey).build();
+        return new OpenAiEmbeddingModel(api);
     }
 
     /** Grows the batch from {@code start} while staying within {@code ingestor.embedding-batch-size}
@@ -193,27 +209,14 @@ public class EmbeddingService {
         throw new RuntimeException("Failed to generate embedding after " + MAX_ATTEMPTS + " attempts", lastException);
     }
 
-    /** {@code model == null} lets the client use its own pre-configured default (the platform
-     * client's Spring AI autoconfiguration already bakes in {@code platformDefaultModel} — passing
-     * it again as an explicit option here would be redundant, not more correct). A tenant-specific
-     * one-off client has no such baked-in default, so its caller always supplies a model. */
     private float[] callEmbeddingOnce(String text, EmbeddingModel client, String model) {
-        EmbeddingRequest request = model != null
-            ? new EmbeddingRequest(List.of(text), OpenAiEmbeddingOptions.builder().model(model).build())
-            : new EmbeddingRequest(List.of(text), null);
+        EmbeddingRequest request = new EmbeddingRequest(List.of(text),
+            OpenAiEmbeddingOptions.builder().model(model).build());
         EmbeddingResponse response = client.call(request);
         if (response.getResults().isEmpty()) {
             throw new RuntimeException("Embedding API returned empty result");
         }
         return response.getResult().getOutput();
-    }
-
-    /** Builds a one-off client bound to a tenant's own (decrypted) API key — same pattern as
-     * documentation-bot's OpenAILLMProvider#tenantEmbeddingModel. Not cached: building one is
-     * cheap (no network call), and always-fresh avoids any stale-key-after-rotation risk. */
-    private OpenAiEmbeddingModel tenantEmbeddingModel(String apiKey) {
-        OpenAiApi api = OpenAiApi.builder().baseUrl(baseUrl).apiKey(apiKey).build();
-        return new OpenAiEmbeddingModel(api);
     }
 
     private static void sleepBackoff(int attempt) {
