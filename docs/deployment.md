@@ -16,7 +16,7 @@ Services:
 
 | Container | Port | Notes |
 |---|---|---|
-| `docai-postgres` | 5432 | pgvector/pgvector:pg16 |
+| `docai-postgres` | 5432 | doc-ai-postgres:pg16 (built from `database/Dockerfile`) |
 | `docai-redis` | 6379 | redis:7-alpine |
 | `docai-minio` | 9000 / 9001 | MinIO API / console |
 | `docai-ingestor` | 8081 | document-ingestor |

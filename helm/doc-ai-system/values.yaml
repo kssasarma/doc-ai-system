@@ -54,7 +54,11 @@ ingestor:
 # ── PostgreSQL ─────────────────────────────────────────────────────────────────
 postgres:
   enabled: true
-  image: pgvector/pgvector:pg16
+  # Custom image built from database/Dockerfile (FROM pgvector/pgvector:pg16 + the bootstrap
+  # script that creates the vector extension) — build and push it to your registry before
+  # deploying. The plain upstream image never runs that script, so `CREATE EXTENSION vector`
+  # would never happen and every migration/query touching a `vector` column would fail.
+  image: your-registry/doc-ai-postgres:pg16
   storageSize: "50Gi"
   storageClass: ""   # use cluster default
   backup:

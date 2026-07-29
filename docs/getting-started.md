@@ -96,6 +96,14 @@ Use this if you want to develop or debug individual services without Docker.
 
 ### 1. Start PostgreSQL with pgvector
 
+Build the bootstrap image once — it's `pgvector/pgvector:pg16` with `database/init-db.sql` baked
+in, which creates the `vector` extension automatically on first start (the plain upstream image
+never does this on its own):
+
+```bash
+docker build -t doc-ai-postgres:pg16 ./database
+```
+
 ```bash
 docker run -d \
   --name docai-postgres \
@@ -103,7 +111,7 @@ docker run -d \
   -e POSTGRES_USER=postgres \
   -e POSTGRES_PASSWORD=postgres \
   -p 5432:5432 \
-  pgvector/pgvector:pg16
+  doc-ai-postgres:pg16
 ```
 
 ### 2. Start MinIO (required by document-ingestor)

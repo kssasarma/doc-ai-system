@@ -16,7 +16,12 @@ spec:
     spec:
       containers:
         - name: postgres
-          image: pgvector/pgvector:pg16
+          # Custom image built from database/Dockerfile (FROM pgvector/pgvector:pg16 + the
+          # bootstrap script that creates the vector extension) — build and push it to your
+          # registry before applying this manifest; the plain upstream image never runs that
+          # script, so `CREATE EXTENSION vector` would never happen and every migration/query
+          # touching a `vector` column would fail.
+          image: your-registry/doc-ai-postgres:pg16
           ports:
             - containerPort: 5432
           env:

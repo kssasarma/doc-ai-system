@@ -1,17 +1,32 @@
 # Database
 
-Both services share a single PostgreSQL 16 + pgvector database. Flyway manages schema changes automatically on service startup, using separate migration history tables to avoid conflicts.
+Both services share a single PostgreSQL 16 + pgvector database. Flyway manages schema changes automatically on service startup, using separate migration history tables so the two don't conflict.
 
-| Service | History table | Baseline migration |
-|---|---|---|
-| documentation-bot | `flyway_schema_history_bot` | V12 (applied to existing installs; fresh installs run from V1) |
-| document-ingestor | `flyway_schema_history_ingestor` | V6 (same logic) |
+| Service | History table |
+|---|---|
+| documentation-bot | `flyway_schema_history_bot` |
+| document-ingestor | `flyway_schema_history_ingestor` |
+
+Every environment runs the full `V1` onward chain for each service — there is no baseline shortcut.
+Do not add `baseline-on-migrate`/`baseline-version` back: Flyway's baselineOnMigrate triggers
+whenever a service's history table is absent AND the schema is non-empty, which a *shared* schema
+satisfies the moment either service has run once — it would silently skip that service's own early
+migrations for anyone who spins up a fresh instance afterward.
+
+`document-ingestor`'s `V7` backfills `integration_tokens.tenant_id` from `users.tenant_id`, which
+`documentation-bot`'s `V11` creates — this is why `docker-compose.yml` has `document-ingestor`
+`depends_on: documentation-bot: condition: service_healthy`. document-ingestor must not start
+before documentation-bot has finished migrating.
 
 ---
 
 ## Bootstrap
 
-The pgvector extension is bootstrapped by `init-db.sql` (run by the Docker Compose Postgres container on first start, or applied manually for bare-metal setups):
+The pgvector extension is created by [`database/init-db.sql`](../database/init-db.sql), baked into
+a custom Postgres image built from [`database/Dockerfile`](../database/Dockerfile) (`FROM
+pgvector/pgvector:pg16`), so it runs automatically on first init regardless of platform
+(docker-compose, Kubernetes, bare `docker run`) instead of depending on a bind-mounted script that
+only executes on a fresh volume in the compose case:
 
 ```sql
 CREATE EXTENSION IF NOT EXISTS vector;

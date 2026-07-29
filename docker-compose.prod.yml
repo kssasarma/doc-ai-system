@@ -5,7 +5,10 @@
 
 services:
   postgres:
-    image: pgvector/pgvector:pg16
+    build:
+      context: ./database
+      dockerfile: Dockerfile
+    image: doc-ai-postgres:pg16
     container_name: docai-postgres
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-docai}
@@ -19,7 +22,6 @@ services:
     # of a published port, or add a temporary `-p 127.0.0.1:5432:5432` override.
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-docai}"]
       interval: 10s

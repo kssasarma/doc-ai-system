@@ -21,13 +21,12 @@ spring:
     enabled: true
     locations: classpath:db/migration
     table: flyway_schema_history_bot
-    baseline-on-migrate: true
-    # Flyway never actually ran in this environment before now (missing spring-boot-starter-flyway —
-    # Spring Boot 4 split the autoconfiguration out of flyway-core). The live schema already matches
-    # V1-V12 (previously applied via Hibernate ddl-auto=update, before it was switched to 'none').
-    # Baselining at 12 makes only V13+ pending here; baseline is ignored entirely for a genuinely
-    # empty/fresh database, where migrate() still runs V1 onward normally.
-    baseline-version: 12
+    # No baseline: this is a from-scratch install, so every environment runs the full V1+ chain.
+    # This and document-ingestor share one database/schema but keep independent history tables,
+    # so each migrates on its own regardless of the other's state or start order. Never introduce
+    # baseline-on-migrate/baseline-version as a shortcut later — it triggers on "history table
+    # absent AND schema non-empty", which a shared schema satisfies immediately once either
+    # service has run once, silently skipping that service's own early migrations.
 
   mail:
     host: ${MAIL_HOST:smtp.gmail.com}
