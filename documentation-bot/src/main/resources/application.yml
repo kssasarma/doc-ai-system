@@ -46,10 +46,17 @@ spring:
   # each tenant's admin in the UI. Disabling Spring AI's model autoconfiguration lets the service
   # boot without any OPENAI_API_KEY/ANTHROPIC_API_KEY — providers build one-off clients from the
   # tenant's own settings at call time (see LLMRouter / OpenAILLMProvider / AnthropicLLMProvider).
+  # Every model type must be disabled explicitly — the OpenAI starter also autoconfigures
+  # image/moderation/audio models, and any one left enabled fails startup demanding an API key.
   ai:
     model:
       chat: none
       embedding: none
+      image: none
+      moderation: none
+      audio:
+        speech: none
+        transcription: none
 
   # Phase 7.5 — Redis (optional; omit host to disable embedding cache)
   data:
