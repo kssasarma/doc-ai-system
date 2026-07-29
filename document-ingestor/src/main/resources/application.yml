@@ -33,10 +33,17 @@ spring:
   # own AI settings (tenant_llm_configs, written by documentation-bot's admin UI). Disabling
   # Spring AI's model autoconfiguration lets this service boot without any OPENAI_API_KEY —
   # EmbeddingService builds one-off clients from the tenant's settings at ingest time.
+  # Every model type must be disabled explicitly — the OpenAI starter also autoconfigures
+  # image/moderation/audio models, and any one left enabled fails startup demanding an API key.
   ai:
     model:
       chat: none
       embedding: none
+      image: none
+      moderation: none
+      audio:
+        speech: none
+        transcription: none
 
   servlet:
     multipart:
