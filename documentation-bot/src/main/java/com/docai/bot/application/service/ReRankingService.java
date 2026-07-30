@@ -2,8 +2,11 @@ package com.docai.bot.application.service;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -45,6 +48,15 @@ public class ReRankingService {
     @Value("${bot.rerank.mmr-lambda:0.7}")
     private double mmrLambda;
 
+    /** How much MMR's relevance term trusts the fused dense+lexical (RRF) signal versus raw
+     * dense cosine similarity alone. Without this, MMR silently discards the lexical half of
+     * hybrid retrieval at the final selection step: a candidate that only lexical search found
+     * (e.g. an exact-phrase match whose embedding gets diluted by surrounding chunk text — see
+     * VectorSearchService's class javadoc) would enter the fused candidate pool correctly, then
+     * still lose the final cut to purely-dense candidates with higher raw cosine similarity. */
+    @Value("${bot.rerank.fusion-weight:0.5}")
+    private double fusionWeight;
+
     @Value("${bot.rerank.llm-enabled:true}")
     private boolean llmRerankEnabled;
 
@@ -56,8 +68,9 @@ public class ReRankingService {
         this.llmBulkhead = llmBulkhead;
     }
 
-    /** A fused candidate paired with its raw embedding — needed only transiently, for MMR math. */
-    public record ScoredCandidate(RetrievedChunk chunk, float[] embedding) {}
+    /** A fused candidate paired with its raw embedding and the reciprocal-rank-fusion score that
+     * got it into the candidate pool — both needed only transiently, for MMR math. */
+    public record ScoredCandidate(RetrievedChunk chunk, float[] embedding, double fusionScore) {}
 
     public List<RetrievedChunk> rerank(String query, float[] queryEmbedding,
                                         List<ScoredCandidate> candidates, int finalTopK) {
@@ -73,16 +86,16 @@ public class ReRankingService {
     private List<ScoredCandidate> mmr(float[] queryEmbedding, List<ScoredCandidate> candidates, int topK) {
         List<ScoredCandidate> remaining = new ArrayList<>(candidates);
         List<ScoredCandidate> selected = new ArrayList<>();
+        Map<ScoredCandidate, Double> relevance = blendedRelevance(queryEmbedding, candidates);
 
         while (!remaining.isEmpty() && selected.size() < topK) {
             ScoredCandidate best = null;
             double bestScore = Double.NEGATIVE_INFINITY;
             for (ScoredCandidate candidate : remaining) {
-                double relevance = CosineSimilarity.of(queryEmbedding, candidate.embedding());
                 double maxSimToSelected = selected.stream()
                     .mapToDouble(s -> CosineSimilarity.of(candidate.embedding(), s.embedding()))
                     .max().orElse(0.0);
-                double mmrScore = mmrLambda * relevance - (1 - mmrLambda) * maxSimToSelected;
+                double mmrScore = mmrLambda * relevance.get(candidate) - (1 - mmrLambda) * maxSimToSelected;
                 if (mmrScore > bestScore) {
                     bestScore = mmrScore;
                     best = candidate;
@@ -92,6 +105,40 @@ public class ReRankingService {
             remaining.remove(best);
         }
         return selected;
+    }
+
+    /**
+     * Blends each candidate's dense cosine similarity with its fusion score so a candidate that
+     * only lexical search ranked highly isn't silently dropped by an otherwise dense-only
+     * relevance term. Both signals are min-max normalized across the candidate pool first, since
+     * raw cosine similarity and RRF scores live on entirely different scales.
+     */
+    private Map<ScoredCandidate, Double> blendedRelevance(float[] queryEmbedding, List<ScoredCandidate> candidates) {
+        Map<ScoredCandidate, Double> cosineSim = new IdentityHashMap<>();
+        Map<ScoredCandidate, Double> fusionScore = new IdentityHashMap<>();
+        for (ScoredCandidate c : candidates) {
+            cosineSim.put(c, CosineSimilarity.of(queryEmbedding, c.embedding()));
+            fusionScore.put(c, c.fusionScore());
+        }
+        Map<ScoredCandidate, Double> normalizedCosine = minMaxNormalize(cosineSim);
+        Map<ScoredCandidate, Double> normalizedFusion = minMaxNormalize(fusionScore);
+
+        Map<ScoredCandidate, Double> blended = new IdentityHashMap<>();
+        for (ScoredCandidate c : candidates) {
+            blended.put(c, fusionWeight * normalizedFusion.get(c) + (1 - fusionWeight) * normalizedCosine.get(c));
+        }
+        return blended;
+    }
+
+    private static Map<ScoredCandidate, Double> minMaxNormalize(Map<ScoredCandidate, Double> values) {
+        double min = Collections.min(values.values());
+        double max = Collections.max(values.values());
+        double range = max - min;
+        Map<ScoredCandidate, Double> normalized = new IdentityHashMap<>();
+        for (Map.Entry<ScoredCandidate, Double> e : values.entrySet()) {
+            normalized.put(e.getKey(), range > 0 ? (e.getValue() - min) / range : 1.0);
+        }
+        return normalized;
     }
 
     private List<RetrievedChunk> llmRerank(String query, List<RetrievedChunk> candidates) {
