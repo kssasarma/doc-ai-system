@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { BellOff, Plus, Trash2, Tag } from 'lucide-react';
+import { BellOff, Plus, Trash2, Tag, ArrowLeft } from 'lucide-react';
 import {
   getSubscriptions,
   createSubscription,
@@ -22,6 +23,7 @@ import { useToast } from '../ui/Toast';
 
 export default function SubscriptionsPage() {
   useDocumentTitle('Subscriptions');
+  const navigate = useNavigate();
   const { token } = useAuth();
   const toast = useToast();
   const [subscriptions, setSubscriptions] = useState<TopicSubscription[]>([]);
@@ -77,10 +79,17 @@ export default function SubscriptionsPage() {
     <div className="min-h-full bg-background">
       <div className="max-w-2xl mx-auto py-8 px-4">
         <motion.div variants={staggerContainer} initial="hidden" animate="visible">
-          <PageHeader
-            title="Topic Subscriptions"
-            description="Get notified when documentation matching your topics is updated or added."
-          />
+          <div className="flex items-start gap-3">
+            <IconButton label="Go back" variant="ghost" onClick={() => navigate(-1)}>
+              <ArrowLeft size={18} />
+            </IconButton>
+            <div className="flex-1">
+              <PageHeader
+                title="Topic Subscriptions"
+                description="Get notified when documentation matching your topics is updated or added."
+              />
+            </div>
+          </div>
 
           {/* Add subscription form */}
           <motion.div variants={fadeInUp}>

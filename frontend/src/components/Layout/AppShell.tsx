@@ -17,7 +17,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       <header className="h-12 flex-shrink-0 border-b border-border bg-surface flex items-center justify-end px-3">
         <AccountMenu onOpenPreferences={() => setPrefsOpen(true)} />
       </header>
-      <div className="flex-1 min-h-0">
+      <div className="flex-1 min-h-0 overflow-y-auto">
         {children}
       </div>
       <Footer />

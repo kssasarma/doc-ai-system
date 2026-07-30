@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { MessageCircle, ThumbsUp, ChevronDown, ChevronUp, Search } from 'lucide-react';
+import { MessageCircle, ThumbsUp, ChevronDown, ChevronUp, Search, ArrowLeft } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { listApprovedFaq, markHelpful, type FaqEntry, type PagedFaqEntries } from '../../services/faqService';
 import { useAuth } from '../../context/AuthContext';
@@ -9,6 +10,7 @@ import { fadeInUp, staggerContainer } from '../../lib/motion';
 import PageHeader from '../ui/PageHeader';
 import { Card } from '../ui/Card';
 import Button from '../ui/Button';
+import IconButton from '../ui/IconButton';
 import Badge from '../ui/Badge';
 import Input from '../ui/Input';
 import EmptyState from '../ui/EmptyState';
@@ -17,6 +19,7 @@ import { useToast } from '../ui/Toast';
 
 export default function FaqPage() {
   useDocumentTitle('FAQ');
+  const navigate = useNavigate();
   const { token } = useAuth();
   const toast = useToast();
   const [data, setData] = useState<PagedFaqEntries | null>(null);
@@ -63,10 +66,17 @@ export default function FaqPage() {
     <div className="min-h-full bg-background">
       <div className="max-w-3xl mx-auto py-8 px-4">
         <motion.div variants={staggerContainer} initial="hidden" animate="visible">
-          <PageHeader
-            title="Frequently Asked Questions"
-            description="Answers curated from the most common questions asked by your team."
-          />
+          <div className="flex items-start gap-3">
+            <IconButton label="Go back" variant="ghost" onClick={() => navigate(-1)}>
+              <ArrowLeft size={18} />
+            </IconButton>
+            <div className="flex-1">
+              <PageHeader
+                title="Frequently Asked Questions"
+                description="Answers curated from the most common questions asked by your team."
+              />
+            </div>
+          </div>
 
           {/* Filters */}
           <motion.div variants={fadeInUp} className="flex gap-2 mb-4 flex-wrap">

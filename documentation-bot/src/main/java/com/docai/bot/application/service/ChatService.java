@@ -560,6 +560,12 @@ public class ChatService {
             try {
                 UUID chatId = UUID.fromString(chatIdStr);
                 return sessionRepository.findById(chatId)
+                    .map(session -> {
+                        if (!session.getUserId().equals(userId)) {
+                            throw new AccessDeniedException("You do not have access to this chat session");
+                        }
+                        return session;
+                    })
                     .orElseGet(() -> createNewSession(product, version, userId));
             } catch (IllegalArgumentException e) {
                 log.warn("Invalid chatId format: {}", chatIdStr);
@@ -628,13 +634,12 @@ public class ChatService {
             .build();
     }
 
+    /** Every caller — admin or not — only ever sees their own chat sessions; this backs each
+     * user's personal chat sidebar, not an admin browsing surface. */
     @Transactional(readOnly = true)
     public AllChatsResponse getAllChatSessions(UserPrincipal principal) {
-        List<ChatSession> sessions = principal.isSuperAdmin()
-            ? sessionRepository.findAllByOrderByLastActiveAtDesc()
-            : principal.isAdmin()
-                ? sessionRepository.findByTenantIdOrderByPinnedDescLastActiveAtDesc(principal.tenantId())
-                : sessionRepository.findByUserIdOrderByPinnedDescLastActiveAtDesc(principal.userId());
+        List<ChatSession> sessions =
+            sessionRepository.findByUserIdOrderByPinnedDescLastActiveAtDesc(principal.userId());
 
         List<ChatSessionDTO> sessionDTOs = sessions.stream()
             .map(session -> ChatSessionDTO.builder()
@@ -669,12 +674,12 @@ public class ChatService {
         log.info("Deleted chat session {} by user {}", chatId, principal.userId());
     }
 
-    /** Owner, or an admin/super-admin from the session's own tenant (super-admins have no tenant, so they pass for any session). */
+    /** Chat sessions are private — only the owner may read, edit, export, or delete their own
+     * conversations. Admin/tenant-admin roles grant no access here; that access belongs to
+     * dedicated, audited admin features (escalations, GDPR export, analytics), not the plain
+     * chat endpoints. */
     private void assertSessionAccess(ChatSession session, UserPrincipal principal) {
-        boolean isOwner = principal.userId().equals(session.getUserId());
-        boolean isTenantAdmin = principal.isSuperAdmin()
-            || (principal.isAdmin() && principal.tenantId() != null && principal.tenantId().equals(session.getTenantId()));
-        if (!isOwner && !isTenantAdmin) {
+        if (!principal.userId().equals(session.getUserId())) {
             throw new AccessDeniedException("You do not have access to this chat session");
         }
     }
