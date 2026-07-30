@@ -20,8 +20,20 @@ public interface DocumentRepository extends JpaRepository<Document, UUID> {
 
     Optional<Document> findByIdAndTenantId(UUID id, UUID tenantId);
 
-    @Query("SELECT d.id FROM Document d WHERE d.tenantId = :tenantId")
+    /** The tenant-wide corpus — deliberately excludes personal-notebook documents (d.notebookId
+     * IS NULL). A notebook's documents are only ever searchable via a chat request that explicitly
+     * pins that notebookId (see DocumentAccessPolicy#resolveNotebookScope); otherwise a user's
+     * private notebook would leak into every other chat (and, for an ADMIN, into every user's
+     * chat) in the tenant just by existing. */
+    @Query("SELECT d.id FROM Document d WHERE d.tenantId = :tenantId AND d.notebookId IS NULL")
     Set<UUID> findIdsByTenantId(UUID tenantId);
+
+    /** The eligibility gate for a notebook-scoped chat (see DocumentAccessPolicy#resolveNotebookScope)
+     * — only the notebook owner's own COMPLETED documents in that notebook, tenant-checked as
+     * defense in depth even though a notebookId is already unique. */
+    @Query("SELECT d.id FROM Document d WHERE d.tenantId = :tenantId AND d.notebookId = :notebookId " +
+           "AND d.ownerId = :ownerId AND d.status = 'COMPLETED'")
+    Set<UUID> findIdsByNotebookIdAndOwnerId(UUID tenantId, UUID notebookId, UUID ownerId);
 
     @Query("SELECT DISTINCT d.product FROM Document d ORDER BY d.product")
     List<String> findDistinctProducts();

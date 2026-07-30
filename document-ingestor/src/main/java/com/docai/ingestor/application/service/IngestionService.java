@@ -1,10 +1,13 @@
 package com.docai.ingestor.application.service;
 
 import java.io.File;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.DigestInputStream;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import org.slf4j.MDC;
@@ -14,6 +17,7 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 import com.docai.ingestor.application.event.DocumentIngestionCompletedEvent;
 import com.docai.ingestor.domain.entity.Document;
 import com.docai.ingestor.domain.entity.Document.IngestionStatus;
@@ -41,6 +45,7 @@ public class IngestionService {
     private final PiiDetectionService piiDetectionService;
     private final PiiFlagRepository piiFlagRepository;
     private final ApplicationEventPublisher eventPublisher;
+    private final DocumentQuotaService documentQuotaService;
 
     @Value("${ingestor.stuck-processing-timeout-minutes:30}")
     private long stuckProcessingTimeoutMinutes;
@@ -94,6 +99,69 @@ public class IngestionService {
      * The caller is responsible for invoking ingestUploadedFile after this method returns
      * so that the transaction commits before the async task reads the document.
      */
+    /**
+     * Shared multipart-upload path for both the ADMIN document console (tenant-wide corpus,
+     * {@code notebookId} null) and personal-notebook uploads (see NotebookController) — hashes
+     * the stream while it's written straight to storage, dedupes/reuses an existing row scoped
+     * to the same (tenant, notebook) bucket exactly like the original admin-only upload path did
+     * for the tenant-wide bucket, and kicks off async ingestion. Returns the persisted row
+     * (status PROCESSING).
+     *
+     * @throws DuplicateDocumentException  identical content already COMPLETED in this bucket
+     * @throws TenantQuotaExceededException tenant is at its plan's document limit
+     */
+    public Document uploadAndIngest(MultipartFile file, String originalFilename, String extension,
+            String product, String version, String documentName,
+            UUID tenantId, UUID ownerId, UUID notebookId) throws IOException {
+        documentQuotaService.checkQuota(tenantId);
+
+        String storageKey;
+        String fileHash;
+        try (DigestInputStream digestStream = FileHashing.wrap(file.getInputStream())) {
+            storageKey = documentStorageService.store(digestStream, originalFilename, tenantId.toString(), file.getSize());
+            fileHash = FileHashing.hexOf(digestStream.getMessageDigest());
+        }
+
+        if (documentRepository.existsByFileHashAndTenantIdAndNotebookIdAndStatus(
+                fileHash, tenantId, notebookId, IngestionStatus.COMPLETED)) {
+            documentStorageService.delete(storageKey);
+            throw new DuplicateDocumentException("This exact document has already been processed");
+        }
+
+        Optional<Document> existing =
+            documentRepository.findByFileHashAndTenantIdAndNotebookId(fileHash, tenantId, notebookId);
+        Document document;
+        if (existing.isPresent()) {
+            document = existing.get();
+            if (document.getStorageKey() != null) {
+                // Replacing a stale (failed/pending) upload's file with this fresh one.
+                documentStorageService.delete(document.getStorageKey());
+            }
+            document.setStorageKey(storageKey);
+            document.setStorageType(documentStorageService.storageType());
+            document.setStatus(IngestionStatus.PROCESSING);
+            document.setErrorMessage(null);
+            document = documentRepository.save(document);
+        } else {
+            document = documentRepository.save(Document.builder()
+                .tenantId(tenantId)
+                .ownerId(ownerId)
+                .notebookId(notebookId)
+                .product(product)
+                .version(version)
+                .documentName(documentName)
+                .storageKey(storageKey)
+                .storageType(documentStorageService.storageType())
+                .fileHash(fileHash)
+                .fileType(extension)
+                .status(IngestionStatus.PROCESSING)
+                .build());
+        }
+
+        ingestUploadedFile(document.getId());
+        return document;
+    }
+
     @Transactional
     public void prepareRetrigger(UUID documentId) {
         Document doc = documentRepository.findById(documentId)
@@ -322,6 +390,13 @@ public class IngestionService {
     }
 
     private void retireSupersededDocuments(Document newDocument) {
+        // Notebook documents are independent uploads within their notebook, not versioned
+        // replacements of one another — every notebook upload deliberately shares the same
+        // placeholder product/version (see NotebookController), which would otherwise make each
+        // new upload retire every other document already in the notebook.
+        if (newDocument.getNotebookId() != null) {
+            return;
+        }
         List<Document> superseded = documentRepository.findByTenantIdAndProductAndVersionAndStatusAndIdNot(
             newDocument.getTenantId(), newDocument.getProduct(), newDocument.getVersion(),
             IngestionStatus.COMPLETED, newDocument.getId());

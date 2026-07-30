@@ -56,6 +56,12 @@ public class SecurityConfig {
             )
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(PUBLIC_PATHS).permitAll()
+                // Personal notebooks are a self-service feature — any authenticated user (not
+                // just tenant ADMINs) can create one, upload into it, and chat against it. Every
+                // handler in NotebookController still scopes reads/writes to the caller's own
+                // (tenantId, ownerId), so this only widens *who may call the endpoint*, not what
+                // any one caller can see.
+                .requestMatchers("/api/notebooks/**").authenticated()
                 .anyRequest().hasRole("ADMIN")
             )
             .addFilterBefore(jwtTokenFilter, UsernamePasswordAuthenticationFilter.class)

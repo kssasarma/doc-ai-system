@@ -12,6 +12,7 @@ import com.docai.bot.domain.model.SearchScope;
 import com.docai.bot.domain.repository.DocumentAccessRepository;
 import com.docai.bot.domain.repository.DocumentRepository;
 import com.docai.bot.domain.repository.GroupDocumentAccessRepository;
+import com.docai.bot.domain.repository.NotebookRepository;
 import com.docai.bot.domain.repository.UserRepository;
 
 import lombok.RequiredArgsConstructor;
@@ -31,6 +32,7 @@ public class GrantBasedDocumentAccessPolicy implements DocumentAccessPolicy {
     private final GroupDocumentAccessRepository groupDocumentAccessRepository;
     private final DocumentRepository documentRepository;
     private final UserRepository userRepository;
+    private final NotebookRepository notebookRepository;
 
     @Override
     @Transactional(readOnly = true)
@@ -46,6 +48,17 @@ public class GrantBasedDocumentAccessPolicy implements DocumentAccessPolicy {
             documentIds.addAll(groupDocumentAccessRepository.findAccessibleDocumentIdsViaGroups(userId, tenantId));
         }
 
+        return new SearchScope(tenantId, documentIds);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public SearchScope resolveNotebookScope(UUID userId, UUID tenantId, UUID notebookId) {
+        boolean owned = notebookRepository.findByIdAndTenantIdAndOwnerId(notebookId, tenantId, userId).isPresent();
+        if (!owned) {
+            return new SearchScope(tenantId, Set.of());
+        }
+        Set<UUID> documentIds = documentRepository.findIdsByNotebookIdAndOwnerId(tenantId, notebookId, userId);
         return new SearchScope(tenantId, documentIds);
     }
 }

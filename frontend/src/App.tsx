@@ -28,6 +28,7 @@ const ApiKeysPage = lazy(() => import('./components/Settings/ApiKeysPage'));
 const FaqPage = lazy(() => import('./components/Faq/FaqPage'));
 const SubscriptionsPage = lazy(() => import('./components/Subscriptions/SubscriptionsPage'));
 const LibraryPage = lazy(() => import('./components/Library/LibraryPage'));
+const NotebooksPage = lazy(() => import('./components/Notebooks/NotebooksPage'));
 
 const LoadingSpinner = () => (
   <div className="flex h-screen w-full items-center justify-center bg-background">
@@ -339,6 +340,13 @@ function App() {
         <ProtectedRoute>
           <Suspense fallback={<LoadingSpinner />}>
             <LibraryPage />
+          </Suspense>
+        </ProtectedRoute>
+      } />
+      <Route path="/notebooks" element={
+        <ProtectedRoute>
+          <Suspense fallback={<LoadingSpinner />}>
+            <NotebooksPage />
           </Suspense>
         </ProtectedRoute>
       } />

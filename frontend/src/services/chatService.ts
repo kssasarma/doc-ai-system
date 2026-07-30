@@ -137,13 +137,15 @@ export async function sendChatMessage(
   query: string,
   token: string,
   chatId?: string,
-  scope?: { product?: string; version?: string }
+  scope?: { product?: string; version?: string; notebookId?: string }
 ): Promise<APIResponse> {
   try {
-    const requestBody: { question: string; chatId?: string; product?: string; version?: string } = { question: query };
+    const requestBody: { question: string; chatId?: string; product?: string; version?: string; notebookId?: string } =
+      { question: query };
     if (chatId) requestBody.chatId = chatId;
     if (scope?.product) requestBody.product = scope.product;
     if (scope?.version) requestBody.version = scope.version;
+    if (scope?.notebookId) requestBody.notebookId = scope.notebookId;
 
     const response = await fetch(CHAT_BACKEND_QUERY_URL, {
       method: 'POST',

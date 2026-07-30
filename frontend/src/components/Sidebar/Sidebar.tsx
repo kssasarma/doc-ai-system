@@ -1,6 +1,6 @@
 import React, { Suspense, lazy, useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Menu as MenuIcon, X, Bookmark, Bell, Folder, Key, BookOpen } from 'lucide-react';
+import { Plus, Menu as MenuIcon, X, Bookmark, Bell, Folder, Key, BookOpen, NotebookText } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { ChatSession } from '../../types';
 import { Search } from 'lucide-react';
@@ -34,6 +34,7 @@ interface SidebarProps {
 }
 
 const NAV_ACTIONS = (navigate: ReturnType<typeof useNavigate>) => [
+  { key: 'notebooks', label: 'Notebooks', icon: NotebookText, onClick: () => navigate('/notebooks') },
   { key: 'bookmarks', label: 'Bookmarks', icon: Bookmark, onClick: () => navigate('/bookmarks') },
   { key: 'collections', label: 'Collections', icon: Folder, onClick: () => navigate('/collections') },
   { key: 'faq', label: 'FAQ', icon: BookOpen, onClick: () => navigate('/faq') },

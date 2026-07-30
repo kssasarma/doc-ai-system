@@ -38,6 +38,17 @@ public class Document {
     @Column(name = "tenant_id", nullable = false)
     private UUID tenantId;
 
+    /** The user who uploaded this document into their own personal notebook. Null for
+     * tenant-wide, admin-managed documents (the original, non-personal upload path). */
+    @Column(name = "owner_id")
+    private UUID ownerId;
+
+    /** Which personal {@link Notebook} this document belongs to, if any. Null for tenant-wide,
+     * admin-managed documents — those are never subject to {@code retireSupersededDocuments}
+     * skipping or notebook-scoped chat retrieval. See IngestionService#uploadAndIngest. */
+    @Column(name = "notebook_id")
+    private UUID notebookId;
+
     @Column(nullable = false, length = 100)
     private String product;
 

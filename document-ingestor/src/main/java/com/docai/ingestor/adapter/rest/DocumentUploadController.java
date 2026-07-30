@@ -1,10 +1,8 @@
 package com.docai.ingestor.adapter.rest;
 
-import java.security.DigestInputStream;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.http.HttpStatus;
@@ -19,9 +17,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
-import com.docai.ingestor.application.service.DocumentQuotaService;
 import com.docai.ingestor.application.service.DocumentStorageService;
-import com.docai.ingestor.application.service.FileHashing;
 import com.docai.ingestor.application.service.IngestionService;
 import com.docai.ingestor.config.TenantContext;
 import com.docai.ingestor.domain.entity.Document;
@@ -43,7 +39,6 @@ public class DocumentUploadController {
     private final DocumentRepository documentRepository;
     private final IngestionService ingestionService;
     private final DocumentStorageService documentStorageService;
-    private final DocumentQuotaService documentQuotaService;
 
     // Must match exactly what DocumentParser has a real implementation for (PdfParser,
     // ChmParser, HtmlParser, PlainTextParser) — this allowlist previously only listed pdf/chm,
@@ -80,58 +75,15 @@ public class DocumentUploadController {
 
         try {
             UUID tenantId = TenantContext.get();
-            documentQuotaService.checkQuota(tenantId);
-
-            // Hash while streaming straight into storage — the file never touches this
-            // container's disk, not even transiently.
-            String storageKey;
-            String fileHash;
-            try (DigestInputStream digestStream = FileHashing.wrap(file.getInputStream())) {
-                storageKey = documentStorageService.store(digestStream, originalFilename, tenantId.toString(), file.getSize());
-                fileHash = FileHashing.hexOf(digestStream.getMessageDigest());
-            }
-
-            // Reject exact duplicate that is already successfully processed — scoped to this tenant,
-            // since two different tenants uploading byte-identical files must not collide.
-            if (documentRepository.existsByFileHashAndTenantIdAndStatus(fileHash, tenantId, IngestionStatus.COMPLETED)) {
-                documentStorageService.delete(storageKey);
-                return ResponseEntity.status(HttpStatus.CONFLICT)
-                    .body(DocumentResponse.error("This exact document has already been processed"));
-            }
-
-            // Reuse or create document record — scoped to this tenant
-            Optional<Document> existing = documentRepository.findByFileHashAndTenantId(fileHash, tenantId);
-            Document document;
-            if (existing.isPresent()) {
-                document = existing.get();
-                if (document.getStorageKey() != null) {
-                    // Replacing a stale (failed/pending) upload's file with this fresh one.
-                    documentStorageService.delete(document.getStorageKey());
-                }
-                document.setStorageKey(storageKey);
-                document.setStorageType(documentStorageService.storageType());
-                document.setStatus(IngestionStatus.PROCESSING);
-                document.setErrorMessage(null);
-                document = documentRepository.save(document);
-            } else {
-                document = documentRepository.save(Document.builder()
-                    .tenantId(tenantId)
-                    .product(product.trim())
-                    .version(version.trim())
-                    .documentName(docName)
-                    .storageKey(storageKey)
-                    .storageType(documentStorageService.storageType())
-                    .fileHash(fileHash)
-                    .fileType(extension)
-                    .status(IngestionStatus.PROCESSING)
-                    .build());
-            }
-
-            ingestionService.ingestUploadedFile(document.getId());
+            Document document = ingestionService.uploadAndIngest(
+                file, originalFilename, extension, product.trim(), version.trim(), docName,
+                tenantId, null, null);
 
             log.info("Upload accepted: {} ({} v{})", docName, product, version);
             return ResponseEntity.accepted().body(DocumentResponse.of(document, "Processing started"));
 
+        } catch (com.docai.ingestor.application.service.DuplicateDocumentException e) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(DocumentResponse.error(e.getMessage()));
         } catch (com.docai.ingestor.application.service.TenantQuotaExceededException e) {
             return ResponseEntity.status(HttpStatus.CONFLICT).body(DocumentResponse.error(e.getMessage()));
         } catch (Exception e) {
