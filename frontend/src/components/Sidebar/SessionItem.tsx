@@ -102,7 +102,7 @@ const SessionItem: React.FC<SessionItemProps> = ({
 
           {!isRenaming && (
             <div className={cn('text-xs', isActive ? 'text-primary-foreground/70' : 'text-muted-foreground')}>
-              {session.messages.length} msgs • {formatTimestamp(session.updatedAt)}
+              {session.messages.length || session.messageCount} msgs • {formatTimestamp(session.updatedAt)}
             </div>
           )}
 

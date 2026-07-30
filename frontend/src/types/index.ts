@@ -29,6 +29,9 @@ export interface ChatSession {
   chatId: string;
   title: string;
   messages: ChatMessage[];
+  /** Total message count from the backend session list — populated even before this session's
+   * messages have been lazily fetched (see useChatSessions). */
+  messageCount: number;
   createdAt: number;
   updatedAt: number;
   pinned?: boolean;

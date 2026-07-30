@@ -9,6 +9,7 @@ export function createNewSession(chatId?: string): ChatSession {
     chatId: chatId || generateId(), // Use backend chatId when available
     title: 'New Chat',
     messages: [],
+    messageCount: 0,
     createdAt: Date.now(),
     updatedAt: Date.now(),
     isPersisted: !!chatId,

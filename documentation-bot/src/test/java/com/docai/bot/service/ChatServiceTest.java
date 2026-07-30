@@ -1,8 +1,10 @@
 package com.docai.bot.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -20,6 +22,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.security.access.AccessDeniedException;
 
 import com.docai.bot.application.service.AnswerGenerationService;
 import com.docai.bot.application.service.ChatService;
@@ -139,6 +142,25 @@ class ChatServiceTest {
 
         assertThat(resp.getChatId()).isEqualTo(sessionId.toString());
         assertThat(resp.getSessionTitle()).isNull();  // not first exchange
+    }
+
+    @Test
+    void processQuery_existingSessionOwnedByAnotherUser_deniesAccess() {
+        UUID otherUserId = UUID.randomUUID();
+        ChatSession existing = ChatSession.builder()
+            .userId(otherUserId).product("product-a").version("1.0").messageCount(4).build();
+        setId(existing, sessionId);
+        when(sessionRepository.findById(sessionId)).thenReturn(Optional.of(existing));
+
+        ChatRequest req = ChatRequest.builder()
+            .chatId(sessionId.toString())
+            .question("Can I read this stranger's chat?")
+            .userId(userId)
+            .build();
+
+        assertThatThrownBy(() -> chatService.processQuery(req))
+            .isInstanceOf(AccessDeniedException.class);
+        verify(messageRepository, never()).save(any(ChatMessage.class));
     }
 
     @Test

@@ -14,6 +14,7 @@ function convertBackendSession(backendSession: BackendSession): ChatSession {
     chatId: backendSession.chatId,
     title,
     messages: [],
+    messageCount: backendSession.messageCount,
     createdAt: new Date(backendSession.createdAt).getTime(),
     updatedAt: new Date(backendSession.lastActiveAt).getTime(),
     pinned: backendSession.pinned ?? false,
@@ -144,6 +145,7 @@ export function useChatSessions(token: string) {
       return {
         ...session,
         messages: [...session.messages, message],
+        messageCount: session.messageCount + 1,
         title: session.messages.length === 0 && message.role === 'user'
           ? message.content.slice(0, 50)
           : session.title,
