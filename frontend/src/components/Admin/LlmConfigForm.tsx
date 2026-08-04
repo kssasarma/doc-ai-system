@@ -53,6 +53,7 @@ export default function LlmConfigForm({ token, tenantId, config, onSaved, size =
     routingEnabled: form.routingEnabled,
     simpleModel: form.simpleModel,
     complexModel: form.complexModel,
+    rerankModel: form.rerankModel ?? null,
     azureEndpoint: form.azureEndpoint,
     azureDeployment: form.azureDeployment,
     // Untouched input = leave the stored key as-is; the field is never pre-filled with it.
@@ -227,6 +228,21 @@ export default function LlmConfigForm({ token, tenantId, config, onSaved, size =
             value={form.complexModel}
             onChange={e => setForm(c => ({ ...c, complexModel: e.target.value }))}
           />
+        </div>
+      )}
+
+      {size !== 'sm' && (
+        <div>
+          <Input
+            label="Re-rank model"
+            placeholder={`Same as ${form.routingEnabled ? 'simple queries model' : 'Chat Model'} (default)`}
+            value={form.rerankModel ?? ''}
+            onChange={e => setForm(c => ({ ...c, rerankModel: e.target.value || null }))}
+          />
+          <p className="mt-1 text-xs text-muted-foreground">
+            Used only for scoring which retrieved excerpts are most relevant before answering — not for
+            generating the answer itself. Leave blank to reuse the model above.
+          </p>
         </div>
       )}
 

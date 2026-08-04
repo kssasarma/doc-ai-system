@@ -146,7 +146,7 @@ public class ReRankingService {
         try {
             String response = llmBulkhead.executeSupplier(
                 () -> llmCircuitBreaker.executeSupplier(
-                    () -> llmRouter.chat(prompt, false)
+                    () -> llmRouter.chatForRerank(prompt)
                 )
             );
             return applyOrder(candidates, parseOrder(response, candidates.size()));

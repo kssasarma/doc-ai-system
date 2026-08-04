@@ -196,6 +196,42 @@ class AnswerGenerationServiceTest {
     }
 
     @Test
+    void generateAnswer_codeFirstWithNoCodeInChunks_promptFallsBackToProseInstruction() {
+        // Regression test: CODE_FIRST used to unconditionally demand "lead with a code example,
+        // then explain" even when none of the retrieved excerpts had one — producing degenerate
+        // answers for conceptual questions. It must now fall back to prose instead of forcing it.
+        stubLlmResponse("Answer.");
+        ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
+
+        RetrievedChunk proseChunk = RetrievedChunk.builder()
+            .chunkId("c1").content("FormData is a plain-text explanation with no code.")
+            .documentName("guide.pdf").similarity(0.9).product("product-a").version("2.0").build();
+
+        service.generateAnswer("Explain formdata", null, List.of(proseChunk), "DETAILED", "CODE_FIRST");
+
+        verify(llmRouter).chatWithUsage(promptCaptor.capture(), anyBoolean());
+        assertThat(promptCaptor.getValue())
+            .contains("explain clearly in prose instead of inventing a code sample")
+            .doesNotContain("Lead with a code example from the documentation excerpts");
+    }
+
+    @Test
+    void generateAnswer_codeFirstWithCodeInChunks_promptKeepsLeadWithCodeInstruction() {
+        stubLlmResponse("Answer.");
+        ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
+
+        RetrievedChunk codeChunk = RetrievedChunk.builder()
+            .chunkId("c1").content("Example:\n```js\nconst fd = new FormData();\n```")
+            .documentName("guide.pdf").similarity(0.9).product("product-a").version("2.0").build();
+
+        service.generateAnswer("Explain formdata", null, List.of(codeChunk), "DETAILED", "CODE_FIRST");
+
+        verify(llmRouter).chatWithUsage(promptCaptor.capture(), anyBoolean());
+        assertThat(promptCaptor.getValue())
+            .contains("Lead with a code example from the documentation excerpts");
+    }
+
+    @Test
     void generateSessionTitle_returnsLlmTitle() {
         when(llmRouter.chat(anyString(), anyBoolean()))
             .thenReturn("Installing Case360 on Windows Server");

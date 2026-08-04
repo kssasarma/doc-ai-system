@@ -100,6 +100,14 @@ public class TenantLLMConfig {
     @Builder.Default
     private String complexModel = "gpt-4o";
 
+    /** Model for {@link com.docai.bot.application.service.ReRankingService}'s LLM relevance
+     * re-rank pass — independent of the simple/complex routing split above, since re-ranking is a
+     * cheap, high-volume judgment call (not a full answer) that often warrants its own model
+     * choice. Null means "inherit": {@code simpleModel} when {@code routingEnabled}, else
+     * {@code chatModel}. */
+    @Column(name = "rerank_model", length = 100)
+    private String rerankModel;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;

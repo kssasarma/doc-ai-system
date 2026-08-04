@@ -194,6 +194,6 @@ class ReRankingServiceTest {
     }
 
     private void stubLlmResponse(String content) {
-        when(llmRouter.chat(any(String.class), org.mockito.ArgumentMatchers.anyBoolean())).thenReturn(content);
+        when(llmRouter.chatForRerank(any(String.class))).thenReturn(content);
     }
 }

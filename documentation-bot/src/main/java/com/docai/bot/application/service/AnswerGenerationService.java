@@ -244,7 +244,19 @@ public class AnswerGenerationService {
         if ("BULLET_POINTS".equals(answerFormat)) {
             prompt.append("Format your answer as a bullet-point list.\n");
         } else if ("CODE_FIRST".equals(answerFormat)) {
-            prompt.append("Lead with a code example, then explain.\n");
+            // Only demand a code-led answer when the retrieved excerpts actually contain a code
+            // sample. Forcing "lead with code" against excerpts that are pure prose (e.g. a
+            // conceptual "explain X" question) previously produced degenerate answers — the model
+            // had nothing to lead with and either refused, hedged, or invented an ungrounded
+            // example. When there's no code to lead with, fall back to a clear prose explanation
+            // instead of silently dropping the user's format preference.
+            if (chunks.stream().anyMatch(RetrievedChunk::containsCode)) {
+                prompt.append("Lead with a code example from the documentation excerpts, then explain.\n");
+            } else {
+                prompt.append("The user prefers code-first answers, but none of these excerpts contain a code "
+                    + "example — explain clearly in prose instead of inventing a code sample that isn't in the "
+                    + "documentation.\n");
+            }
         }
 
         prompt.append("\n");
