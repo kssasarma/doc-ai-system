@@ -40,6 +40,7 @@ public class TenantService {
     public record LlmConfigView(String chatProvider, String chatModel, String chatBaseUrl,
                                  String embeddingProvider, String embeddingModel, String embeddingBaseUrl,
                                  boolean routingEnabled, String simpleModel, String complexModel,
+                                 String rerankModel,
                                  String azureEndpoint, String azureDeployment,
                                  boolean hasChatKey, String chatKeyHint,
                                  boolean hasEmbeddingKey, String embeddingKeyHint,
@@ -48,10 +49,12 @@ public class TenantService {
     /** {@code apiKey}/{@code embeddingApiKey}: null = leave the stored key untouched, "" = clear it,
      * non-blank = set/replace it. {@code maxEmbeddingBatchTokens}: null = use the ingestor's
      * built-in default for this tenant. Base URLs: null/blank = the provider's canonical public
-     * endpoint. */
+     * endpoint. {@code rerankModel}: null/blank = inherit (simpleModel when routing is enabled,
+     * else chatModel) — same semantics as the base URL fields. */
     public record LlmConfigUpdate(String chatProvider, String chatModel, String chatBaseUrl,
                                    String embeddingProvider, String embeddingModel, String embeddingBaseUrl,
                                    boolean routingEnabled, String simpleModel, String complexModel,
+                                   String rerankModel,
                                    String azureEndpoint, String azureDeployment,
                                    String apiKey, String embeddingApiKey,
                                    Double temperature, Integer maxTokens, Integer maxEmbeddingBatchTokens) {}
@@ -175,6 +178,7 @@ public class TenantService {
         config.setRoutingEnabled(update.routingEnabled());
         config.setSimpleModel(update.simpleModel());
         config.setComplexModel(update.complexModel());
+        config.setRerankModel(blankToNull(update.rerankModel()));
         config.setMaxEmbeddingBatchTokens(update.maxEmbeddingBatchTokens());
         if (update.temperature() != null) config.setTemperature(update.temperature());
         if (update.maxTokens() != null) config.setMaxTokens(update.maxTokens());
@@ -256,7 +260,7 @@ public class TenantService {
         boolean hasEmbeddingKey = config.getEmbeddingApiKeyEnc() != null && !config.getEmbeddingApiKeyEnc().isBlank();
         return new LlmConfigView(config.getChatProvider(), config.getChatModel(), config.getChatBaseUrl(),
             config.getEmbeddingProvider(), config.getEmbeddingModel(), config.getEmbeddingBaseUrl(),
-            config.isRoutingEnabled(), config.getSimpleModel(), config.getComplexModel(),
+            config.isRoutingEnabled(), config.getSimpleModel(), config.getComplexModel(), config.getRerankModel(),
             config.getAzureEndpoint(), config.getAzureDeployment(),
             hasChatKey, keyHint(config.getApiKeyEnc()),
             hasEmbeddingKey, keyHint(config.getEmbeddingApiKeyEnc()),

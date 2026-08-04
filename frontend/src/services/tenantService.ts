@@ -24,6 +24,10 @@ export interface TenantLLMConfig {
   routingEnabled: boolean;
   simpleModel: string;
   complexModel: string;
+  /** Model used for the LLM relevance re-rank pass (ReRankingService), independent of the
+   * simple/complex routing split above. Empty/null = inherit — simpleModel when routingEnabled,
+   * else chatModel. */
+  rerankModel?: string | null;
   azureEndpoint?: string | null;
   azureDeployment?: string | null;
   /** Whether a chat API key is stored (encrypted at rest) — the key itself is write-only and
@@ -54,6 +58,8 @@ export interface TenantLLMConfigUpdate {
   routingEnabled: boolean;
   simpleModel: string;
   complexModel: string;
+  /** Empty/null = inherit (simpleModel when routingEnabled, else chatModel). */
+  rerankModel?: string | null;
   azureEndpoint?: string | null;
   azureDeployment?: string | null;
   /** undefined = leave the stored key untouched; "" = clear it; non-empty = set/replace it. */

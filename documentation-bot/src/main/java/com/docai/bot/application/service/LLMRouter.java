@@ -75,6 +75,16 @@ public class LLMRouter {
         return toResult(dispatch.provider.chat(null, userMessage, dispatch.settings));
     }
 
+    /** Dedicated entry point for {@link ReRankingService}'s LLM re-rank pass — routed via
+     * {@link #resolveRerankChat()} rather than the simple/complex split {@link #chatWithUsage}
+     * uses, so a tenant can point re-ranking at its own model. */
+    public String chatForRerank(String userMessage) {
+        ChatDispatch dispatch = resolveRerankChat();
+        log.debug("LLMRouter chat provider={} model={} purpose=rerank",
+            dispatch.providerName, dispatch.settings.model());
+        return toResult(dispatch.provider.chat(null, userMessage, dispatch.settings)).content();
+    }
+
     /**
      * Streaming counterpart of {@link #chatWithUsage} — same tenant/provider/model/key
      * resolution, but returns text deltas as the model generates them instead of blocking for the
@@ -117,11 +127,27 @@ public class LLMRouter {
 
     private ChatDispatch resolveChat(boolean complexQuery) {
         TenantLLMConfig config = requireConfig();
-        String providerName = config.getChatProvider();
-        LLMProvider provider = requireProvider(providerName, "chat");
         String model = config.isRoutingEnabled()
             ? (complexQuery ? config.getComplexModel() : config.getSimpleModel())
             : config.getChatModel();
+        return dispatchFor(config, model);
+    }
+
+    /** Resolves the model for {@link ReRankingService}'s LLM re-rank pass: the tenant's dedicated
+     * {@code rerankModel} when set, else the same model "simple" chat traffic uses — never the
+     * complex/expensive tier, since re-ranking is a cheap relevance judgment, not answer
+     * synthesis. */
+    private ChatDispatch resolveRerankChat() {
+        TenantLLMConfig config = requireConfig();
+        String model = hasText(config.getRerankModel())
+            ? config.getRerankModel()
+            : (config.isRoutingEnabled() ? config.getSimpleModel() : config.getChatModel());
+        return dispatchFor(config, model);
+    }
+
+    private ChatDispatch dispatchFor(TenantLLMConfig config, String model) {
+        String providerName = config.getChatProvider();
+        LLMProvider provider = requireProvider(providerName, "chat");
         String apiKey = decrypt(config.getApiKeyEnc());
         if (apiKey == null) {
             throw new LlmNotConfiguredException(
@@ -130,6 +156,10 @@ public class LLMRouter {
         }
         return new ChatDispatch(providerName, provider, new LLMProvider.ChatSettings(
             model, apiKey, config.getChatBaseUrl(), config.getTemperature(), config.getMaxTokens()));
+    }
+
+    private static boolean hasText(String s) {
+        return s != null && !s.isBlank();
     }
 
     /** The tenant's embedding key: its dedicated embedding key, else the chat key when both sides
