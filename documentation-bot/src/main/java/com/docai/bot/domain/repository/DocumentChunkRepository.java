@@ -25,6 +25,11 @@ public interface DocumentChunkRepository extends JpaRepository<DocumentChunk, UU
         String getProduct();
         String getVersion();
         String getEmbeddingText();
+        /** The matched leaf's own chunk_type (CODE/TABLE/TEXT) — deliberately not COALESCEd with
+         * the parent like content/chunkId are: a parent section chunk is always TEXT, so surfacing
+         * dc.chunk_type here is what tells the caller a code sample or table is what actually
+         * matched, even though the returned content is the parent's fuller context. */
+        String getChunkType();
     }
 
     // Phase 2/6/7 — the sole eligibility-gated queries: only documents in this tenant that appear
@@ -42,7 +47,8 @@ public interface DocumentChunkRepository extends JpaRepository<DocumentChunk, UU
                d.document_name                           AS documentName,
                d.product                                  AS product,
                d.version                                  AS version,
-               CAST(dc.embedding AS text)                 AS embeddingText
+               CAST(dc.embedding AS text)                 AS embeddingText,
+               dc.chunk_type                               AS chunkType
         FROM document_chunks dc
         JOIN documents d ON dc.document_id = d.id
         LEFT JOIN document_chunks parent ON dc.parent_chunk_id = parent.id
@@ -68,7 +74,8 @@ public interface DocumentChunkRepository extends JpaRepository<DocumentChunk, UU
                d.document_name                           AS documentName,
                d.product                                  AS product,
                d.version                                  AS version,
-               CAST(dc.embedding AS text)                 AS embeddingText
+               CAST(dc.embedding AS text)                 AS embeddingText,
+               dc.chunk_type                               AS chunkType
         FROM document_chunks dc
         JOIN documents d ON dc.document_id = d.id
         LEFT JOIN document_chunks parent ON dc.parent_chunk_id = parent.id

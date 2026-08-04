@@ -127,6 +127,7 @@ public class VectorSearchService {
                     .documentName(c.getDocumentName())
                     .product(c.getProduct())
                     .version(c.getVersion())
+                    .chunkType(c.getChunkType())
                     .similarity(CosineSimilarity.of(queryEmbedding, embedding))
                     .build();
                 return new ReRankingService.ScoredCandidate(chunk, embedding, entry.getValue());

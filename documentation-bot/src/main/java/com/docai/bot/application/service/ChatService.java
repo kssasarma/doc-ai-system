@@ -99,7 +99,6 @@ public class ChatService {
 
         UserPreference prefs = preferenceService.getPreferences(request.getUserId());
         String chatContext = contextManager.buildContextPrompt(session.getId());
-        String enhancedQuery = enhanceQueryWithContext(request.getQuestion(), chatContext);
 
         String finalAnswer;
         List<String> relatedQuestionsFromLlm;
@@ -121,7 +120,13 @@ public class ChatService {
             promptTokens = multiHop.promptTokens();
             completionTokens = multiHop.completionTokens();
         } else {
-            relevantChunks = vectorSearchService.search(enhancedQuery, scope);
+            // Search on the raw question, not chatContext-augmented text: embedding several
+            // hundred characters of prior turns (including the assistant's own previous answer)
+            // into the query dilutes its vector far more than it resolves pronouns, dragging
+            // retrieval toward whatever was discussed earlier instead of this question. chatContext
+            // still reaches the LLM via generateAnswer below, which is the right place for it —
+            // that's a prompt for reasoning over prose, not a value being embedded.
+            relevantChunks = vectorSearchService.search(request.getQuestion(), scope);
             AnswerGenerationService.AnswerResult result = answerService.generateAnswer(
                 request.getQuestion(), chatContext, relevantChunks,
                 prefs.getVerbosity(), prefs.getAnswerFormat(), product, version
@@ -247,7 +252,6 @@ public class ChatService {
 
             UserPreference prefs = preferenceService.getPreferences(request.getUserId());
             String chatContext = contextManager.buildContextPrompt(session.getId());
-            String enhancedQuery = enhanceQueryWithContext(request.getQuestion(), chatContext);
 
             String finalAnswer;
             List<String> relatedQuestionsFromLlm;
@@ -271,7 +275,7 @@ public class ChatService {
                 promptTokens = multiHop.promptTokens();
                 completionTokens = multiHop.completionTokens();
             } else {
-                relevantChunks = vectorSearchService.search(enhancedQuery, scope);
+                relevantChunks = vectorSearchService.search(request.getQuestion(), scope);
                 sendEvent(emitter, "sources", buildSources(relevantChunks));
 
                 String prompt = answerService.promptForStreaming(request.getQuestion(), chatContext,
@@ -624,12 +628,6 @@ public class ChatService {
             .content(content)
             .build();
         return messageRepository.save(message);
-    }
-
-    private String enhanceQueryWithContext(String question, String context) {
-        if (context == null || context.isEmpty()) return question;
-        return question + "\n\n(Context from previous conversation:\n" +
-               context.substring(0, Math.min(500, context.length())) + ")";
     }
 
     @Transactional(readOnly = true)

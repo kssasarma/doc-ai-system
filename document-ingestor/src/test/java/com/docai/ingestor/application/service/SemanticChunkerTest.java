@@ -172,4 +172,51 @@ class SemanticChunkerTest {
         assertThat(chunks).anyMatch(c -> "Installation".equals(c.getSectionHeader()));
         assertThat(chunks).anyMatch(c -> "Configuration".equals(c.getSectionHeader()));
     }
+
+    @Test
+    void headingFollowedOnlyByTable_tableStillCarriesTheHeading() {
+        // Regression test: a heading whose body is *only* a table (a common shape in API-reference
+        // docs — "### Auth" followed immediately by an endpoint table, no prose) used to be dropped
+        // silently: the table was extracted globally before section-splitting even ran, and the
+        // section itself was skipped once its only paragraph was the now-empty table placeholder —
+        // losing the heading entirely on both ends. The retrieved table then reached the LLM with
+        // no indication of what it was a table *of*.
+        String text = "# Auth\n\n"
+            + "| Method | Path |\n| --- | --- |\n| POST | /api/login |\n\n"
+            + "# Chat\n\n"
+            + "| Method | Path |\n| --- | --- |\n| POST | /api/chat |\n";
+
+        List<SemanticChunk> chunks = chunker.chunk(text);
+
+        List<SemanticChunk> tables = chunks.stream().filter(c -> "TABLE".equals(c.getChunkType())).toList();
+        assertThat(tables).hasSize(2);
+        assertThat(tables).anyMatch(c -> "Auth".equals(c.getSectionHeader()) && c.getContent().contains("/api/login"));
+        assertThat(tables).anyMatch(c -> "Chat".equals(c.getSectionHeader()) && c.getContent().contains("/api/chat"));
+    }
+
+    @Test
+    void headingFollowedOnlyByCodeBlock_codeStillCarriesTheHeading() {
+        String text = "# Response Shape\n\n```json\n{\"ok\": true}\n```\n";
+
+        List<SemanticChunk> chunks = chunker.chunk(text);
+
+        List<SemanticChunk> code = chunks.stream().filter(c -> "CODE".equals(c.getChunkType())).toList();
+        assertThat(code).hasSize(1);
+        assertThat(code.get(0).getSectionHeader()).isEqualTo("Response Shape");
+        assertThat(code.get(0).getContent()).contains("Response Shape").contains("\"ok\": true");
+    }
+
+    @Test
+    void headingInsideCodeComment_notMistakenForSectionBoundary() {
+        // A `#`-prefixed comment line inside a fenced code block must not be misread as a Markdown
+        // heading — it would otherwise fracture the code block's own section attribution.
+        String text = "# Real Heading\n\n```python\n# not a heading, just a comment\nprint('hi')\n```\n";
+
+        List<SemanticChunk> chunks = chunker.chunk(text);
+
+        assertThat(chunks).noneMatch(c -> "not a heading, just a comment".equals(c.getSectionHeader()));
+        List<SemanticChunk> code = chunks.stream().filter(c -> "CODE".equals(c.getChunkType())).toList();
+        assertThat(code).hasSize(1);
+        assertThat(code.get(0).getSectionHeader()).isEqualTo("Real Heading");
+    }
 }

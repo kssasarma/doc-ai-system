@@ -59,6 +59,14 @@ public class DocumentChunk {
 	@Column(name = "token_count")
 	private Integer tokenCount;
 
+	/** Mirrors document-ingestor's V5 migration column, for the same reason {@link #searchVector}
+	 * mirrors its V9 generated column — this service's own Hibernate-generated test schema
+	 * (ddl-auto=create-drop, Flyway disabled) needs the column to exist too, since
+	 * {@link com.docai.bot.domain.repository.DocumentChunkRepository}'s hybrid search queries
+	 * select it directly. */
+	@Column(name = "chunk_type", length = 50)
+	private String chunkType;
+
 	@Column(name = "created_at")
 	private LocalDateTime createdAt;
 

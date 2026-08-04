@@ -32,4 +32,18 @@ class RetrievedChunkTest {
 
         assertThat(chunk.containsCode()).isFalse();
     }
+
+    @Test
+    void containsCode_realCodeChunk_returnsTrueEvenWithoutFenceMarkers() {
+        // Mirrors what SemanticChunker actually produces for a CODE-type chunk: the fence markers
+        // (```) are stripped during ingestion, leaving only the bare code — so a plain content scan
+        // for "```" (the old implementation) never matches a real extracted code chunk. chunkType
+        // is the only reliable signal left.
+        RetrievedChunk chunk = RetrievedChunk.builder()
+            .chunkType("CODE")
+            .content("const fd = new FormData();")
+            .build();
+
+        assertThat(chunk.containsCode()).isTrue();
+    }
 }
