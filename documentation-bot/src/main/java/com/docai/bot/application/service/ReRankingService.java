@@ -61,8 +61,8 @@ public class ReRankingService {
     private boolean llmRerankEnabled;
 
     public ReRankingService(LLMRouter llmRouter,
-                             @Qualifier("llmCircuitBreaker") CircuitBreaker llmCircuitBreaker,
-                             @Qualifier("llmBulkhead") Bulkhead llmBulkhead) {
+                             @Qualifier("llmRerankCircuitBreaker") CircuitBreaker llmCircuitBreaker,
+                             @Qualifier("llmRerankBulkhead") Bulkhead llmBulkhead) {
         this.llmRouter = llmRouter;
         this.llmCircuitBreaker = llmCircuitBreaker;
         this.llmBulkhead = llmBulkhead;

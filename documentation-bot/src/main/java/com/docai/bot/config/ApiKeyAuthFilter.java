@@ -38,6 +38,13 @@ public class ApiKeyAuthFilter extends OncePerRequestFilter {
         return !request.getRequestURI().startsWith("/api/v1/");
     }
 
+    /** See {@link JwtAuthFilter#shouldNotFilterAsyncDispatch()} — same reasoning applies to any
+     * /api/v1/** endpoint that completes via an async dispatch (e.g. a streaming response). */
+    @Override
+    protected boolean shouldNotFilterAsyncDispatch() {
+        return false;
+    }
+
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
             FilterChain filterChain) throws ServletException, IOException {

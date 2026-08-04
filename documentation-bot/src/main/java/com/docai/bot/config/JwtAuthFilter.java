@@ -35,6 +35,23 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         "/api/auth/change-password"
     );
 
+    /**
+     * Streaming endpoints (e.g. {@code POST /api/chat/query/stream}) run their handler
+     * {@code @Async} and return an {@link org.springframework.web.servlet.mvc.method.annotation.SseEmitter} —
+     * when the emitter completes, Spring re-dispatches the request through the whole filter chain
+     * (dispatcher type ASYNC) to finalize the response. {@code OncePerRequestFilter}'s default
+     * skips that second pass, which — since sessions are stateless and nothing else repopulates
+     * {@code SecurityContextHolder} — left the ASYNC dispatch looking anonymous to
+     * {@code AuthorizationFilter} (which does run on ASYNC dispatch) and denied it, after the SSE
+     * response had already been committed. Re-running this filter re-authenticates the dispatch
+     * from the same request headers, keeping the authorization check consistent with the original
+     * request.
+     */
+    @Override
+    protected boolean shouldNotFilterAsyncDispatch() {
+        return false;
+    }
+
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
             FilterChain filterChain) throws ServletException, IOException {

@@ -20,11 +20,21 @@ import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
  *
  * Bulkhead limits concurrent LLM calls to 5, queuing up to 5 s before
  * rejecting with BulkheadFullException.
+ *
+ * The rerank pass (ReRankingService) gets its own, separate instance ({@link #RERANK_INSTANCE})
+ * rather than sharing {@link #LLM_INSTANCE} with answer generation. Re-ranking is explicitly
+ * best-effort — a failure just falls back to MMR order — but it typically runs against a
+ * different, tenant-configurable model (TenantLLMConfig.rerankModel) than the primary chat model.
+ * If that model is misconfigured (e.g. pointed at a model/provider combination the LLM gateway
+ * can't route), every rerank call fails; sharing one breaker meant those failures counted against
+ * the same failure budget as answer generation and could trip it open, declining legitimate
+ * chat/streaming requests even though the primary chat model was perfectly healthy.
  */
 @Configuration
 public class ResilienceConfig {
 
     public static final String LLM_INSTANCE = "llm";
+    public static final String RERANK_INSTANCE = "llm-rerank";
 
     @Bean
     public CircuitBreakerRegistry circuitBreakerRegistry() {
@@ -58,5 +68,15 @@ public class ResilienceConfig {
     @Bean("llmBulkhead")
     public Bulkhead llmBulkhead(BulkheadRegistry registry) {
         return registry.bulkhead(LLM_INSTANCE);
+    }
+
+    @Bean("llmRerankCircuitBreaker")
+    public CircuitBreaker llmRerankCircuitBreaker(CircuitBreakerRegistry registry) {
+        return registry.circuitBreaker(RERANK_INSTANCE);
+    }
+
+    @Bean("llmRerankBulkhead")
+    public Bulkhead llmRerankBulkhead(BulkheadRegistry registry) {
+        return registry.bulkhead(RERANK_INSTANCE);
     }
 }
