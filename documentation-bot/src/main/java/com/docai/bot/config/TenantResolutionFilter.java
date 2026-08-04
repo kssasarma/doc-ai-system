@@ -44,6 +44,15 @@ public class TenantResolutionFilter extends OncePerRequestFilter {
 
     private final TenantRepository tenantRepository;
 
+    /** See {@link JwtAuthFilter#shouldNotFilterAsyncDispatch()} — this filter reads the
+     * authenticated principal JwtAuthFilter sets, so it needs to re-run on the same ASYNC
+     * dispatch pass for the same reason (e.g. TenantContext/MDC must be correct for that pass
+     * too, not just the original request thread). */
+    @Override
+    protected boolean shouldNotFilterAsyncDispatch() {
+        return false;
+    }
+
     @Override
     protected void doFilterInternal(HttpServletRequest request,
                                     HttpServletResponse response,
