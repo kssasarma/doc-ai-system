@@ -16,11 +16,13 @@ import lombok.extern.slf4j.Slf4j;
  * Phase 6.7 — Semantic Chunking v2.
  *
  * Strategy:
- *  1. Detect code blocks (``` fenced or 4-space indented) → separate CODE chunks
- *  2. Split remaining text at semantic boundaries (blank lines, Markdown/heading patterns)
- *  3. Build parent (section) chunks and child (paragraph) chunks
- *  4. Small-to-big: leaf paragraphs are used for search; parent sections provide context
- *  5. Merge tiny paragraphs into their neighbours to stay within token limits
+ *  1. Split the document into sections at Markdown heading boundaries.
+ *  2. Within each section, pull out code blocks and tables as their own dedicated, searchable
+ *     chunks — tagged with that section's heading, same as the prose leaves, so a bare endpoint
+ *     table or JSON sample never loses the context that says what it actually is.
+ *  3. Split what's left of the section into paragraph leaves.
+ *  4. Small-to-big: leaf paragraphs are used for search; parent sections provide context.
+ *  5. Merge tiny paragraphs into their neighbours to stay within token limits.
  */
 @Slf4j
 @Service
@@ -50,61 +52,25 @@ public class SemanticChunker {
         if (text == null || text.isBlank()) return List.of();
 
         List<SemanticChunk> result = new ArrayList<>();
+        int[] index = {0};
 
-        // 1. Extract and replace code blocks
-        Matcher codeMatcher = FENCED_CODE_BLOCK.matcher(text);
-        List<int[]> codeRanges = new ArrayList<>();
-        List<SemanticChunk> codeChunks = new ArrayList<>();
-        int codeIndex = 0;
+        for (Section section : splitIntoSections(text)) {
+            // Code and tables are extracted per-section (not globally) specifically so each one
+            // inherits section.heading() — a bare JSON response sample or endpoint table is
+            // unreadable to both the retriever and the LLM without the heading naming what it is.
+            String body = section.body();
 
-        while (codeMatcher.find()) {
-            String lang = codeMatcher.group(1);
-            String code = codeMatcher.group(2).trim();
-            for (String part : splitLinesToBudget(code)) {
-                codeChunks.add(SemanticChunk.builder()
-                    .index(codeIndex++)
-                    .content(part)
-                    .chunkType("CODE")
-                    .codeLanguage(lang.isBlank() ? null : lang)
-                    .isLeaf(true)
-                    .tokenCount(estimateTokens(part))
-                    .build());
-            }
-            codeRanges.add(new int[]{codeMatcher.start(), codeMatcher.end()});
-        }
+            List<SemanticChunk> codeChunks = extractCode(body, section.heading(), index);
+            String bodyWithoutCode = FENCED_CODE_BLOCK.matcher(body).replaceAll("\n\n[CODE_BLOCK]\n\n");
 
-        // 2. Remove code blocks from text before semantic splitting
-        String textWithoutCode = FENCED_CODE_BLOCK.matcher(text).replaceAll("\n\n[CODE_BLOCK]\n\n");
+            List<SemanticChunk> tableChunks = extractTables(bodyWithoutCode, section.heading(), index);
+            String bodyWithoutTables = MARKDOWN_TABLE.matcher(bodyWithoutCode).replaceAll("\n\n[TABLE_BLOCK]\n\n");
 
-        // 2b. Extract Markdown tables the same way — a support-matrix table diluted into a
-        // generic paragraph chunk is exactly the kind of factual content a similarity search
-        // struggles to surface; keeping it as its own dedicated, searchable chunk fixes that.
-        Matcher tableMatcher = MARKDOWN_TABLE.matcher(textWithoutCode);
-        List<SemanticChunk> tableChunks = new ArrayList<>();
-        int tableIndex = codeIndex;
-        while (tableMatcher.find()) {
-            String table = tableMatcher.group(1).trim();
-            for (String part : splitTableToBudget(table)) {
-                tableChunks.add(SemanticChunk.builder()
-                    .index(tableIndex++)
-                    .content(part)
-                    .chunkType("TABLE")
-                    .isLeaf(true)
-                    .tokenCount(estimateTokens(part))
-                    .build());
-            }
-        }
-        String textWithoutTables = MARKDOWN_TABLE.matcher(textWithoutCode).replaceAll("\n\n[TABLE_BLOCK]\n\n");
+            result.addAll(codeChunks);
+            result.addAll(tableChunks);
 
-        // 3. Split into sections by headings
-        List<Section> sections = splitIntoSections(textWithoutTables);
-
-        // 4. For each section, further split paragraphs into leaf chunks
-        int leafIndex = tableIndex;
-        for (Section section : sections) {
-            List<String> paragraphs = splitParagraphs(section.body());
+            List<String> paragraphs = splitParagraphs(bodyWithoutTables);
             List<String> merged = mergeTinyParagraphs(paragraphs);
-
             if (merged.isEmpty()) continue;
 
             // Create a parent (section) chunk if there are multiple paragraphs
@@ -113,10 +79,9 @@ public class SemanticChunker {
                 String sectionContent = section.heading() != null
                     ? section.heading() + "\n\n" + section.body()
                     : section.body();
-                // Trim section to max tokens
                 sectionContent = trimToTokens(sectionContent, maxTokens * 2);
                 parent = SemanticChunk.builder()
-                    .index(leafIndex++)
+                    .index(index[0]++)
                     .content(sectionContent)
                     .chunkType("TEXT")
                     .sectionHeader(section.heading())
@@ -133,7 +98,7 @@ public class SemanticChunker {
                 content = trimToTokens(content, maxTokens);
 
                 SemanticChunk leaf = SemanticChunk.builder()
-                    .index(leafIndex++)
+                    .index(index[0]++)
                     .content(content)
                     .chunkType("TEXT")
                     .sectionHeader(section.heading())
@@ -145,15 +110,11 @@ public class SemanticChunker {
             }
         }
 
-        // 5. Append code and table chunks at the end (they reference no parent)
-        result.addAll(codeChunks);
-        result.addAll(tableChunks);
-
         log.info("SemanticChunker: {} leaf + {} parent + {} code + {} table chunks from {} chars",
             result.stream().filter(SemanticChunk::isLeaf).count(),
             result.stream().filter(c -> !c.isLeaf()).count(),
-            codeChunks.size(),
-            tableChunks.size(),
+            result.stream().filter(c -> "CODE".equals(c.getChunkType())).count(),
+            result.stream().filter(c -> "TABLE".equals(c.getChunkType())).count(),
             text.length());
 
         return result;
@@ -161,13 +122,78 @@ public class SemanticChunker {
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
+    /** Extracts fenced code blocks from a section body as their own leaf chunks, prefixed with the
+     * section heading (same convention as prose leaves) so the raw code is never shown to the
+     * retriever or the LLM with no indication of what it's code *for*. */
+    private List<SemanticChunk> extractCode(String sectionBody, String heading, int[] index) {
+        List<SemanticChunk> chunks = new ArrayList<>();
+        Matcher codeMatcher = FENCED_CODE_BLOCK.matcher(sectionBody);
+        while (codeMatcher.find()) {
+            String lang = codeMatcher.group(1);
+            String code = codeMatcher.group(2).trim();
+            for (String part : splitLinesToBudget(code)) {
+                String content = heading != null ? "[" + heading + "]\n" + part : part;
+                chunks.add(SemanticChunk.builder()
+                    .index(index[0]++)
+                    .content(content)
+                    .chunkType("CODE")
+                    .codeLanguage(lang.isBlank() ? null : lang)
+                    .sectionHeader(heading)
+                    .isLeaf(true)
+                    .tokenCount(estimateTokens(content))
+                    .build());
+            }
+        }
+        return chunks;
+    }
+
+    /** Extracts Markdown tables from a section body (with code already stripped) as their own leaf
+     * chunks, prefixed with the section heading — a support-matrix or endpoint-list table diluted
+     * into a generic paragraph chunk is exactly the kind of factual content a similarity search
+     * struggles to surface; keeping it as its own dedicated, searchable, self-describing chunk
+     * fixes that. */
+    private List<SemanticChunk> extractTables(String sectionBodyWithoutCode, String heading, int[] index) {
+        List<SemanticChunk> chunks = new ArrayList<>();
+        Matcher tableMatcher = MARKDOWN_TABLE.matcher(sectionBodyWithoutCode);
+        while (tableMatcher.find()) {
+            String table = tableMatcher.group(1).trim();
+            for (String part : splitTableToBudget(table)) {
+                String content = heading != null ? "[" + heading + "]\n" + part : part;
+                chunks.add(SemanticChunk.builder()
+                    .index(index[0]++)
+                    .content(content)
+                    .chunkType("TABLE")
+                    .sectionHeader(heading)
+                    .isLeaf(true)
+                    .tokenCount(estimateTokens(content))
+                    .build());
+            }
+        }
+        return chunks;
+    }
+
+    /**
+     * Splits into sections at Markdown heading boundaries. Headings are detected on the raw text
+     * (so each section's body still carries its own code/tables for {@link #extractCode} and
+     * {@link #extractTables} to pull out) — but a heading-shaped line inside a fenced code block
+     * (a Python/shell/YAML comment like {@code # Note: ...}) must not be mistaken for a real
+     * section boundary, so any heading match falling inside a fenced code block's range is
+     * skipped.
+     */
     private List<Section> splitIntoSections(String text) {
+        List<int[]> codeRanges = new ArrayList<>();
+        Matcher codeMatcher = FENCED_CODE_BLOCK.matcher(text);
+        while (codeMatcher.find()) {
+            codeRanges.add(new int[]{codeMatcher.start(), codeMatcher.end()});
+        }
+
         List<Section> sections = new ArrayList<>();
         Matcher headings = HEADING.matcher(text);
 
         List<int[]> headingPositions = new ArrayList<>();
         List<String> headingTexts = new ArrayList<>();
         while (headings.find()) {
+            if (isInsideAnyRange(headings.start(), codeRanges)) continue;
             headingPositions.add(new int[]{headings.start(), headings.end()});
             headingTexts.add(headings.group(2).trim());
         }
@@ -197,6 +223,13 @@ public class SemanticChunker {
         }
 
         return sections;
+    }
+
+    private static boolean isInsideAnyRange(int pos, List<int[]> ranges) {
+        for (int[] range : ranges) {
+            if (pos >= range[0] && pos < range[1]) return true;
+        }
+        return false;
     }
 
     private List<String> splitParagraphs(String text) {

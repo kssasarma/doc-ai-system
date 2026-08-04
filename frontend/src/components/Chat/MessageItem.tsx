@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import MarkdownContent from './MarkdownContent';
 import { ChatMessage, BackendChatResponse } from '../../types';
-import { formatTimestamp } from '../../utils/chatUtils';
+import { formatTimestamp, closeUnterminatedCodeFence } from '../../utils/chatUtils';
 import { submitFeedback, regenerateAnswer } from '../../services/chatService';
 import { createBookmark, deleteBookmarkByMessage } from '../../services/bookmarkService';
 import { toggleUpvote } from '../../services/upvoteService';
@@ -267,7 +267,9 @@ const MessageItem: React.FC<MessageItemProps> = ({
               <div className="whitespace-pre-wrap">{message.content}</div>
             ) : (
               <>
-                <MarkdownContent content={message.content} />
+                <MarkdownContent
+                  content={message.isStreaming ? closeUnterminatedCodeFence(message.content) : message.content}
+                />
                 {message.isStreaming && (
                   <span
                     aria-hidden="true"

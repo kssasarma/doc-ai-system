@@ -99,11 +99,29 @@ function ChatPage() {
     let effectiveChatId = activeSessionId;
     let accumulated = '';
     let flushScheduled = false;
+    let rafId: number | null = null;
+    // Flipped the moment the stream is known to be over (done/aborted/errored) — guards the
+    // *already-scheduled* rAF flush below from firing afterward and stomping isStreaming back to
+    // true. onToken's last delta and the done/error event routinely land in the same synchronous
+    // SSE read, so the rAF for that final flush is still pending when onDone/catch runs; without
+    // this guard it fires on the next paint, re-sets isStreaming: true, and nothing further ever
+    // flips it back off — a permanently blinking cursor on a finished answer.
+    let streamEnded = false;
     const flushContent = () => {
       flushScheduled = false;
+      rafId = null;
+      if (streamEnded) return;
       updateMessageByLocalId(effectiveChatId, assistantMessage.id, {
         content: accumulated, isTyping: false, isStreaming: true,
       });
+    };
+    const endStream = () => {
+      streamEnded = true;
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+        flushScheduled = false;
+      }
     };
 
     try {
@@ -120,10 +138,11 @@ function ChatPage() {
           // jank on long answers.
           if (!flushScheduled) {
             flushScheduled = true;
-            requestAnimationFrame(flushContent);
+            rafId = requestAnimationFrame(flushContent);
           }
         },
         onDone: (payload) => {
+          endStream();
           if (payload.chatId && payload.chatId !== activeSessionId) {
             updateSessionChatId(activeSessionId, payload.chatId);
             effectiveChatId = payload.chatId;
@@ -143,6 +162,7 @@ function ChatPage() {
         },
       }, controller.signal);
     } catch (err) {
+      endStream();
       if (err instanceof DOMException && err.name === 'AbortError') {
         // User clicked "stop" — keep whatever partial answer already streamed in.
         updateMessageByLocalId(effectiveChatId, assistantMessage.id, {

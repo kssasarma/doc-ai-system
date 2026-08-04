@@ -191,6 +191,30 @@ class ChatServiceTest {
         assertThat(resp.getConfidence()).isGreaterThan(0.0);
     }
 
+    @Test
+    void processQuery_withPriorConversationContext_searchesOnRawQuestionOnly() {
+        // Regression test: retrieval used to embed the question concatenated with up to 500 chars
+        // of raw prior-turn text (including the assistant's own previous answer), which drags the
+        // query embedding toward whatever the earlier turns were about instead of this question.
+        // The search call must receive the bare question; chatContext still reaches the LLM
+        // separately via AnswerGenerationService.generateAnswer.
+        stubNewSession();
+        stubDependencies("Answer.");
+        when(contextManager.buildContextPrompt(any())).thenReturn(
+            "Previous conversation summary:\nUser previously asked about totally unrelated topic X "
+                + "and the assistant gave a long answer about topic X in great detail spanning many sentences.");
+
+        ArgumentCaptor<String> searchQueryCaptor = ArgumentCaptor.forClass(String.class);
+
+        ChatRequest req = ChatRequest.builder()
+            .question("What about on Windows?").product("product-a").version("1.0").userId(userId).build();
+
+        chatService.processQuery(req);
+
+        verify(vectorSearchService).search(searchQueryCaptor.capture(), any(SearchScope.class));
+        assertThat(searchQueryCaptor.getValue()).isEqualTo("What about on Windows?");
+    }
+
     // ── helpers ───────────────────────────────────────────────────────────────
 
     private ChatSession stubNewSession() {

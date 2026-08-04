@@ -49,3 +49,16 @@ export function truncateText(text: string, maxLength: number): string {
   if (text.length <= maxLength) return text;
   return text.slice(0, maxLength) + '...';
 }
+
+/**
+ * While a streamed answer is mid-fence (the opening ``` has arrived but not the closing one yet),
+ * the text isn't valid Markdown for a code block — react-markdown renders it as loose inline
+ * content instead, which picks up inline-code styling (colored, no copy button) and visibly
+ * flickers once the real closing fence lands and it snaps into a proper `<pre>` block. Closing
+ * the fence early (removed again the instant the real one arrives) renders it as a code block
+ * from the first line onward instead.
+ */
+export function closeUnterminatedCodeFence(content: string): string {
+  const fenceCount = (content.match(/```/g) ?? []).length;
+  return fenceCount % 2 === 1 ? `${content}\n\`\`\`` : content;
+}
