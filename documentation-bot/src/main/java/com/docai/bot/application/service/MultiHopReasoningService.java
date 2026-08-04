@@ -186,7 +186,19 @@ public class MultiHopReasoningService {
         if ("BULLET_POINTS".equals(answerFormat)) {
             prompt.append("Format using bullet points.\n");
         } else if ("CODE_FIRST".equals(answerFormat)) {
-            prompt.append("Lead with a code example if applicable.\n");
+            // Same grounding rule as AnswerGenerationService.buildPrompt: only ask for a
+            // code-led answer when a code sample actually exists among the retrieved excerpts,
+            // otherwise the model is left forcing a "code first" structure onto pure prose.
+            boolean hasCode = subAnswers.values().stream()
+                .flatMap(List::stream)
+                .anyMatch(RetrievedChunk::containsCode);
+            if (hasCode) {
+                prompt.append("Lead with a code example from the documentation excerpts, then explain.\n");
+            } else {
+                prompt.append("The user prefers code-first answers, but none of these excerpts contain a code "
+                    + "example — explain clearly in prose instead of inventing a code sample that isn't in the "
+                    + "documentation.\n");
+            }
         }
 
         if (chatContext != null && !chatContext.isBlank()) {
