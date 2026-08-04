@@ -64,28 +64,37 @@ public class ChatService {
         log.info("Processing query: {}", request.getQuestion());
         long startMs = System.currentTimeMillis();
 
+        UUID requestedNotebookId = parseNotebookId(request.getNotebookId());
         ChatSession session = getOrCreateSession(request.getChatId(), request.getProduct(),
-                request.getVersion(), request.getUserId());
+                request.getVersion(), request.getUserId(), requestedNotebookId);
+        UUID notebookId = session.getNotebookId();
 
         boolean isFirstExchange = session.getMessageCount() == 0;
 
-        QueryAnalyzerService.QueryContext queryContext =
-                queryAnalyzer.analyzeQuery(request.getQuestion(), request.getChatId());
+        String product = null;
+        String version = null;
+        SearchScope scope;
+        if (notebookId != null) {
+            scope = documentAccessPolicy.resolveNotebookScope(request.getUserId(), TenantContext.get(), notebookId);
+        } else {
+            QueryAnalyzerService.QueryContext queryContext =
+                    queryAnalyzer.analyzeQuery(request.getQuestion(), request.getChatId());
 
-        String product = queryContext.getProduct() != null ? queryContext.getProduct()
-                : (request.getProduct() != null ? request.getProduct() : session.getProduct());
-        String version = queryContext.getVersion() != null ? queryContext.getVersion()
-                : (request.getVersion() != null ? request.getVersion() : session.getVersion());
+            product = queryContext.getProduct() != null ? queryContext.getProduct()
+                    : (request.getProduct() != null ? request.getProduct() : session.getProduct());
+            version = queryContext.getVersion() != null ? queryContext.getVersion()
+                    : (request.getVersion() != null ? request.getVersion() : session.getVersion());
 
-        log.info("Using product: {}, version: {}", product, version);
+            log.info("Using product: {}, version: {}", product, version);
 
-        SearchScope scope = documentAccessPolicy.resolveScope(request.getUserId(), TenantContext.get());
-        // request.getProduct()/getVersion() being explicitly present means the caller pinned a
-        // scope (the chat UI's scope chip) — as opposed to `product`/`version` above, which may
-        // just be the LLM's own best-effort guess from the question text. Only an explicit pin
-        // narrows what's actually searchable; access (scope.documentIds()) always wins regardless.
-        if (request.getProduct() != null || request.getVersion() != null) {
-            scope = scope.withVersionNarrow(request.getProduct(), request.getVersion());
+            scope = documentAccessPolicy.resolveScope(request.getUserId(), TenantContext.get());
+            // request.getProduct()/getVersion() being explicitly present means the caller pinned a
+            // scope (the chat UI's scope chip) — as opposed to `product`/`version` above, which may
+            // just be the LLM's own best-effort guess from the question text. Only an explicit pin
+            // narrows what's actually searchable; access (scope.documentIds()) always wins regardless.
+            if (request.getProduct() != null || request.getVersion() != null) {
+                scope = scope.withVersionNarrow(request.getProduct(), request.getVersion());
+            }
         }
 
         UserPreference prefs = preferenceService.getPreferences(request.getUserId());
@@ -211,20 +220,29 @@ public class ChatService {
         long startMs = System.currentTimeMillis();
         try {
             log.info("Processing streaming query: {}", request.getQuestion());
+            UUID requestedNotebookId = parseNotebookId(request.getNotebookId());
             ChatSession session = getOrCreateSession(request.getChatId(), request.getProduct(),
-                    request.getVersion(), request.getUserId());
+                    request.getVersion(), request.getUserId(), requestedNotebookId);
+            UUID notebookId = session.getNotebookId();
             boolean isFirstExchange = session.getMessageCount() == 0;
 
-            QueryAnalyzerService.QueryContext queryContext =
-                    queryAnalyzer.analyzeQuery(request.getQuestion(), request.getChatId());
-            String product = queryContext.getProduct() != null ? queryContext.getProduct()
-                    : (request.getProduct() != null ? request.getProduct() : session.getProduct());
-            String version = queryContext.getVersion() != null ? queryContext.getVersion()
-                    : (request.getVersion() != null ? request.getVersion() : session.getVersion());
+            String product = null;
+            String version = null;
+            SearchScope scope;
+            if (notebookId != null) {
+                scope = documentAccessPolicy.resolveNotebookScope(request.getUserId(), TenantContext.get(), notebookId);
+            } else {
+                QueryAnalyzerService.QueryContext queryContext =
+                        queryAnalyzer.analyzeQuery(request.getQuestion(), request.getChatId());
+                product = queryContext.getProduct() != null ? queryContext.getProduct()
+                        : (request.getProduct() != null ? request.getProduct() : session.getProduct());
+                version = queryContext.getVersion() != null ? queryContext.getVersion()
+                        : (request.getVersion() != null ? request.getVersion() : session.getVersion());
 
-            SearchScope scope = documentAccessPolicy.resolveScope(request.getUserId(), TenantContext.get());
-            if (request.getProduct() != null || request.getVersion() != null) {
-                scope = scope.withVersionNarrow(request.getProduct(), request.getVersion());
+                scope = documentAccessPolicy.resolveScope(request.getUserId(), TenantContext.get());
+                if (request.getProduct() != null || request.getVersion() != null) {
+                    scope = scope.withVersionNarrow(request.getProduct(), request.getVersion());
+                }
             }
 
             UserPreference prefs = preferenceService.getPreferences(request.getUserId());
@@ -555,7 +573,18 @@ public class ChatService {
             .collect(Collectors.toList());
     }
 
-    private ChatSession getOrCreateSession(String chatIdStr, String product, String version, UUID userId) {
+    private UUID parseNotebookId(String notebookIdStr) {
+        if (notebookIdStr == null || notebookIdStr.isBlank()) return null;
+        try {
+            return UUID.fromString(notebookIdStr);
+        } catch (IllegalArgumentException e) {
+            log.warn("Invalid notebookId format: {}", notebookIdStr);
+            return null;
+        }
+    }
+
+    private ChatSession getOrCreateSession(String chatIdStr, String product, String version, UUID userId,
+            UUID notebookId) {
         if (chatIdStr != null && !chatIdStr.isEmpty()) {
             try {
                 UUID chatId = UUID.fromString(chatIdStr);
@@ -566,20 +595,23 @@ public class ChatService {
                         }
                         return session;
                     })
-                    .orElseGet(() -> createNewSession(product, version, userId));
+                    .orElseGet(() -> createNewSession(product, version, userId, notebookId));
             } catch (IllegalArgumentException e) {
                 log.warn("Invalid chatId format: {}", chatIdStr);
             }
         }
-        return createNewSession(product, version, userId);
+        return createNewSession(product, version, userId, notebookId);
     }
 
-    private ChatSession createNewSession(String product, String version, UUID userId) {
+    private ChatSession createNewSession(String product, String version, UUID userId, UUID notebookId) {
         ChatSession session = ChatSession.builder()
             .userId(userId)
             .tenantId(TenantContext.get())
-            .product(product)
-            .version(version)
+            // A notebook session ignores any caller-supplied product/version — its scope is the
+            // notebook's documents, not a product/version filter (see processQuery).
+            .product(notebookId == null ? product : null)
+            .version(notebookId == null ? version : null)
+            .notebookId(notebookId)
             .messageCount(0)
             .build();
         return sessionRepository.save(session);
@@ -647,6 +679,7 @@ public class ChatService {
                 .title(session.getTitle())
                 .product(session.getProduct())
                 .version(session.getVersion())
+                .notebookId(session.getNotebookId() != null ? session.getNotebookId().toString() : null)
                 .pinned(session.isPinned())
                 .tags(session.getTags() != null ? Arrays.asList(session.getTags()) : Collections.emptyList())
                 .messageCount(session.getMessageCount())
@@ -693,6 +726,10 @@ public class ChatService {
         private String version;
         private String question;
         private UUID userId;
+        /** When present on a brand-new session, pins that session (for its whole lifetime) to
+         * one personal notebook — see {@link DocumentAccessPolicy#resolveNotebookScope}. Ignored
+         * on an existing session; the session's own notebookId always wins. */
+        private String notebookId;
     }
 
     @lombok.Data @lombok.Builder
@@ -780,6 +817,7 @@ public class ChatService {
         private String title;
         private String product;
         private String version;
+        private String notebookId;
         private boolean pinned;
         private List<String> tags;
         private Integer messageCount;

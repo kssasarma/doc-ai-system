@@ -46,6 +46,12 @@ public class ChatSession {
     @Column(name = "version", length = 50)
     private String version;
 
+    /** When set, every message in this session is retrieved only from this personal notebook's
+     * documents (see DocumentAccessPolicy#resolveNotebookScope) instead of the tenant-wide
+     * corpus — fixed for the session's lifetime, never re-scoped mid-conversation. */
+    @Column(name = "notebook_id")
+    private UUID notebookId;
+
     @Column(name = "title", length = 200)
     private String title;
 

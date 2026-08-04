@@ -1,7 +1,6 @@
 package com.docai.ingestor.adapter.rest;
 
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
@@ -11,7 +10,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 
 import org.junit.jupiter.api.AfterEach;
@@ -28,6 +26,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import com.docai.ingestor.application.service.DocumentQuotaService;
 import com.docai.ingestor.application.service.DocumentStorageService;
+import com.docai.ingestor.application.service.DuplicateDocumentException;
 import com.docai.ingestor.application.service.IngestionService;
 import com.docai.ingestor.config.GlobalExceptionHandler;
 import com.docai.ingestor.config.SecurityConfig;
@@ -132,11 +131,9 @@ class DocumentUploadControllerTest {
             .build();
         setId(saved, docId);
 
-        when(documentStorageService.store(any(), any(), any(), anyLong())).thenReturn(saved.getStorageKey());
-        when(documentStorageService.storageType()).thenReturn("S3");
-        when(documentRepository.existsByFileHashAndTenantIdAndStatus(any(), any(), any())).thenReturn(false);
-        when(documentRepository.findByFileHashAndTenantId(any(), any())).thenReturn(Optional.empty());
-        when(documentRepository.save(any())).thenReturn(saved);
+        when(ingestionService.uploadAndIngest(
+                any(), any(), any(), any(), any(), any(), any(), any(), any()))
+            .thenReturn(saved);
 
         mockMvc.perform(multipart("/api/documents/upload")
                 .file(pdfFile("test.pdf"))
@@ -160,8 +157,12 @@ class DocumentUploadControllerTest {
 
     @Test
     void upload_duplicateDocument_returns409() throws Exception {
-        when(documentStorageService.store(any(), any(), any(), anyLong())).thenReturn("documents/" + TENANT_ID + "/dup.pdf");
-        when(documentRepository.existsByFileHashAndTenantIdAndStatus(any(), any(), any())).thenReturn(true);
+        // The storage-cleanup-on-duplicate behavior now lives inside
+        // IngestionService#uploadAndIngest (see IngestionServiceTest) — this slice test only
+        // asserts the controller maps that failure to 409, since IngestionService is mocked here.
+        when(ingestionService.uploadAndIngest(
+                any(), any(), any(), any(), any(), any(), any(), any(), any()))
+            .thenThrow(new DuplicateDocumentException("This exact document has already been processed"));
 
         mockMvc.perform(multipart("/api/documents/upload")
                 .file(pdfFile("test.pdf"))
@@ -171,9 +172,6 @@ class DocumentUploadControllerTest {
             .andExpect(status().isConflict())
             .andExpect(jsonPath("$.error").value(
                 org.hamcrest.Matchers.containsString("already been processed")));
-
-        // The just-stored duplicate must be cleaned back up, not left orphaned in storage.
-        org.mockito.Mockito.verify(documentStorageService).delete("documents/" + TENANT_ID + "/dup.pdf");
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────

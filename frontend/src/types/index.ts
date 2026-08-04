@@ -281,6 +281,29 @@ export interface IngestionStatus {
   totalChunks: number;
 }
 
+// Personal notebook types — a user's own upload-and-chat-with-it document library, distinct from
+// the tenant-wide admin document console (DocumentInfo above) and from Collections (saved chat
+// answers). See document-ingestor's NotebookController.
+export interface Notebook {
+  id: string;
+  name: string;
+  description?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  documentCount: number;
+}
+
+export interface NotebookDocument {
+  id: string;
+  documentName: string;
+  status: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED' | 'QUARANTINED';
+  chunkCount?: number;
+  errorMessage?: string;
+  createdAt?: string;
+  message?: string;
+  error?: string;
+}
+
 // Bookmark types
 export interface Bookmark {
   id: string;

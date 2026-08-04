@@ -54,6 +54,7 @@ public class ChatController {
             .version(request.getVersion())
             .question(request.getQuestion())
             .userId(principal.userId())
+            .notebookId(request.getNotebookId())
             .build();
 
         return ResponseEntity.ok(chatService.processQuery(chatRequest));
@@ -77,6 +78,7 @@ public class ChatController {
             .version(request.getVersion())
             .question(request.getQuestion())
             .userId(principal.userId())
+            .notebookId(request.getNotebookId())
             .build();
 
         SseEmitter emitter = new SseEmitter(0L);
@@ -169,6 +171,7 @@ public class ChatController {
         private String version;
         @NotBlank(message = "Question is required")
         private String question;
+        private String notebookId;
     }
 
     @Data

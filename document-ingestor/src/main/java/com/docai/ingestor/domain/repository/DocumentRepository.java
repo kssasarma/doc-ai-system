@@ -38,6 +38,26 @@ public interface DocumentRepository extends JpaRepository<Document, UUID> {
 
     boolean existsByFileHashAndTenantIdAndStatus(String fileHash, UUID tenantId, IngestionStatus status);
 
+    /** Notebook-scoped dedup check — {@code notebookId} null means the tenant-wide admin corpus
+     * bucket, matching only other admin documents; a real notebookId matches only that one
+     * notebook. Without this split, an identical file already sitting in one user's private
+     * notebook (or the admin corpus) could be silently "reused" as if it were part of a
+     * completely unrelated bucket. */
+    @Query("SELECT COUNT(d) > 0 FROM Document d WHERE d.fileHash = :fileHash AND d.tenantId = :tenantId " +
+           "AND ((:notebookId IS NULL AND d.notebookId IS NULL) OR d.notebookId = :notebookId) " +
+           "AND d.status = :status")
+    boolean existsByFileHashAndTenantIdAndNotebookIdAndStatus(
+        String fileHash, UUID tenantId, UUID notebookId, IngestionStatus status);
+
+    /** Notebook-scoped reuse-or-create lookup — see {@link #existsByFileHashAndTenantIdAndNotebookIdAndStatus}. */
+    @Query("SELECT d FROM Document d WHERE d.fileHash = :fileHash AND d.tenantId = :tenantId " +
+           "AND ((:notebookId IS NULL AND d.notebookId IS NULL) OR d.notebookId = :notebookId)")
+    Optional<Document> findByFileHashAndTenantIdAndNotebookId(String fileHash, UUID tenantId, UUID notebookId);
+
+    /** Documents in one personal notebook — used both to list the notebook's contents and to
+     * cascade-delete them when the notebook itself is deleted. */
+    List<Document> findByNotebookIdOrderByCreatedAtDesc(UUID notebookId);
+
     /** Used at ingestion-completion time to find prior COMPLETED documents for the same
      * (tenant, product, version) that the newly-completed one supersedes. Excludes the new
      * document itself by id. */

@@ -29,6 +29,15 @@ public class Document {
     @Column(name = "tenant_id", nullable = false)
     private UUID tenantId;
 
+    /** Owning user for a personal-notebook document; null for tenant-wide, admin-managed
+     * documents. See {@link Notebook} / {@link com.docai.bot.application.service.DocumentAccessPolicy#resolveNotebookScope}. */
+    @Column(name = "owner_id")
+    private UUID ownerId;
+
+    /** Which personal {@link Notebook} this document belongs to, if any. */
+    @Column(name = "notebook_id")
+    private UUID notebookId;
+
     @Column(nullable = false)
     private String product;
 
