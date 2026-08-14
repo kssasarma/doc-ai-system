@@ -62,14 +62,15 @@ public class AdminUserController {
         if (newRole == User.Role.SUPER_ADMIN) {
             return ResponseEntity.badRequest().body(java.util.Map.of("error", "role must be ADMIN or USER"));
         }
+        UUID guardTenantId = principal.isSuperAdmin() ? target.getTenantId() : principal.tenantId();
         if (target.getRole() == User.Role.ADMIN && newRole != User.Role.ADMIN
-                && userRepository.countByTenantIdAndRoleAndDeactivatedAtIsNull(principal.tenantId(), User.Role.ADMIN) <= 1) {
+                && userRepository.countByTenantIdAndRoleAndDeactivatedAtIsNull(guardTenantId, User.Role.ADMIN) <= 1) {
             return ResponseEntity.badRequest().body(
                 java.util.Map.of("error", "Cannot demote the tenant's last remaining admin"));
         }
         target.setRole(newRole);
         userRepository.save(target);
-        auditLogService.log(principal.userId(), principal.tenantId(), "USER_ROLE_CHANGE", "USER", userId,
+        auditLogService.log(principal.userId(), guardTenantId, "USER_ROLE_CHANGE", "USER", userId,
             "role=" + newRole, null);
         return ResponseEntity.ok(target.getRole().name());
     }
@@ -79,14 +80,15 @@ public class AdminUserController {
     @PostMapping("/{userId}/deactivate")
     public ResponseEntity<?> deactivate(@PathVariable UUID userId, @AuthenticationPrincipal UserPrincipal principal) {
         User target = resolveInCallerTenant(userId, principal);
+        UUID guardTenantId = principal.isSuperAdmin() ? target.getTenantId() : principal.tenantId();
         if (target.getRole() == User.Role.ADMIN
-                && userRepository.countByTenantIdAndRoleAndDeactivatedAtIsNull(principal.tenantId(), User.Role.ADMIN) <= 1) {
+                && userRepository.countByTenantIdAndRoleAndDeactivatedAtIsNull(guardTenantId, User.Role.ADMIN) <= 1) {
             return ResponseEntity.badRequest().body(
                 java.util.Map.of("error", "Cannot deactivate the tenant's last remaining admin"));
         }
         target.setDeactivatedAt(LocalDateTime.now());
         userRepository.save(target);
-        auditLogService.log(principal.userId(), principal.tenantId(), "USER_DEACTIVATE", "USER", userId, null, null);
+        auditLogService.log(principal.userId(), guardTenantId, "USER_DEACTIVATE", "USER", userId, null, null);
         return ResponseEntity.noContent().build();
     }
 
