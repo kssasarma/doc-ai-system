@@ -31,6 +31,29 @@ export async function revokeInvitation(token: string, invitationId: string): Pro
   await axios.delete(`${BOT_URL}/api/admin/invitations/${invitationId}`, { headers: headers(token) });
 }
 
+export type InvitationStatus = 'PENDING' | 'ACCEPTED' | 'EXPIRED' | 'REVOKED';
+
+export interface SuperAdminInvitation {
+  id: string;
+  email: string;
+  role: string;
+  tenantId: string | null;
+  tenantName: string | null;
+  status: InvitationStatus;
+  createdAt: string;
+  expiresAt: string;
+  acceptedAt: string | null;
+  revokedAt: string | null;
+}
+
+export async function listAllInvitations(token: string): Promise<SuperAdminInvitation[]> {
+  const { data } = await axios.get<SuperAdminInvitation[]>(
+    `${BOT_URL}/api/admin/invitations/all`,
+    { headers: headers(token) },
+  );
+  return data;
+}
+
 export async function acceptInvite(token: string, password: string): Promise<AuthResponse> {
   const res = await fetch(`${BOT_URL}/api/auth/accept-invite`, {
     method: 'POST',

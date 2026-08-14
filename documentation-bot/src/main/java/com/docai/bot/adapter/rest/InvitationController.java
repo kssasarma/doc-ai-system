@@ -84,13 +84,24 @@ public class InvitationController {
         return ResponseEntity.ok(pending);
     }
 
+    /** All invitations (every status) sent by the calling super admin — powers the super-admin
+     * invitations dashboard showing PENDING / ACCEPTED / EXPIRED / REVOKED rows. */
+    @GetMapping("/all")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    public ResponseEntity<List<InvitationService.InvitationView>> listAll(
+            @AuthenticationPrincipal UserPrincipal principal) {
+        return ResponseEntity.ok(invitationService.listAllBySuperAdmin(principal.userId()));
+    }
+
     @DeleteMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<?> revoke(@PathVariable UUID id, @AuthenticationPrincipal UserPrincipal principal,
                                      HttpServletRequest request) {
         try {
-            invitationService.revoke(id, principal.tenantId());
-            auditLogService.log(principal.userId(), principal.tenantId(), "INVITATION_REVOKE", "USER", id,
+            // Super admin has no tenant scope — pass null to skip the tenant-boundary check.
+            UUID tenantId = principal.isSuperAdmin() ? null : principal.tenantId();
+            invitationService.revoke(id, tenantId);
+            auditLogService.log(principal.userId(), tenantId, "INVITATION_REVOKE", "USER", id,
                 null, request.getRemoteAddr());
             return ResponseEntity.noContent().build();
         } catch (IllegalArgumentException e) {

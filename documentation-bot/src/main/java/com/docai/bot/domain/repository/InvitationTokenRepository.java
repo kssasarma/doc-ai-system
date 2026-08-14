@@ -24,4 +24,6 @@ public interface InvitationTokenRepository extends JpaRepository<InvitationToken
 
     List<InvitationToken> findByTenantIdAndAcceptedAtIsNullAndRevokedAtIsNullAndExpiresAtAfterOrderByCreatedAtDesc(
         UUID tenantId, LocalDateTime now);
+
+    List<InvitationToken> findByInvitedByOrderByCreatedAtDesc(UUID invitedBy);
 }
