@@ -7,7 +7,11 @@ import java.security.SecureRandom;
 import java.time.LocalDateTime;
 import java.util.Base64;
 import java.util.HexFormat;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
@@ -113,21 +117,65 @@ public class InvitationService {
     public record InviteResult(InvitationToken invitation, String rawToken) {}
 
     @Transactional(readOnly = true)
-    public java.util.List<InvitationToken> listPending(UUID tenantId) {
+    public List<InvitationToken> listPending(UUID tenantId) {
         return invitationRepository
             .findByTenantIdAndAcceptedAtIsNullAndRevokedAtIsNullAndExpiresAtAfterOrderByCreatedAtDesc(
                 tenantId, LocalDateTime.now());
     }
 
+    /** All invitations (any status) sent by a super admin, newest first, with tenant names resolved. */
+    @Transactional(readOnly = true)
+    public List<InvitationView> listAllBySuperAdmin(UUID invitedBy) {
+        List<InvitationToken> tokens = invitationRepository.findByInvitedByOrderByCreatedAtDesc(invitedBy);
+
+        Set<UUID> tenantIds = tokens.stream()
+            .filter(inv -> inv.getTenantId() != null)
+            .map(InvitationToken::getTenantId)
+            .collect(Collectors.toSet());
+        Map<UUID, String> tenantNames = tenantRepository.findAllById(tenantIds).stream()
+            .collect(Collectors.toMap(Tenant::getId, Tenant::getName));
+
+        return tokens.stream().map(inv -> {
+            String status;
+            if (inv.isAccepted()) status = "ACCEPTED";
+            else if (inv.isRevoked()) status = "REVOKED";
+            else if (inv.isExpired()) status = "EXPIRED";
+            else status = "PENDING";
+
+            return new InvitationView(
+                inv.getId().toString(),
+                inv.getEmail(),
+                inv.getRole().name(),
+                inv.getTenantId() != null ? inv.getTenantId().toString() : null,
+                inv.getTenantId() != null ? tenantNames.get(inv.getTenantId()) : null,
+                status,
+                inv.getCreatedAt().toString(),
+                inv.getExpiresAt().toString(),
+                inv.getAcceptedAt() != null ? inv.getAcceptedAt().toString() : null,
+                inv.getRevokedAt() != null ? inv.getRevokedAt().toString() : null
+            );
+        }).toList();
+    }
+
+    public record InvitationView(String id, String email, String role,
+                                  String tenantId, String tenantName,
+                                  String status,
+                                  String createdAt, String expiresAt,
+                                  String acceptedAt, String revokedAt) {}
+
     /** Revokes a still-pending invite so its link stops working — e.g. it was sent to the wrong
-     * address, or the person no longer needs access before ever accepting it. */
+     * address, or the person no longer needs access before ever accepting it.
+     * Pass {@code null} for {@code tenantId} to skip the tenant-scope check (super admin). */
     @Transactional
     public void revoke(UUID invitationId, UUID tenantId) {
         InvitationToken invitation = invitationRepository.findById(invitationId)
-            .filter(inv -> tenantId.equals(inv.getTenantId()))
+            .filter(inv -> tenantId == null || tenantId.equals(inv.getTenantId()))
             .orElseThrow(() -> new IllegalArgumentException("Invitation not found"));
         if (invitation.isAccepted()) {
             throw new IllegalStateException("This invitation has already been accepted");
+        }
+        if (invitation.isRevoked()) {
+            throw new IllegalStateException("This invitation is already revoked");
         }
         invitation.setRevokedAt(LocalDateTime.now());
         invitationRepository.save(invitation);
