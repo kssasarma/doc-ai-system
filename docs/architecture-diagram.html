@@ -1,0 +1,1038 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Docs-inator — System Architecture</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { background: #F0F4F8; }
+    body {
+      background: #F0F4F8;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 36px 20px 60px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    }
+    .page-eyebrow {
+      font-size: 10px;
+      letter-spacing: 4px;
+      color: #4F46E5;
+      font-weight: 700;
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+    .page-title {
+      font-size: 28px;
+      font-weight: 800;
+      color: #0F172A;
+      margin-bottom: 4px;
+      letter-spacing: -0.5px;
+    }
+    .page-sub {
+      font-size: 13px;
+      color: #64748B;
+      margin-bottom: 8px;
+    }
+    .page-hint {
+      font-size: 11px;
+      color: #94A3B8;
+      margin-bottom: 28px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .page-hint svg { opacity: 0.6; }
+    .diagram-outer {
+      width: 100%;
+      max-width: 1380px;
+      overflow-x: auto;
+      border-radius: 12px;
+      box-shadow: 0 4px 32px rgba(15,23,42,0.10), 0 1px 4px rgba(15,23,42,0.06);
+    }
+    svg { display: block; width: 100%; min-width: 900px; }
+
+    /* Clickable elements */
+    .clickable { cursor: pointer; }
+    .clickable:hover .card-bg { filter: brightness(0.96); }
+
+    /* Detail panel */
+    #detail-panel {
+      position: fixed;
+      top: 0; right: -480px;
+      width: 460px;
+      height: 100vh;
+      background: #fff;
+      box-shadow: -4px 0 40px rgba(15,23,42,0.15);
+      z-index: 1000;
+      transition: right 0.3s cubic-bezier(0.4,0,0.2,1);
+      overflow-y: auto;
+      padding: 0;
+    }
+    #detail-panel.open { right: 0; }
+    #panel-header {
+      padding: 28px 28px 20px;
+      border-bottom: 1px solid #E2E8F0;
+      position: sticky;
+      top: 0;
+      background: #fff;
+      z-index: 2;
+    }
+    #panel-close {
+      position: absolute;
+      top: 20px; right: 20px;
+      background: #F1F5F9;
+      border: none;
+      border-radius: 50%;
+      width: 32px; height: 32px;
+      cursor: pointer;
+      font-size: 18px;
+      color: #64748B;
+      display: flex; align-items: center; justify-content: center;
+      transition: background 0.15s;
+    }
+    #panel-close:hover { background: #E2E8F0; }
+    #panel-icon {
+      width: 44px; height: 44px;
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 22px;
+      margin-bottom: 12px;
+    }
+    #panel-title { font-size: 20px; font-weight: 700; color: #0F172A; margin-bottom: 4px; }
+    #panel-subtitle { font-size: 13px; color: #64748B; }
+    #panel-body { padding: 24px 28px 40px; }
+    .detail-section { margin-bottom: 24px; }
+    .detail-section h3 {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: #94A3B8;
+      margin-bottom: 10px;
+    }
+    .detail-item {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 8px;
+      align-items: flex-start;
+    }
+    .detail-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      margin-top: 6px;
+      flex-shrink: 0;
+    }
+    .detail-text { font-size: 13.5px; color: #334155; line-height: 1.5; }
+    .detail-text strong { color: #0F172A; font-weight: 600; }
+    .detail-tag {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      margin: 2px 3px 2px 0;
+    }
+    .tag-row { display: flex; flex-wrap: wrap; margin-top: 6px; gap: 4px; }
+
+    /* Overlay */
+    #overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(15,23,42,0.25);
+      z-index: 999;
+    }
+    #overlay.open { display: block; }
+  </style>
+</head>
+<body>
+  <p class="page-eyebrow">Docs-inator · System Architecture</p>
+  <h1 class="page-title">AI Documentation Intelligence Platform</h1>
+  <p class="page-sub">Self-hosted · Multi-tenant · RAG-powered · Spring Boot 4 · Java 21 · PostgreSQL + pgvector</p>
+  <p class="page-hint">
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="#94A3B8" stroke-width="1.5"/><path d="M8 7v5M8 5v.5" stroke="#94A3B8" stroke-width="1.5" stroke-linecap="round"/></svg>
+    Click any component to see full details
+  </p>
+
+  <div class="diagram-outer">
+    <svg id="arch-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1360 800"
+         role="img" aria-label="Docs-inator system architecture diagram">
+      <defs>
+        <!-- Subtle dot grid -->
+        <pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse">
+          <circle cx="0.5" cy="0.5" r="0.7" fill="#CBD5E1" opacity="0.5"/>
+        </pattern>
+
+        <!-- Arrow markers -->
+        <marker id="arr" viewBox="0 0 8 6" markerWidth="7" markerHeight="5"
+                refX="7" refY="3" orient="auto">
+          <path d="M 0 0 L 8 3 L 0 6 Z" fill="#64748B"/>
+        </marker>
+        <marker id="arr-b" viewBox="0 0 8 6" markerWidth="7" markerHeight="5"
+                refX="7" refY="3" orient="auto">
+          <path d="M 0 0 L 8 3 L 0 6 Z" fill="#4F46E5"/>
+        </marker>
+        <marker id="arr-t" viewBox="0 0 8 6" markerWidth="7" markerHeight="5"
+                refX="7" refY="3" orient="auto">
+          <path d="M 0 0 L 8 3 L 0 6 Z" fill="#0D9488"/>
+        </marker>
+
+        <!-- Card shadow filter -->
+        <filter id="card-shadow" x="-4%" y="-4%" width="108%" height="108%">
+          <feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#0F172A" flood-opacity="0.07"/>
+        </filter>
+        <filter id="zone-shadow" x="-2%" y="-2%" width="104%" height="108%">
+          <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#0F172A" flood-opacity="0.05"/>
+        </filter>
+      </defs>
+
+      <!-- ── Page background ── -->
+      <rect width="1360" height="800" fill="#F8FAFC" rx="12"/>
+      <rect width="1360" height="800" fill="url(#grid)" rx="12"/>
+
+      <!-- ══════════════════════════════════════════════════════════════════════
+           ZONE 1 — CLIENT LAYER  (y 0–116)
+           ══════════════════════════════════════════════════════════════════════ -->
+      <rect x="0" y="0" width="1360" height="116" fill="#EEF2FF" rx="12"/>
+      <rect x="0" y="6" width="1360" height="110" fill="#EEF2FF"/><!-- bottom-corners flush -->
+      <text x="16" y="18" fill="#4F46E5" font-size="8" font-weight="700"
+            letter-spacing="2.5" font-family="system-ui,sans-serif">CLIENT LAYER</text>
+
+      <!-- React Web UI -->
+      <g class="clickable" data-id="react-ui" tabindex="0" role="button" aria-label="React Web UI details">
+        <rect class="card-bg" x="16" y="24" width="192" height="80" rx="7"
+              fill="#fff" stroke="#C7D2FE" stroke-width="1.5" filter="url(#card-shadow)"/>
+        <rect x="16" y="24" width="6" height="80" rx="3" fill="#6366F1"/>
+        <rect x="20" y="24" width="2" height="80" fill="#6366F1"/>
+        <text x="34" y="42" fill="#4338CA" font-size="11" font-weight="700" font-family="system-ui,sans-serif">React Web UI</text>
+        <text x="34" y="57" fill="#6366F1" font-size="8.5" font-family="system-ui,sans-serif">Vite · TypeScript · Tailwind</text>
+        <text x="34" y="70" fill="#6B7280" font-size="8.5" font-family="system-ui,sans-serif">Recharts · TanStack Query</text>
+        <text x="34" y="83" fill="#9CA3AF" font-size="8" font-family="system-ui,sans-serif">SPA · JWT session</text>
+        <text x="195" y="38" fill="#A5B4FC" font-size="14" font-family="system-ui,sans-serif">⚡</text>
+      </g>
+
+      <!-- Slack Bot -->
+      <g class="clickable" data-id="slack-bot" tabindex="0" role="button" aria-label="Slack Bot details">
+        <rect class="card-bg" x="224" y="24" width="192" height="80" rx="7"
+              fill="#fff" stroke="#C7D2FE" stroke-width="1.5" filter="url(#card-shadow)"/>
+        <rect x="224" y="24" width="6" height="80" rx="3" fill="#4F46E5"/>
+        <rect x="228" y="24" width="2" height="80" fill="#4F46E5"/>
+        <text x="242" y="42" fill="#4338CA" font-size="11" font-weight="700" font-family="system-ui,sans-serif">Slack Bot</text>
+        <text x="242" y="57" fill="#6366F1" font-size="8.5" font-family="system-ui,sans-serif">Node.js · @slack/bolt</text>
+        <text x="242" y="70" fill="#6B7280" font-size="8.5" font-family="system-ui,sans-serif">Socket Mode + HTTP</text>
+        <text x="242" y="83" fill="#9CA3AF" font-size="8" font-family="system-ui,sans-serif">Channel Q&amp;A integration</text>
+        <text x="403" y="38" fill="#A5B4FC" font-size="14" font-family="system-ui,sans-serif">#</text>
+      </g>
+
+      <!-- Teams Bot -->
+      <g class="clickable" data-id="teams-bot" tabindex="0" role="button" aria-label="Teams Bot details">
+        <rect class="card-bg" x="432" y="24" width="192" height="80" rx="7"
+              fill="#fff" stroke="#C7D2FE" stroke-width="1.5" filter="url(#card-shadow)"/>
+        <rect x="432" y="24" width="6" height="80" rx="3" fill="#7C3AED"/>
+        <rect x="436" y="24" width="2" height="80" fill="#7C3AED"/>
+        <text x="450" y="42" fill="#4338CA" font-size="11" font-weight="700" font-family="system-ui,sans-serif">Teams Bot</text>
+        <text x="450" y="57" fill="#7C3AED" font-size="8.5" font-family="system-ui,sans-serif">Node.js · Bot Framework SDK</text>
+        <text x="450" y="70" fill="#6B7280" font-size="8.5" font-family="system-ui,sans-serif">Adaptive cards + threads</text>
+        <text x="450" y="83" fill="#9CA3AF" font-size="8" font-family="system-ui,sans-serif">Microsoft 365 integration</text>
+        <text x="611" y="38" fill="#C4B5FD" font-size="14" font-family="system-ui,sans-serif">⊞</text>
+      </g>
+
+      <!-- VS Code Ext -->
+      <g class="clickable" data-id="vscode-ext" tabindex="0" role="button" aria-label="VS Code Extension details">
+        <rect class="card-bg" x="640" y="24" width="192" height="80" rx="7"
+              fill="#fff" stroke="#C7D2FE" stroke-width="1.5" filter="url(#card-shadow)"/>
+        <rect x="640" y="24" width="6" height="80" rx="3" fill="#0EA5E9"/>
+        <rect x="644" y="24" width="2" height="80" fill="#0EA5E9"/>
+        <text x="658" y="42" fill="#0369A1" font-size="11" font-weight="700" font-family="system-ui,sans-serif">VS Code Ext.</text>
+        <text x="658" y="57" fill="#0EA5E9" font-size="8.5" font-family="system-ui,sans-serif">TypeScript · vscode API</text>
+        <text x="658" y="70" fill="#6B7280" font-size="8.5" font-family="system-ui,sans-serif">WebviewViewProvider</text>
+        <text x="658" y="83" fill="#9CA3AF" font-size="8" font-family="system-ui,sans-serif">Inline IDE Q&amp;A panel</text>
+        <text x="819" y="38" fill="#7DD3FC" font-size="14" font-family="system-ui,sans-serif">⌨</text>
+      </g>
+
+      <!-- Chrome/Edge Ext -->
+      <g class="clickable" data-id="browser-ext" tabindex="0" role="button" aria-label="Browser Extension details">
+        <rect class="card-bg" x="848" y="24" width="192" height="80" rx="7"
+              fill="#fff" stroke="#C7D2FE" stroke-width="1.5" filter="url(#card-shadow)"/>
+        <rect x="848" y="24" width="6" height="80" rx="3" fill="#10B981"/>
+        <rect x="852" y="24" width="2" height="80" fill="#10B981"/>
+        <text x="866" y="42" fill="#065F46" font-size="11" font-weight="700" font-family="system-ui,sans-serif">Chrome / Edge Ext.</text>
+        <text x="866" y="57" fill="#10B981" font-size="8.5" font-family="system-ui,sans-serif">Manifest V3 · Service Worker</text>
+        <text x="866" y="70" fill="#6B7280" font-size="8.5" font-family="system-ui,sans-serif">Content Script</text>
+        <text x="866" y="83" fill="#9CA3AF" font-size="8" font-family="system-ui,sans-serif">Context-aware web overlay</text>
+        <text x="1027" y="38" fill="#6EE7B7" font-size="14" font-family="system-ui,sans-serif">◎</text>
+      </g>
+
+      <!-- CI/CD Webhook -->
+      <g class="clickable" data-id="cicd-webhook" tabindex="0" role="button" aria-label="CI/CD Webhook details">
+        <rect class="card-bg" x="1056" y="24" width="288" height="80" rx="7"
+              fill="#fff" stroke="#BBF7D0" stroke-width="1.5" filter="url(#card-shadow)"/>
+        <rect x="1056" y="24" width="6" height="80" rx="3" fill="#059669"/>
+        <rect x="1060" y="24" width="2" height="80" fill="#059669"/>
+        <text x="1074" y="42" fill="#065F46" font-size="11" font-weight="700" font-family="system-ui,sans-serif">CI / CD Webhook</text>
+        <text x="1074" y="57" fill="#059669" font-size="8.5" font-family="system-ui,sans-serif">HMAC-SHA-256 verified push events</text>
+        <text x="1074" y="70" fill="#6B7280" font-size="8.5" font-family="system-ui,sans-serif">Triggers document re-ingestion on merge</text>
+        <text x="1074" y="83" fill="#9CA3AF" font-size="8" font-family="system-ui,sans-serif">GitHub · GitLab · Bitbucket</text>
+        <text x="1329" y="38" fill="#6EE7B7" font-size="14" font-family="system-ui,sans-serif">⚙</text>
+      </g>
+
+      <!-- Zone bottom border -->
+      <line x1="0" y1="116" x2="1360" y2="116" stroke="#C7D2FE" stroke-width="1" stroke-dasharray="4,4"/>
+
+
+      <!-- ══════════════════════════════════════════════════════════════════════
+           CONNECTOR — Clients → Gateway (y 116–154)
+           ══════════════════════════════════════════════════════════════════════ -->
+      <line x1="680" y1="116" x2="680" y2="150" stroke="#64748B" stroke-width="1.5"
+            stroke-dasharray="4,3" marker-end="url(#arr)"/>
+      <rect x="618" y="124" width="124" height="18" rx="5" fill="#fff" stroke="#E2E8F0" stroke-width="1"/>
+      <text x="680" y="137" text-anchor="middle" fill="#475569" font-size="9" font-weight="600" font-family="system-ui,sans-serif">HTTPS / WSS</text>
+
+
+      <!-- ══════════════════════════════════════════════════════════════════════
+           ZONE 2 — INGRESS GATEWAY (y 154–224)
+           ══════════════════════════════════════════════════════════════════════ -->
+      <rect x="0" y="154" width="1360" height="70" fill="#FFFBEB"/>
+      <text x="16" y="170" fill="#B45309" font-size="8" font-weight="700"
+            letter-spacing="2.5" font-family="system-ui,sans-serif">INGRESS GATEWAY</text>
+
+      <!-- nginx -->
+      <g class="clickable" data-id="nginx" tabindex="0" role="button" aria-label="nginx details">
+        <rect class="card-bg" x="440" y="174" width="480" height="44" rx="7"
+              fill="#fff" stroke="#FCD34D" stroke-width="1.5" filter="url(#card-shadow)"/>
+        <rect x="440" y="174" width="8" height="44" rx="4" fill="#F59E0B"/>
+        <rect x="446" y="174" width="2" height="44" fill="#F59E0B"/>
+        <text x="464" y="193" fill="#92400E" font-size="14" font-weight="800" font-family="system-ui,sans-serif">nginx</text>
+        <text x="512" y="190" fill="#B45309" font-size="10" font-weight="600" font-family="system-ui,sans-serif">Ingress Controller</text>
+        <text x="608" y="190" fill="#D97706" font-size="9" font-family="system-ui,sans-serif">·</text>
+        <text x="616" y="190" fill="#B45309" font-size="10" font-family="system-ui,sans-serif">TLS termination</text>
+        <text x="714" y="190" fill="#D97706" font-size="9" font-family="system-ui,sans-serif">·</text>
+        <text x="722" y="190" fill="#B45309" font-size="10" font-family="system-ui,sans-serif">Reverse proxy</text>
+        <text x="812" y="190" fill="#D97706" font-size="9" font-family="system-ui,sans-serif">·</text>
+        <text x="820" y="190" fill="#B45309" font-size="10" font-family="system-ui,sans-serif">Port 3000 (frontend)</text>
+        <text x="464" y="207" fill="#9CA3AF" font-size="8.5" font-family="system-ui,sans-serif">Rate limiting · Load balancing · Health checks · Static asset serving</text>
+      </g>
+
+      <line x1="0" y1="224" x2="1360" y2="224" stroke="#FDE68A" stroke-width="1" stroke-dasharray="4,4"/>
+
+
+      <!-- ══════════════════════════════════════════════════════════════════════
+           CONNECTOR — Gateway → Services (T-junction, y 224–262)
+           ══════════════════════════════════════════════════════════════════════ -->
+      <line x1="680" y1="218" x2="680" y2="244" stroke="#64748B" stroke-width="1.5" stroke-dasharray="4,3"/>
+      <line x1="344" y1="244" x2="1016" y2="244" stroke="#64748B" stroke-width="1.5" stroke-dasharray="4,3"/>
+      <line x1="344" y1="244" x2="344" y2="262" stroke="#4F46E5" stroke-width="2" marker-end="url(#arr-b)"/>
+      <line x1="1016" y1="244" x2="1016" y2="262" stroke="#0D9488" stroke-width="2" marker-end="url(#arr-t)"/>
+      <rect x="276" y="236" width="56" height="16" rx="4" fill="#EEF2FF"/>
+      <text x="304" y="248" text-anchor="middle" fill="#4F46E5" font-size="9" font-weight="700" font-family="system-ui,sans-serif">/api/*</text>
+      <rect x="983" y="236" width="80" height="16" rx="4" fill="#CCFBF1"/>
+      <text x="1023" y="248" text-anchor="middle" fill="#0D9488" font-size="9" font-weight="700" font-family="system-ui,sans-serif">/api/ingest</text>
+
+
+      <!-- ══════════════════════════════════════════════════════════════════════
+           ZONE 3 — APPLICATION LAYER (y 262–560)
+           ══════════════════════════════════════════════════════════════════════ -->
+      <rect x="0" y="262" width="1360" height="298" fill="#F0F9FF"/>
+      <text x="16" y="278" fill="#0369A1" font-size="8" font-weight="700"
+            letter-spacing="2.5" font-family="system-ui,sans-serif">APPLICATION LAYER</text>
+
+
+      <!-- ── documentation-bot panel (x 8, y 282, w 664, h 270) ─────────────── -->
+      <rect x="8" y="282" width="664" height="270" rx="10"
+            fill="#fff" stroke="#BFDBFE" stroke-width="1.5" filter="url(#zone-shadow)"/>
+      <!-- Service header -->
+      <rect x="8" y="282" width="664" height="42" rx="10" fill="#EFF6FF"/>
+      <rect x="8" y="312" width="664" height="12" fill="#EFF6FF"/>
+      <text x="340" y="302" text-anchor="middle" fill="#1D4ED8" font-size="14" font-weight="800" font-family="system-ui,sans-serif">documentation-bot</text>
+      <text x="340" y="316" text-anchor="middle" fill="#3B82F6" font-size="9" font-family="system-ui,sans-serif">Spring Boot 4 · Java 21 · port :8080 · REST + WebSocket</text>
+
+      <!-- CORE SERVICES sub-zone -->
+      <g class="clickable" data-id="core-services" tabindex="0" role="button" aria-label="Core Services details">
+        <rect class="card-bg" x="18" y="328" width="308" height="214" rx="7"
+              fill="#F8FAFF" stroke="#DBEAFE" stroke-width="1" filter="url(#card-shadow)"/>
+        <text x="172" y="346" text-anchor="middle" fill="#1E40AF" font-size="8.5"
+              font-weight="700" letter-spacing="1.5" font-family="system-ui,sans-serif">CORE SERVICES</text>
+
+        <text x="30" y="366" fill="#1D4ED8" font-size="10" font-weight="700" font-family="system-ui,sans-serif">ChatService</text>
+        <text x="30" y="379" fill="#6B7280" font-size="8.5" font-family="system-ui,sans-serif">Sliding window (10 msgs) · rolling LLM summary at 15</text>
+
+        <text x="30" y="398" fill="#1D4ED8" font-size="10" font-weight="700" font-family="system-ui,sans-serif">VectorSearchService</text>
+        <text x="30" y="411" fill="#6B7280" font-size="8.5" font-family="system-ui,sans-serif">Dense HNSW + lexical tsvector → RRF → MMR (top-7)</text>
+
+        <text x="30" y="430" fill="#1D4ED8" font-size="10" font-weight="700" font-family="system-ui,sans-serif">AnswerGenerationService</text>
+        <text x="30" y="443" fill="#6B7280" font-size="8.5" font-family="system-ui,sans-serif">≥ 0.55 similarity · confidence · citations · follow-ups</text>
+
+        <text x="30" y="462" fill="#1D4ED8" font-size="10" font-weight="700" font-family="system-ui,sans-serif">LLMRouter</text>
+        <text x="30" y="475" fill="#6B7280" font-size="8.5" font-family="system-ui,sans-serif">Smart routing · per-tenant key · Resilience4j CB + bulkhead</text>
+
+        <text x="30" y="494" fill="#1D4ED8" font-size="10" font-weight="700" font-family="system-ui,sans-serif">EmbeddingCacheService</text>
+        <text x="30" y="507" fill="#6B7280" font-size="8.5" font-family="system-ui,sans-serif">Redis · SHA-256(model + text) · 1-hr TTL</text>
+
+        <text x="30" y="526" fill="#1D4ED8" font-size="10" font-weight="700" font-family="system-ui,sans-serif">DocumentAccessPolicy</text>
+        <text x="30" y="539" fill="#6B7280" font-size="8.5" font-family="system-ui,sans-serif">User grants + group memberships → SearchScope</text>
+      </g>
+
+      <!-- INTELLIGENCE + ENTERPRISE sub-zone -->
+      <g class="clickable" data-id="intelligence" tabindex="0" role="button" aria-label="Intelligence and Enterprise details">
+        <rect class="card-bg" x="334" y="328" width="328" height="214" rx="7"
+              fill="#FAFAFF" stroke="#E9D5FF" stroke-width="1" filter="url(#card-shadow)"/>
+        <text x="498" y="346" text-anchor="middle" fill="#7C3AED" font-size="8.5"
+              font-weight="700" letter-spacing="1.5" font-family="system-ui,sans-serif">INTELLIGENCE + ENTERPRISE</text>
+
+        <text x="346" y="366" fill="#7C3AED" font-size="10" font-weight="700" font-family="system-ui,sans-serif">Intelligence Layer</text>
+        <text x="346" y="379" fill="#6B7280" font-size="8.5" font-family="system-ui,sans-serif">Multi-hop · PeopleAlsoAsked · AutoFAQ</text>
+        <text x="346" y="391" fill="#6B7280" font-size="8.5" font-family="system-ui,sans-serif">Version Diff · Gap Reports · Answer Timeline</text>
+
+        <text x="346" y="412" fill="#7C3AED" font-size="10" font-weight="700" font-family="system-ui,sans-serif">Auth &amp; Access Control</text>
+        <text x="346" y="425" fill="#6B7280" font-size="8.5" font-family="system-ui,sans-serif">JWT (HS512) · API Keys (dak_) · OIDC JIT</text>
+        <text x="346" y="437" fill="#6B7280" font-size="8.5" font-family="system-ui,sans-serif">Bucket4j rate-limit · account lockout</text>
+
+        <text x="346" y="458" fill="#7C3AED" font-size="10" font-weight="700" font-family="system-ui,sans-serif">Multi-tenancy</text>
+        <text x="346" y="471" fill="#6B7280" font-size="8.5" font-family="system-ui,sans-serif">Row-level isolation · JWT authority · invitation-only</text>
+        <text x="346" y="483" fill="#6B7280" font-size="8.5" font-family="system-ui,sans-serif">ContextPropagatingTaskDecorator (async safety)</text>
+
+        <text x="346" y="504" fill="#7C3AED" font-size="10" font-weight="700" font-family="system-ui,sans-serif">GDPR Compliance</text>
+        <text x="346" y="517" fill="#6B7280" font-size="8.5" font-family="system-ui,sans-serif">Art.17 erasure (7-day grace) · Art.20 export</text>
+        <text x="346" y="529" fill="#6B7280" font-size="8.5" font-family="system-ui,sans-serif">PII detection · audit_log · AES-256-GCM keys</text>
+      </g>
+
+
+      <!-- ── document-ingestor panel (x 688, y 282, w 664, h 270) ─────────── -->
+      <rect x="688" y="282" width="664" height="270" rx="10"
+            fill="#fff" stroke="#CCFBF1" stroke-width="1.5" filter="url(#zone-shadow)"/>
+      <!-- Service header -->
+      <rect x="688" y="282" width="664" height="42" rx="10" fill="#F0FDFA"/>
+      <rect x="688" y="312" width="664" height="12" fill="#F0FDFA"/>
+      <text x="1020" y="302" text-anchor="middle" fill="#0D9488" font-size="14" font-weight="800" font-family="system-ui,sans-serif">document-ingestor</text>
+      <text x="1020" y="316" text-anchor="middle" fill="#14B8A6" font-size="9" font-family="system-ui,sans-serif">Spring Boot 4 · Java 21 · port :8081 · Async pipeline</text>
+
+      <!-- INGESTION PIPELINE sub-zone -->
+      <g class="clickable" data-id="ingestion-pipeline" tabindex="0" role="button" aria-label="Ingestion Pipeline details">
+        <rect class="card-bg" x="698" y="328" width="308" height="214" rx="7"
+              fill="#F0FDFA" stroke="#CCFBF1" stroke-width="1" filter="url(#card-shadow)"/>
+        <text x="852" y="346" text-anchor="middle" fill="#0D9488" font-size="8.5"
+              font-weight="700" letter-spacing="1.5" font-family="system-ui,sans-serif">INGESTION PIPELINE</text>
+
+        <circle cx="714" cy="366" r="8" fill="#0D9488"/>
+        <text x="714" y="370" text-anchor="middle" fill="#fff" font-size="9" font-weight="700" font-family="system-ui,sans-serif">1</text>
+        <text x="728" y="369" fill="#0F766E" font-size="10" font-weight="700" font-family="system-ui,sans-serif">StructuredTextExtractor</text>
+        <text x="728" y="381" fill="#6B7280" font-size="8.5" font-family="system-ui,sans-serif">Apache Tika → XHTML → Markdown</text>
+
+        <circle cx="714" cy="402" r="8" fill="#0D9488"/>
+        <text x="714" y="406" text-anchor="middle" fill="#fff" font-size="9" font-weight="700" font-family="system-ui,sans-serif">2</text>
+        <text x="728" y="405" fill="#0F766E" font-size="10" font-weight="700" font-family="system-ui,sans-serif">PiiDetectionService</text>
+        <text x="728" y="417" fill="#6B7280" font-size="8.5" font-family="system-ui,sans-serif">SSN · CC · AWS keys → QUARANTINED</text>
+
+        <circle cx="714" cy="438" r="8" fill="#0D9488"/>
+        <text x="714" y="442" text-anchor="middle" fill="#fff" font-size="9" font-weight="700" font-family="system-ui,sans-serif">3</text>
+        <text x="728" y="441" fill="#0F766E" font-size="10" font-weight="700" font-family="system-ui,sans-serif">SemanticChunker</text>
+        <text x="728" y="453" fill="#6B7280" font-size="8.5" font-family="system-ui,sans-serif">800-token budget · 100-token overlap</text>
+
+        <circle cx="714" cy="474" r="8" fill="#0D9488"/>
+        <text x="714" y="478" text-anchor="middle" fill="#fff" font-size="9" font-weight="700" font-family="system-ui,sans-serif">4</text>
+        <text x="728" y="477" fill="#0F766E" font-size="10" font-weight="700" font-family="system-ui,sans-serif">EmbeddingService</text>
+        <text x="728" y="489" fill="#6B7280" font-size="8.5" font-family="system-ui,sans-serif">text-embedding-3-small · 1536-dim · per-tenant key</text>
+
+        <circle cx="714" cy="510" r="8" fill="#0D9488"/>
+        <text x="714" y="514" text-anchor="middle" fill="#fff" font-size="9" font-weight="700" font-family="system-ui,sans-serif">5</text>
+        <text x="728" y="513" fill="#0F766E" font-size="10" font-weight="700" font-family="system-ui,sans-serif">completeIngestion()</text>
+        <text x="728" y="525" fill="#6B7280" font-size="8.5" font-family="system-ui,sans-serif">@Transactional · status COMPLETED · PG NOTIFY</text>
+      </g>
+
+      <!-- SOURCE CONNECTORS sub-zone -->
+      <g class="clickable" data-id="source-connectors" tabindex="0" role="button" aria-label="Source Connectors details">
+        <rect class="card-bg" x="1014" y="328" width="328" height="214" rx="7"
+              fill="#F0F9FF" stroke="#BAE6FD" stroke-width="1" filter="url(#card-shadow)"/>
+        <text x="1178" y="346" text-anchor="middle" fill="#0369A1" font-size="8.5"
+              font-weight="700" letter-spacing="1.5" font-family="system-ui,sans-serif">SOURCE CONNECTORS</text>
+
+        <text x="1026" y="369" fill="#0369A1" font-size="10" font-weight="700" font-family="system-ui,sans-serif">Confluence Cloud</text>
+        <text x="1026" y="382" fill="#6B7280" font-size="8.5" font-family="system-ui,sans-serif">OAuth token · incremental page sync</text>
+
+        <text x="1026" y="403" fill="#0369A1" font-size="10" font-weight="700" font-family="system-ui,sans-serif">GitHub / GitLab</text>
+        <text x="1026" y="416" fill="#6B7280" font-size="8.5" font-family="system-ui,sans-serif">Webhook on push · HMAC-SHA-256 verified</text>
+
+        <text x="1026" y="437" fill="#0369A1" font-size="10" font-weight="700" font-family="system-ui,sans-serif">Directory Watcher</text>
+        <text x="1026" y="450" fill="#6B7280" font-size="8.5" font-family="system-ui,sans-serif">File-system events → auto re-ingest</text>
+
+        <text x="1026" y="474" fill="#DC2626" font-size="10" font-weight="700" font-family="system-ui,sans-serif">SafeUrlValidator</text>
+        <text x="1026" y="487" fill="#6B7280" font-size="8.5" font-family="system-ui,sans-serif">HTTPS-only · no private IPs · 3-hop cap (SSRF)</text>
+
+        <text x="1026" y="511" fill="#0369A1" font-size="10" font-weight="700" font-family="system-ui,sans-serif">StuckDocumentReaper</text>
+        <text x="1026" y="524" fill="#6B7280" font-size="8.5" font-family="system-ui,sans-serif">@Scheduled 5 min · PROCESSING &gt; 30 min → FAILED</text>
+      </g>
+
+      <line x1="0" y1="560" x2="1360" y2="560" stroke="#BAE6FD" stroke-width="1" stroke-dasharray="4,4"/>
+
+
+      <!-- ══════════════════════════════════════════════════════════════════════
+           ZONE 4 — DATA LAYER (y 560–672)
+           ══════════════════════════════════════════════════════════════════════ -->
+      <rect x="0" y="560" width="1360" height="112" fill="#F0FDF4"/>
+      <text x="16" y="576" fill="#15803D" font-size="8" font-weight="700"
+            letter-spacing="2.5" font-family="system-ui,sans-serif">DATA LAYER</text>
+
+      <!-- PostgreSQL -->
+      <g class="clickable" data-id="postgres" tabindex="0" role="button" aria-label="PostgreSQL details">
+        <rect class="card-bg" x="8" y="582" width="432" height="80" rx="7"
+              fill="#fff" stroke="#BBF7D0" stroke-width="1.5" filter="url(#card-shadow)"/>
+        <rect x="8" y="582" width="8" height="80" rx="4" fill="#16A34A"/>
+        <rect x="14" y="582" width="2" height="80" fill="#16A34A"/>
+        <text x="32" y="601" fill="#15803D" font-size="12" font-weight="800" font-family="system-ui,sans-serif">PostgreSQL 16 + pgvector</text>
+        <text x="32" y="617" fill="#16A34A" font-size="9" font-family="system-ui,sans-serif">HNSW index · vector_cosine_ops · 1536-dim embeddings</text>
+        <text x="32" y="631" fill="#6B7280" font-size="8.5" font-family="system-ui,sans-serif">GIN index on tsvector · Flyway separate histories · nightly pg_dump → S3</text>
+        <text x="32" y="645" fill="#6B7280" font-size="8.5" font-family="system-ui,sans-serif">PG LISTEN/NOTIFY · 30+ tables · row-level tenant_id isolation</text>
+        <text x="32" y="657" fill="#9CA3AF" font-size="8" font-family="system-ui,sans-serif">Shared by both services · independent schema histories</text>
+      </g>
+
+      <!-- Redis -->
+      <g class="clickable" data-id="redis" tabindex="0" role="button" aria-label="Redis details">
+        <rect class="card-bg" x="456" y="582" width="432" height="80" rx="7"
+              fill="#fff" stroke="#FED7AA" stroke-width="1.5" filter="url(#card-shadow)"/>
+        <rect x="456" y="582" width="8" height="80" rx="4" fill="#EA580C"/>
+        <rect x="462" y="582" width="2" height="80" fill="#EA580C"/>
+        <text x="480" y="601" fill="#9A3412" font-size="12" font-weight="800" font-family="system-ui,sans-serif">Redis 7</text>
+        <text x="480" y="617" fill="#EA580C" font-size="9" font-family="system-ui,sans-serif">Embedding cache · Rate-limit token buckets (Bucket4j)</text>
+        <text x="480" y="631" fill="#6B7280" font-size="8.5" font-family="system-ui,sans-serif">Key: SHA-256(model + text) · TTL 1 hr · allkeys-lru eviction</text>
+        <text x="480" y="645" fill="#6B7280" font-size="8.5" font-family="system-ui,sans-serif">Shared across service replicas · port 6379</text>
+        <text x="480" y="657" fill="#9CA3AF" font-size="8" font-family="system-ui,sans-serif">Session cache · pub/sub for real-time features</text>
+      </g>
+
+      <!-- SeaweedFS / S3 -->
+      <g class="clickable" data-id="seaweedfs" tabindex="0" role="button" aria-label="SeaweedFS / S3 Object Store details">
+        <rect class="card-bg" x="904" y="582" width="448" height="80" rx="7"
+              fill="#fff" stroke="#E9D5FF" stroke-width="1.5" filter="url(#card-shadow)"/>
+        <rect x="904" y="582" width="8" height="80" rx="4" fill="#7C3AED"/>
+        <rect x="910" y="582" width="2" height="80" fill="#7C3AED"/>
+        <text x="928" y="601" fill="#5B21B6" font-size="12" font-weight="800" font-family="system-ui,sans-serif">SeaweedFS / S3</text>
+        <text x="928" y="617" fill="#7C3AED" font-size="9" font-family="system-ui,sans-serif">S3-compatible object store · document binaries</text>
+        <text x="928" y="631" fill="#6B7280" font-size="8.5" font-family="system-ui,sans-serif">Content-addressed keys · SHA-256 deduplication</text>
+        <text x="928" y="645" fill="#6B7280" font-size="8.5" font-family="system-ui,sans-serif">Dev: SeaweedFS :8333 · Prod: AWS S3 or compatible</text>
+        <text x="928" y="657" fill="#9CA3AF" font-size="8" font-family="system-ui,sans-serif">Pre-signed URLs for secure temporary access</text>
+      </g>
+
+      <line x1="0" y1="672" x2="1360" y2="672" stroke="#BBF7D0" stroke-width="1" stroke-dasharray="4,4"/>
+
+
+      <!-- ══════════════════════════════════════════════════════════════════════
+           ZONE 5 — AI PROVIDERS (y 672–776)
+           ══════════════════════════════════════════════════════════════════════ -->
+      <rect x="0" y="672" width="1360" height="104" fill="#FFFBEB"/>
+      <text x="16" y="688" fill="#B45309" font-size="8" font-weight="700"
+            letter-spacing="2.5" font-family="system-ui,sans-serif">AI PROVIDERS  ·  per-tenant config  ·  AES-256-GCM encrypted keys  ·  no shared platform key</text>
+
+      <!-- OpenAI -->
+      <g class="clickable" data-id="openai" tabindex="0" role="button" aria-label="OpenAI details">
+        <rect class="card-bg" x="8" y="694" width="664" height="72" rx="7"
+              fill="#fff" stroke="#FDE68A" stroke-width="1.5" filter="url(#card-shadow)"/>
+        <rect x="8" y="694" width="8" height="72" rx="4" fill="#D97706"/>
+        <rect x="14" y="694" width="2" height="72" fill="#D97706"/>
+        <text x="32" y="716" fill="#92400E" font-size="13" font-weight="800" font-family="system-ui,sans-serif">OpenAI</text>
+        <text x="32" y="732" fill="#B45309" font-size="9.5" font-family="system-ui,sans-serif">Chat: GPT-4o (complex) · GPT-4o-mini (simple) · Smart routing via LLMRouter</text>
+        <text x="32" y="747" fill="#6B7280" font-size="8.5" font-family="system-ui,sans-serif">Embeddings: text-embedding-3-small · 1536-dim · Resilience4j circuit breaker + bulkhead (5 concurrent)</text>
+        <text x="32" y="759" fill="#9CA3AF" font-size="8" font-family="system-ui,sans-serif">Per-tenant API key · AES-256-GCM encrypted at rest · no fallback platform key</text>
+      </g>
+
+      <!-- Anthropic -->
+      <g class="clickable" data-id="anthropic" tabindex="0" role="button" aria-label="Anthropic details">
+        <rect class="card-bg" x="688" y="694" width="664" height="72" rx="7"
+              fill="#fff" stroke="#FECACA" stroke-width="1.5" filter="url(#card-shadow)"/>
+        <rect x="688" y="694" width="8" height="72" rx="4" fill="#DC2626"/>
+        <rect x="694" y="694" width="2" height="72" fill="#DC2626"/>
+        <text x="712" y="716" fill="#991B1B" font-size="13" font-weight="800" font-family="system-ui,sans-serif">Anthropic</text>
+        <text x="712" y="732" fill="#DC2626" font-size="9.5" font-family="system-ui,sans-serif">Claude Sonnet · Optional per-tenant provider choice</text>
+        <text x="712" y="747" fill="#6B7280" font-size="8.5" font-family="system-ui,sans-serif">Same smart-routing and Resilience4j resilience as OpenAI · AnthropicLLMProvider via Spring AI 2.0</text>
+        <text x="712" y="759" fill="#9CA3AF" font-size="8" font-family="system-ui,sans-serif">Per-tenant API key · AES-256-GCM encrypted at rest · no fallback platform key</text>
+      </g>
+
+      <!-- Zone separator before footer -->
+      <line x1="0" y1="776" x2="1360" y2="776" stroke="#E2E8F0" stroke-width="1"/>
+
+
+      <!-- ══════════════════════════════════════════════════════════════════════
+           FOOTER — DEPLOYMENT (y 776–800)
+           ══════════════════════════════════════════════════════════════════════ -->
+      <rect x="0" y="776" width="1360" height="24" fill="#F8FAFC"/>
+      <text x="16" y="791" fill="#64748B" font-size="9" font-weight="700" font-family="system-ui,sans-serif">DEPLOYMENT</text>
+
+      <rect x="98" y="781" width="98" height="14" rx="3" fill="#EEF2FF" stroke="#C7D2FE" stroke-width="0.8"/>
+      <text x="147" y="791" text-anchor="middle" fill="#4F46E5" font-size="8" font-weight="600" font-family="system-ui,sans-serif">Docker Compose</text>
+      <rect x="204" y="781" width="82" height="14" rx="3" fill="#EEF2FF" stroke="#C7D2FE" stroke-width="0.8"/>
+      <text x="245" y="791" text-anchor="middle" fill="#4F46E5" font-size="8" font-weight="600" font-family="system-ui,sans-serif">Kubernetes</text>
+      <rect x="294" y="781" width="44" height="14" rx="3" fill="#EEF2FF" stroke="#C7D2FE" stroke-width="0.8"/>
+      <text x="316" y="791" text-anchor="middle" fill="#4F46E5" font-size="8" font-weight="600" font-family="system-ui,sans-serif">Helm</text>
+      <rect x="346" y="781" width="34" height="14" rx="3" fill="#EEF2FF" stroke="#C7D2FE" stroke-width="0.8"/>
+      <text x="363" y="791" text-anchor="middle" fill="#4F46E5" font-size="8" font-weight="600" font-family="system-ui,sans-serif">HPA</text>
+      <rect x="388" y="781" width="120" height="14" rx="3" fill="#F0FDF4" stroke="#BBF7D0" stroke-width="0.8"/>
+      <text x="448" y="791" text-anchor="middle" fill="#16A34A" font-size="8" font-weight="600" font-family="system-ui,sans-serif">nightly pg_dump → S3</text>
+
+      <text x="680" y="793" text-anchor="middle" fill="#94A3B8" font-size="8" font-family="system-ui,sans-serif">Both services share one PostgreSQL — Flyway migration histories kept in separate schema_history tables · MIT License</text>
+    </svg>
+  </div>
+
+  <!-- Overlay -->
+  <div id="overlay"></div>
+
+  <!-- Detail Panel -->
+  <div id="detail-panel" role="dialog" aria-modal="true" aria-labelledby="panel-title">
+    <div id="panel-header">
+      <button id="panel-close" aria-label="Close details">✕</button>
+      <div id="panel-icon"></div>
+      <div id="panel-title"></div>
+      <div id="panel-subtitle"></div>
+    </div>
+    <div id="panel-body"></div>
+  </div>
+
+  <script>
+    const DETAILS = {
+      'react-ui': {
+        icon: '⚡', iconBg: '#EEF2FF', iconColor: '#4F46E5',
+        title: 'React Web UI',
+        subtitle: 'Primary user interface — Vite · TypeScript · Tailwind CSS',
+        color: '#4F46E5',
+        sections: [
+          { heading: 'Stack', items: [
+            { label: 'Framework', value: 'React 18 with TypeScript' },
+            { label: 'Build tool', value: 'Vite (HMR, optimized bundle)' },
+            { label: 'Styling', value: 'Tailwind CSS utility-first' },
+            { label: 'Charts', value: 'Recharts for analytics dashboards' },
+            { label: 'Data fetching', value: 'TanStack Query — cache, retries, pagination' },
+          ]},
+          { heading: 'Authentication', items: [
+            { label: 'Session', value: 'JWT stored in memory (not localStorage)' },
+            { label: 'Refresh', value: 'Silent token refresh via interceptor' },
+            { label: 'OIDC', value: 'JIT provisioning with identity provider' },
+          ]},
+          { heading: 'Features', items: [
+            { label: 'Chat', value: 'Real-time Q&A via WebSocket connection' },
+            { label: 'History', value: 'Per-session conversation timeline' },
+            { label: 'Analytics', value: 'Usage, confidence scores, citation explorer' },
+            { label: 'Admin', value: 'Tenant config, user management, connector setup' },
+          ]},
+          { heading: 'Served by', items: [
+            { label: 'Gateway', value: 'nginx on port 3000 as static SPA' },
+          ]},
+        ]
+      },
+      'slack-bot': {
+        icon: '#', iconBg: '#EEF2FF', iconColor: '#4F46E5',
+        title: 'Slack Bot',
+        subtitle: 'Node.js integration client — @slack/bolt framework',
+        color: '#4F46E5',
+        sections: [
+          { heading: 'Technology', items: [
+            { label: 'Runtime', value: 'Node.js' },
+            { label: 'Framework', value: '@slack/bolt — Socket Mode + HTTP events' },
+            { label: 'Protocols', value: 'Socket Mode (real-time) + HTTP Events API' },
+          ]},
+          { heading: 'Capabilities', items: [
+            { label: 'Channel Q&A', value: 'Answer @mentions in any channel' },
+            { label: 'DM support', value: 'Direct message conversations' },
+            { label: 'Slash commands', value: '/ask, /search commands' },
+            { label: 'Threading', value: 'Replies in Slack threads' },
+          ]},
+          { heading: 'Security', items: [
+            { label: 'Verification', value: 'Slack signing secret validation on all events' },
+            { label: 'Auth', value: 'Bot token scoped to workspace' },
+          ]},
+        ]
+      },
+      'teams-bot': {
+        icon: '⊞', iconBg: '#F5F3FF', iconColor: '#7C3AED',
+        title: 'Teams Bot',
+        subtitle: 'Node.js integration — Microsoft Bot Framework SDK',
+        color: '#7C3AED',
+        sections: [
+          { heading: 'Technology', items: [
+            { label: 'Runtime', value: 'Node.js' },
+            { label: 'SDK', value: 'Bot Framework SDK v4' },
+            { label: 'UI', value: 'Adaptive Cards for rich responses' },
+          ]},
+          { heading: 'Capabilities', items: [
+            { label: 'Teams channels', value: 'Q&A in any Teams channel' },
+            { label: 'Threads', value: 'Threaded conversation support' },
+            { label: 'Personal chat', value: '1:1 bot conversations' },
+          ]},
+          { heading: 'Auth', items: [
+            { label: 'Registration', value: 'Azure Bot Service app registration' },
+            { label: 'Token', value: 'MSI / client credential flow' },
+          ]},
+        ]
+      },
+      'vscode-ext': {
+        icon: '⌨', iconBg: '#F0F9FF', iconColor: '#0EA5E9',
+        title: 'VS Code Extension',
+        subtitle: 'IDE integration — TypeScript · vscode API',
+        color: '#0369A1',
+        sections: [
+          { heading: 'Technology', items: [
+            { label: 'Language', value: 'TypeScript' },
+            { label: 'API', value: 'VS Code Extension API' },
+            { label: 'UI', value: 'WebviewViewProvider — embedded web panel' },
+          ]},
+          { heading: 'Capabilities', items: [
+            { label: 'Inline Q&A', value: 'Ask questions in the editor sidebar' },
+            { label: 'Context', value: 'Sends selected code / file context automatically' },
+            { label: 'Citations', value: 'Jump to source docs from answers' },
+          ]},
+          { heading: 'Distribution', items: [
+            { label: 'Package', value: '.vsix packaged extension' },
+            { label: 'Target', value: 'VS Code & VS Code-compatible editors' },
+          ]},
+        ]
+      },
+      'browser-ext': {
+        icon: '◎', iconBg: '#F0FDF4', iconColor: '#10B981',
+        title: 'Chrome / Edge Extension',
+        subtitle: 'Browser integration — Manifest V3 · Service Worker',
+        color: '#10B981',
+        sections: [
+          { heading: 'Technology', items: [
+            { label: 'Manifest', value: 'Manifest V3 — modern Chrome extension standard' },
+            { label: 'Background', value: 'Service Worker (persistent-free model)' },
+            { label: 'Injection', value: 'Content Script for page-aware overlay' },
+          ]},
+          { heading: 'Capabilities', items: [
+            { label: 'Context-aware', value: 'Reads page content to form queries' },
+            { label: 'Overlay', value: 'Non-intrusive floating Q&A widget' },
+            { label: 'Popup', value: 'Extension popup for quick questions' },
+          ]},
+          { heading: 'Compatibility', items: [
+            { label: 'Browsers', value: 'Chrome 88+, Microsoft Edge, Brave' },
+          ]},
+        ]
+      },
+      'cicd-webhook': {
+        icon: '⚙', iconBg: '#F0FDF4', iconColor: '#059669',
+        title: 'CI / CD Webhook',
+        subtitle: 'Automated ingestion trigger on code merge',
+        color: '#059669',
+        sections: [
+          { heading: 'How it works', items: [
+            { label: 'Trigger', value: 'Push event from CI/CD system on merge to main' },
+            { label: 'Action', value: 'Calls document-ingestor /api/ingest endpoint' },
+            { label: 'Result', value: 'Updated docs indexed within minutes of merge' },
+          ]},
+          { heading: 'Security', items: [
+            { label: 'Verification', value: 'HMAC-SHA-256 signature on every payload' },
+            { label: 'Secrets', value: 'Webhook secret stored per-tenant, encrypted' },
+            { label: 'Replay protection', value: 'Timestamp validation (±5 min window)' },
+          ]},
+          { heading: 'Supported platforms', items: [
+            { label: 'GitHub', value: 'GitHub Actions · GitHub webhooks' },
+            { label: 'GitLab', value: 'GitLab CI · GitLab webhooks' },
+            { label: 'Bitbucket', value: 'Bitbucket Pipelines' },
+          ]},
+        ]
+      },
+      'nginx': {
+        icon: '⚖', iconBg: '#FFFBEB', iconColor: '#F59E0B',
+        title: 'nginx — Ingress Controller',
+        subtitle: 'Reverse proxy · TLS termination · load balancing · port 3000',
+        color: '#B45309',
+        sections: [
+          { heading: 'Routing', items: [
+            { label: '/api/*', value: 'Proxied to documentation-bot :8080' },
+            { label: '/api/ingest*', value: 'Proxied to document-ingestor :8081' },
+            { label: '/', value: 'Serves React SPA static files (port 3000)' },
+          ]},
+          { heading: 'Features', items: [
+            { label: 'TLS', value: 'TLS termination — plain HTTP internally' },
+            { label: 'Rate limiting', value: 'Connection and request rate limits' },
+            { label: 'WebSocket', value: 'WebSocket proxy (upgrade headers)' },
+            { label: 'Compression', value: 'gzip for text assets' },
+          ]},
+          { heading: 'Deployment', items: [
+            { label: 'Docker', value: 'Official nginx image in docker-compose' },
+            { label: 'Kubernetes', value: 'Ingress Controller with nginx ingress class' },
+          ]},
+        ]
+      },
+      'core-services': {
+        icon: '🔧', iconBg: '#EFF6FF', iconColor: '#1D4ED8',
+        title: 'Core Services — documentation-bot',
+        subtitle: 'RAG pipeline, chat, access control · Spring Boot 4 · Java 21',
+        color: '#1D4ED8',
+        sections: [
+          { heading: 'RAG Pipeline', items: [
+            { label: 'VectorSearchService', value: 'Dense cosine HNSW + lexical tsvector → Reciprocal Rank Fusion → MMR re-ranking, returns top-7 chunks' },
+            { label: 'AnswerGenerationService', value: 'Requires ≥ 0.55 similarity. Attaches confidence score, inline citations, and suggested follow-up questions' },
+            { label: 'EmbeddingCacheService', value: 'SHA-256(model + text) → Redis. 1-hour TTL. Saves ~70% of embedding API calls' },
+          ]},
+          { heading: 'Conversation', items: [
+            { label: 'ChatService', value: 'Sliding window of last 10 messages. When window hits 15 messages, generates a rolling LLM summary to preserve context without token explosion' },
+          ]},
+          { heading: 'Access Control', items: [
+            { label: 'DocumentAccessPolicy', value: 'User grants + group memberships → SearchScope filter applied to every vector query' },
+            { label: 'LLMRouter', value: 'Selects provider (OpenAI / Anthropic) based on query complexity. Uses per-tenant API key. Wraps calls in Resilience4j circuit breaker + bulkhead (5 concurrent max)' },
+          ]},
+        ]
+      },
+      'intelligence': {
+        icon: '🧠', iconBg: '#F5F3FF', iconColor: '#7C3AED',
+        title: 'Intelligence + Enterprise',
+        subtitle: 'Advanced AI features · Auth · Multi-tenancy · GDPR',
+        color: '#7C3AED',
+        sections: [
+          { heading: 'Intelligence Layer', items: [
+            { label: 'Multi-hop', value: 'Chains multiple retrieval steps for complex questions' },
+            { label: 'PeopleAlsoAsked', value: 'Auto-generates related questions from answer context' },
+            { label: 'AutoFAQ', value: 'Periodically clusters queries to surface common questions' },
+            { label: 'Version Diff', value: 'Detects content changes between document versions' },
+            { label: 'Answer Timeline', value: 'Tracks how answers evolve as docs update' },
+          ]},
+          { heading: 'Authentication', items: [
+            { label: 'JWT', value: 'HS512 signed tokens, authority claim not overridable by HTTP header' },
+            { label: 'API Keys', value: 'dak_ prefix, SHA-256 hashed at rest, shown once at creation' },
+            { label: 'OIDC JIT', value: 'Just-in-time provisioning from identity provider' },
+            { label: 'Rate limiting', value: 'Bucket4j sliding-window per-user and per-tenant' },
+            { label: 'Lockout', value: 'Account lockout after N failed auth attempts' },
+          ]},
+          { heading: 'Multi-tenancy', items: [
+            { label: 'Isolation', value: 'Row-level tenant_id on every table — no cross-tenant leakage possible' },
+            { label: 'JWT authority', value: 'Tenant resolved from JWT, never from request header' },
+            { label: 'Signup', value: 'Invitation-only — no self-registration' },
+            { label: 'Async safety', value: 'ContextPropagatingTaskDecorator ensures tenant context propagates through @Async threads' },
+          ]},
+          { heading: 'GDPR', items: [
+            { label: 'Art. 17 — Erasure', value: '7-day soft-delete grace period then hard delete of all user data' },
+            { label: 'Art. 20 — Portability', value: 'Full data export in structured JSON format' },
+            { label: 'PII detection', value: 'Detects sensitive data in documents before indexing' },
+            { label: 'Audit log', value: 'Immutable audit_log table — all data-access events' },
+            { label: 'Key encryption', value: 'LLM API keys: AES-256-GCM, per-tenant, no platform fallback' },
+          ]},
+        ]
+      },
+      'ingestion-pipeline': {
+        icon: '📥', iconBg: '#F0FDFA', iconColor: '#0D9488',
+        title: 'Ingestion Pipeline',
+        subtitle: 'document-ingestor · 5-step async processing · Spring Boot 4',
+        color: '#0D9488',
+        sections: [
+          { heading: 'Step 1 — Extraction', items: [
+            { label: 'StructuredTextExtractor', value: 'Apache Tika parses PDF, DOCX, HTML, Markdown → XHTML intermediate → clean Markdown output' },
+          ]},
+          { heading: 'Step 2 — PII Scanning', items: [
+            { label: 'PiiDetectionService', value: 'Regex + ML patterns detect: SSN, credit cards, AWS access keys, email addresses, phone numbers. Documents flagged → status QUARANTINED, never indexed' },
+          ]},
+          { heading: 'Step 3 — Chunking', items: [
+            { label: 'SemanticChunker', value: '800-token budget per chunk, 100-token overlap between adjacent chunks. Handles code blocks, tables, and prose sections separately to preserve semantic boundaries' },
+          ]},
+          { heading: 'Step 4 — Embedding', items: [
+            { label: 'EmbeddingService', value: 'Calls OpenAI text-embedding-3-small (1536-dim). Uses per-tenant API key — AES-256-GCM decrypted at call time. Cached in Redis to avoid re-embedding unchanged chunks' },
+          ]},
+          { heading: 'Step 5 — Commit', items: [
+            { label: 'completeIngestion()', value: 'Single @Transactional boundary: writes all chunks, vectors, and metadata atomically. Updates status to COMPLETED. Sends PG NOTIFY to wake any listeners' },
+          ]},
+        ]
+      },
+      'source-connectors': {
+        icon: '🔌', iconBg: '#F0F9FF', iconColor: '#0369A1',
+        title: 'Source Connectors',
+        subtitle: 'document-ingestor · External content sources',
+        color: '#0369A1',
+        sections: [
+          { heading: 'Confluence Cloud', items: [
+            { label: 'Auth', value: 'OAuth 2.0 token stored encrypted per-tenant' },
+            { label: 'Sync', value: 'Incremental page sync — only changed pages re-ingested' },
+            { label: 'Spaces', value: 'Configurable space/page filter per tenant' },
+          ]},
+          { heading: 'GitHub / GitLab', items: [
+            { label: 'Trigger', value: 'Webhook on push event (configurable branches)' },
+            { label: 'Security', value: 'HMAC-SHA-256 signature verification on all payloads' },
+            { label: 'Content', value: 'Markdown, RST, AsciiDoc, code files with comments' },
+          ]},
+          { heading: 'Directory Watcher', items: [
+            { label: 'Mechanism', value: 'Java WatchService on configured filesystem paths' },
+            { label: 'Events', value: 'CREATE, MODIFY events trigger re-ingestion' },
+            { label: 'Use case', value: 'NFS mounts, on-prem doc folders, local dev' },
+          ]},
+          { heading: 'Security', items: [
+            { label: 'SafeUrlValidator', value: 'All outbound HTTP fetches validated: HTTPS-only, no private IP ranges (RFC 1918), no localhost, maximum 3 redirect hops. Prevents SSRF attacks' },
+            { label: 'StuckDocumentReaper', value: '@Scheduled every 5 minutes. Any document stuck in PROCESSING > 30 minutes is marked FAILED with error context, preventing silent failures' },
+          ]},
+        ]
+      },
+      'postgres': {
+        icon: '🐘', iconBg: '#F0FDF4', iconColor: '#16A34A',
+        title: 'PostgreSQL 16 + pgvector',
+        subtitle: 'Primary data store · vector search · multi-tenant row isolation',
+        color: '#15803D',
+        sections: [
+          { heading: 'Vector Search', items: [
+            { label: 'Extension', value: 'pgvector — native vector type and index support' },
+            { label: 'Index', value: 'HNSW (Hierarchical Navigable Small World) on embedding columns' },
+            { label: 'Metric', value: 'vector_cosine_ops — cosine similarity distance' },
+            { label: 'Dimensions', value: '1536-dim vectors (OpenAI text-embedding-3-small)' },
+          ]},
+          { heading: 'Full-text Search', items: [
+            { label: 'Index', value: 'GIN index on tsvector column for lexical search' },
+            { label: 'Fusion', value: 'Dense (HNSW) + lexical (GIN) → RRF → MMR ranking' },
+          ]},
+          { heading: 'Schema Management', items: [
+            { label: 'Migrations', value: 'Flyway — separate schema_history per service (documentation-bot, document-ingestor)' },
+            { label: 'Tables', value: '30+ tables; every table has tenant_id column' },
+            { label: 'Isolation', value: 'Row-level tenant isolation — WHERE tenant_id = ? on every query' },
+          ]},
+          { heading: 'Operations', items: [
+            { label: 'Real-time', value: 'PG LISTEN/NOTIFY for event-driven updates between services' },
+            { label: 'Backup', value: 'Nightly pg_dump piped to S3-compatible storage' },
+            { label: 'Shared', value: 'Single PostgreSQL instance for both services; independent Flyway histories' },
+          ]},
+        ]
+      },
+      'redis': {
+        icon: '⚡', iconBg: '#FFF7ED', iconColor: '#EA580C',
+        title: 'Redis 7',
+        subtitle: 'Embedding cache · Rate-limit buckets · Session data',
+        color: '#EA580C',
+        sections: [
+          { heading: 'Embedding Cache', items: [
+            { label: 'Key', value: 'SHA-256(model_name + input_text) — deterministic, collision-resistant' },
+            { label: 'TTL', value: '1 hour — balances freshness vs. API cost savings' },
+            { label: 'Eviction', value: 'allkeys-lru — old cache entries evicted under memory pressure' },
+            { label: 'Benefit', value: 'Eliminates ~70% of embedding API calls for repeated queries' },
+          ]},
+          { heading: 'Rate Limiting', items: [
+            { label: 'Library', value: 'Bucket4j — token bucket algorithm' },
+            { label: 'Scope', value: 'Per-user and per-tenant limits enforced independently' },
+            { label: 'Storage', value: 'Distributed state shared across all service replicas via Redis' },
+          ]},
+          { heading: 'Infrastructure', items: [
+            { label: 'Port', value: '6379 (default)' },
+            { label: 'Shared', value: 'Single Redis instance shared across documentation-bot and document-ingestor replicas' },
+            { label: 'Persistence', value: 'AOF + RDB snapshots (configurable for prod)' },
+          ]},
+        ]
+      },
+      'seaweedfs': {
+        icon: '🗄', iconBg: '#F5F3FF', iconColor: '#7C3AED',
+        title: 'SeaweedFS / S3 Object Store',
+        subtitle: 'Document binary storage · S3-compatible',
+        color: '#7C3AED',
+        sections: [
+          { heading: 'What it stores', items: [
+            { label: 'Raw documents', value: 'Original uploaded files (PDF, DOCX, HTML, etc.)' },
+            { label: 'Database backups', value: 'Nightly pg_dump archives' },
+          ]},
+          { heading: 'Key design', items: [
+            { label: 'Content-addressed', value: 'Keys derived from content SHA-256 — natural deduplication' },
+            { label: 'S3 compatibility', value: 'Full S3 API — same code targets local dev and AWS S3' },
+            { label: 'Pre-signed URLs', value: 'Temporary signed URLs for secure direct access without proxying' },
+          ]},
+          { heading: 'Environments', items: [
+            { label: 'Development', value: 'SeaweedFS in Docker at port 8333' },
+            { label: 'Production', value: 'AWS S3 or any S3-compatible store (MinIO, GCS, Backblaze B2)' },
+          ]},
+        ]
+      },
+      'openai': {
+        icon: '✦', iconBg: '#FFFBEB', iconColor: '#D97706',
+        title: 'OpenAI',
+        subtitle: 'Primary LLM provider — GPT-4o · text-embedding-3-small',
+        color: '#B45309',
+        sections: [
+          { heading: 'Chat models', items: [
+            { label: 'GPT-4o', value: 'Complex multi-hop queries, long-form explanations, code analysis' },
+            { label: 'GPT-4o-mini', value: 'Simple factual lookups — faster, lower cost' },
+            { label: 'Routing', value: 'LLMRouter selects model based on query complexity score' },
+          ]},
+          { heading: 'Embedding model', items: [
+            { label: 'Model', value: 'text-embedding-3-small' },
+            { label: 'Dimensions', value: '1536-dimensional vectors' },
+            { label: 'Cache', value: 'Redis embedding cache — TTL 1h — avoids redundant API calls' },
+          ]},
+          { heading: 'Resilience', items: [
+            { label: 'Circuit breaker', value: 'Resilience4j — opens on repeated failures, half-open probing' },
+            { label: 'Bulkhead', value: 'Max 5 concurrent LLM calls per service instance' },
+            { label: 'Fallback', value: 'Routes to Anthropic if OpenAI circuit is open (when configured)' },
+          ]},
+          { heading: 'Security', items: [
+            { label: 'API key', value: 'Per-tenant — never a shared platform key' },
+            { label: 'Encryption', value: 'AES-256-GCM at rest, decrypted in-memory at call time' },
+            { label: 'Scope', value: 'Tenant A\'s key never touches Tenant B\'s requests' },
+          ]},
+        ]
+      },
+      'anthropic': {
+        icon: '◆', iconBg: '#FFF1F2', iconColor: '#DC2626',
+        title: 'Anthropic',
+        subtitle: 'Alternative LLM provider — Claude Sonnet · Spring AI 2.0',
+        color: '#991B1B',
+        sections: [
+          { heading: 'Model', items: [
+            { label: 'Claude Sonnet', value: 'High-capability model for complex reasoning tasks' },
+            { label: 'Selection', value: 'Optional per-tenant provider choice — tenant can pick OpenAI or Anthropic' },
+          ]},
+          { heading: 'Integration', items: [
+            { label: 'Library', value: 'Spring AI 2.0 — AnthropicLLMProvider implementation' },
+            { label: 'Interface', value: 'Same LLMRouter interface as OpenAI — zero code change to switch' },
+          ]},
+          { heading: 'Resilience', items: [
+            { label: 'Circuit breaker', value: 'Same Resilience4j pattern as OpenAI — circuit breaker + bulkhead' },
+            { label: 'Failover', value: 'LLMRouter can route to Anthropic if OpenAI circuit opens' },
+          ]},
+          { heading: 'Security', items: [
+            { label: 'API key', value: 'Per-tenant Anthropic API key — no shared platform key' },
+            { label: 'Encryption', value: 'AES-256-GCM at rest, same as OpenAI key storage' },
+          ]},
+        ]
+      },
+    };
+
+    function buildDetailHTML(id) {
+      const d = DETAILS[id];
+      if (!d) return null;
+
+      document.getElementById('panel-icon').style.background = d.iconBg;
+      document.getElementById('panel-icon').textContent = d.icon;
+      document.getElementById('panel-title').textContent = d.title;
+      document.getElementById('panel-subtitle').textContent = d.subtitle;
+      document.getElementById('panel-title').style.color = '#0F172A';
+
+      let html = '';
+      for (const section of d.sections) {
+        html += `<div class="detail-section">
+          <h3>${section.heading}</h3>`;
+        for (const item of section.items) {
+          html += `<div class="detail-item">
+            <div class="detail-dot" style="background:${d.color}"></div>
+            <div class="detail-text"><strong>${item.label}:</strong> ${item.value}</div>
+          </div>`;
+        }
+        html += '</div>';
+      }
+      return html;
+    }
+
+    function openPanel(id) {
+      const html = buildDetailHTML(id);
+      if (!html) return;
+      document.getElementById('panel-body').innerHTML = html;
+      document.getElementById('detail-panel').classList.add('open');
+      document.getElementById('overlay').classList.add('open');
+      document.getElementById('panel-close').focus();
+    }
+
+    function closePanel() {
+      document.getElementById('detail-panel').classList.remove('open');
+      document.getElementById('overlay').classList.remove('open');
+    }
+
+    // Click handlers
+    document.querySelectorAll('.clickable').forEach(el => {
+      el.addEventListener('click', () => openPanel(el.dataset.id));
+      el.addEventListener('keydown', e => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openPanel(el.dataset.id); }
+      });
+    });
+
+    document.getElementById('panel-close').addEventListener('click', closePanel);
+    document.getElementById('overlay').addEventListener('click', closePanel);
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') closePanel(); });
+  </script>
+</body>
+</html>
