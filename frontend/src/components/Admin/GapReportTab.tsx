@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { AlertTriangle, Download, ChevronDown, ChevronUp } from 'lucide-react';
+import { AlertTriangle, Download, FileDown, ChevronDown, ChevronUp } from 'lucide-react';
 import {
   listGapReports,
   generateGapReport,
   exportGapReport,
   type GapReport,
 } from '../../services/gapReportService';
+import { exportGapReportAsPptx } from '../../utils/exportGapReportPptx';
 import { useAuth } from '../../context/AuthContext';
 import { fadeInUp, staggerContainer } from '../../lib/motion';
 import PageHeader from '../ui/PageHeader';
@@ -17,9 +18,11 @@ import Badge from '../ui/Badge';
 import Input from '../ui/Input';
 import EmptyState from '../ui/EmptyState';
 import { SkeletonCard } from '../ui/Skeleton';
+import { useToast } from '../ui/Toast';
 
 export default function GapReportTab() {
   const { token } = useAuth();
+  const toast = useToast();
   const [reports, setReports] = useState<GapReport[]>([]);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
@@ -27,6 +30,7 @@ export default function GapReportTab() {
   const [version, setVersion] = useState('');
   const [msg, setMsg] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [exportingPptxId, setExportingPptxId] = useState<string | null>(null);
 
   useEffect(() => { load(); }, []);
 
@@ -56,6 +60,18 @@ export default function GapReportTab() {
     if (!token) return;
     try { await exportGapReport(id, token); }
     catch (e) { console.error(e); }
+  };
+
+  const handleExportPptx = async (report: GapReport) => {
+    setExportingPptxId(report.id);
+    try {
+      await exportGapReportAsPptx(report);
+    } catch (e) {
+      console.error(e);
+      toast.error('Failed to generate presentation');
+    } finally {
+      setExportingPptxId(null);
+    }
   };
 
   return (
@@ -125,6 +141,8 @@ export default function GapReportTab() {
               expanded={expandedId === report.id}
               onToggle={() => setExpandedId(prev => prev === report.id ? null : report.id)}
               onExport={() => handleExport(report.id)}
+              onExportPptx={() => handleExportPptx(report)}
+              exportingPptx={exportingPptxId === report.id}
             />
           ))}
         </motion.div>
@@ -134,12 +152,14 @@ export default function GapReportTab() {
 }
 
 function GapReportCard({
-  report, expanded, onToggle, onExport,
+  report, expanded, onToggle, onExport, onExportPptx, exportingPptx,
 }: {
   report: GapReport;
   expanded: boolean;
   onToggle: () => void;
   onExport: () => void;
+  onExportPptx: () => void;
+  exportingPptx: boolean;
 }) {
   let topics: Array<{ topic: string; queryCount: number; uniqueUsers: number; exampleQuestions: string[]; suggestedDocStub: string }> = [];
   try { topics = JSON.parse(report.gapTopics); } catch { /* ignore */ }
@@ -171,7 +191,16 @@ function GapReportCard({
             onClick={onExport}
             leftIcon={<Download size={12} />}
           >
-            Export
+            Markdown
+          </Button>
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={onExportPptx}
+            loading={exportingPptx}
+            leftIcon={!exportingPptx ? <FileDown size={12} /> : undefined}
+          >
+            PPTX
           </Button>
           <IconButton label={expanded ? 'Collapse gap details' : 'Expand gap details'} variant="ghost" size="sm" onClick={onToggle}>
             {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
