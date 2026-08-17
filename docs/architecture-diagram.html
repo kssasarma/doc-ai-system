@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Docs-inator Architecture</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #080C18;
+      --surface:   #0D1829;
+      --border:    #1E293B;
+      --text-hi:   #E2E8F0;
+      --text-md:   #94A3B8;
+      --text-lo:   #475569;
+      --blue:      #2563EB;
+      --blue-lt:   #60A5FA;
+      --blue-pal:  #BFDBFE;
+      --cyan:      #0EA5E9;
+      --teal:      #0D9488;
+      --teal-lt:   #2DD4BF;
+      --emerald:   #059669;
+      --em-lt:     #6EE7B7;
+      --amber:     #D97706;
+      --am-lt:     #FCD34D;
+      --violet:    #7C3AED;
+      --vio-lt:    #C4B5FD;
+      --rose:      #E11D48;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text-hi);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 32px 16px 48px;
+    }
+
+    .page-title {
+      font-size: 11px;
+      letter-spacing: 4px;
+      color: var(--blue-lt);
+      font-weight: 700;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+
+    .page-name {
+      font-size: 28px;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 6px;
+      font-family: Georgia, 'Times New Roman', serif;
+    }
+
+    .page-sub {
+      font-size: 13px;
+      color: var(--text-md);
+      margin-bottom: 36px;
+    }
+
+    .diagram-wrapper {
+      width: 100%;
+      max-width: 1400px;
+      overflow-x: auto;
+    }
+
+    svg {
+      display: block;
+      width: 100%;
+      min-width: 960px;
+    }
+
+    /* ─── SVG component classes ─── */
+    .zone-label {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 2.5px;
+      text-transform: uppercase;
+    }
+    .svc-title {
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .svc-port {
+      font-size: 9px;
+      fill: #64748B;
+    }
+    .feat-text {
+      font-size: 10px;
+      fill: #94A3B8;
+    }
+    .feat-bold {
+      font-size: 10px;
+      font-weight: 600;
+      fill: #CBD5E1;
+    }
+    .conn-label {
+      font-size: 8.5px;
+      fill: #475569;
+    }
+    .client-label {
+      font-size: 10.5px;
+      font-weight: 600;
+    }
+    .store-title {
+      font-size: 11px;
+      font-weight: 700;
+    }
+    .store-sub {
+      font-size: 9px;
+      fill: #64748B;
+    }
+    .arrow { stroke-width: 1.5; fill: none; }
+    .arrow-head { stroke: none; }
+  </style>
+</head>
+<body>
+  <p class="page-title">Docs-inator · System Architecture</p>
+  <h1 class="page-name">AI Documentation Intelligence Platform</h1>
+  <p class="page-sub">Self-hosted · Multi-tenant · RAG-powered · Spring Boot 4 · Java 21 · pgvector</p>
+
+  <div class="diagram-wrapper">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1360 820" role="img" aria-label="Docs-inator system architecture diagram">
+      <defs>
+        <!-- Dot grid -->
+        <pattern id="grid" x="0" y="0" width="28" height="28" patternUnits="userSpaceOnUse">
+          <circle cx="1" cy="1" r="0.9" fill="#1E293B"/>
+        </pattern>
+
+        <!-- Arrow markers by color -->
+        <marker id="arr-blue"   markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#60A5FA"/></marker>
+        <marker id="arr-violet" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#A78BFA"/></marker>
+        <marker id="arr-teal"   markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#2DD4BF"/></marker>
+        <marker id="arr-amber"  markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#FCD34D"/></marker>
+        <marker id="arr-em"     markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#6EE7B7"/></marker>
+        <marker id="arr-gray"   markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#475569"/></marker>
+        <marker id="arr-amber-r" markerWidth="7" markerHeight="7" refX="1" refY="3" orient="auto"><path d="M7,0 L7,6 L0,3 z" fill="#FCD34D"/></marker>
+
+        <!-- Drop shadow -->
+        <filter id="shadow" x="-15%" y="-15%" width="130%" height="130%">
+          <feDropShadow dx="0" dy="3" stdDeviation="6" flood-color="#000000" flood-opacity="0.45"/>
+        </filter>
+        <filter id="glow-blue" x="-30%" y="-30%" width="160%" height="160%">
+          <feGaussianBlur in="SourceGraphic" stdDeviation="5" result="b"/>
+          <feComposite in="SourceGraphic" in2="b" operator="over"/>
+        </filter>
+      </defs>
+
+      <!-- ─── BACKGROUND ──────────────────────────────────────────────────── -->
+      <rect width="1360" height="820" fill="#080C18"/>
+      <rect width="1360" height="820" fill="url(#grid)" opacity="0.5"/>
+
+      <!-- ─── ZONE: CLIENT LAYER ─────────────────────────────────────────── -->
+      <!-- Zone label -->
+      <text x="30" y="55" class="zone-label" fill="#A78BFA">Client Layer</text>
+
+      <!-- 5 clients, stacked, x=22, w=170, from y=68 -->
+      <!-- React Web UI -->
+      <rect x="22" y="68"  width="170" height="52" rx="6" fill="#1A0E35" stroke="#7C3AED" stroke-width="1.2" filter="url(#shadow)"/>
+      <text x="107" y="90"  text-anchor="middle" class="client-label" fill="#C4B5FD">React Web UI</text>
+      <text x="107" y="107" text-anchor="middle" font-size="9" fill="#6D28D9">Vite · TypeScript · Tailwind</text>
+
+      <!-- Slack Bot -->
+      <rect x="22" y="133" width="170" height="52" rx="6" fill="#1A0E35" stroke="#7C3AED" stroke-width="1.2" filter="url(#shadow)"/>
+      <text x="107" y="155" text-anchor="middle" class="client-label" fill="#C4B5FD">Slack Bot</text>
+      <text x="107" y="172" text-anchor="middle" font-size="9" fill="#6D28D9">Node.js · Bolt · Socket Mode</text>
+
+      <!-- Teams Bot -->
+      <rect x="22" y="198" width="170" height="52" rx="6" fill="#1A0E35" stroke="#7C3AED" stroke-width="1.2" filter="url(#shadow)"/>
+      <text x="107" y="220" text-anchor="middle" class="client-label" fill="#C4B5FD">Teams Bot</text>
+      <text x="107" y="237" text-anchor="middle" font-size="9" fill="#6D28D9">Node.js · Bot Framework SDK</text>
+
+      <!-- VS Code Extension -->
+      <rect x="22" y="263" width="170" height="52" rx="6" fill="#1A0E35" stroke="#7C3AED" stroke-width="1.2" filter="url(#shadow)"/>
+      <text x="107" y="285" text-anchor="middle" class="client-label" fill="#C4B5FD">VS Code Extension</text>
+      <text x="107" y="302" text-anchor="middle" font-size="9" fill="#6D28D9">TypeScript · WebviewViewProvider</text>
+
+      <!-- Chrome / Edge Extension -->
+      <rect x="22" y="328" width="170" height="52" rx="6" fill="#1A0E35" stroke="#7C3AED" stroke-width="1.2" filter="url(#shadow)"/>
+      <text x="107" y="350" text-anchor="middle" class="client-label" fill="#C4B5FD">Chrome / Edge Ext.</text>
+      <text x="107" y="367" text-anchor="middle" font-size="9" fill="#6D28D9">MV3 · Service Worker · Content Script</text>
+
+      <!-- CI/CD Webhook -->
+      <rect x="22" y="393" width="170" height="52" rx="6" fill="#0E1A14" stroke="#059669" stroke-width="1.2" filter="url(#shadow)"/>
+      <text x="107" y="415" text-anchor="middle" class="client-label" fill="#6EE7B7">CI / CD Webhook</text>
+      <text x="107" y="432" text-anchor="middle" font-size="9" fill="#065F46">HMAC-SHA-256 verified push</text>
+
+
+      <!-- ─── ZONE: NGINX GATEWAY ────────────────────────────────────────── -->
+      <!-- arrow connectors clients → nginx -->
+      <!-- React Web -->
+      <line x1="192" y1="94"  x2="260" y2="228" stroke="#A78BFA" stroke-width="1.2" stroke-dasharray="4,3" marker-end="url(#arr-violet)"/>
+      <!-- Slack -->
+      <line x1="192" y1="159" x2="260" y2="235" stroke="#A78BFA" stroke-width="1.2" stroke-dasharray="4,3" marker-end="url(#arr-violet)"/>
+      <!-- Teams -->
+      <line x1="192" y1="224" x2="261" y2="242" stroke="#A78BFA" stroke-width="1.2" stroke-dasharray="4,3" marker-end="url(#arr-violet)"/>
+      <!-- VS Code -->
+      <line x1="192" y1="289" x2="261" y2="253" stroke="#A78BFA" stroke-width="1.2" stroke-dasharray="4,3" marker-end="url(#arr-violet)"/>
+      <!-- Chrome -->
+      <line x1="192" y1="354" x2="261" y2="264" stroke="#A78BFA" stroke-width="1.2" stroke-dasharray="4,3" marker-end="url(#arr-violet)"/>
+      <!-- CI webhook (goes directly to ingestor) -->
+      <line x1="192" y1="419" x2="450" y2="540" stroke="#6EE7B7" stroke-width="1.2" stroke-dasharray="4,3" marker-end="url(#arr-em)"/>
+
+      <!-- nginx box -->
+      <rect x="258" y="198" width="148" height="78" rx="7" fill="#181200" stroke="#D97706" stroke-width="1.5" filter="url(#shadow)"/>
+      <text x="332" y="224" text-anchor="middle" font-size="12" font-weight="700" fill="#FCD34D">nginx</text>
+      <text x="332" y="242" text-anchor="middle" font-size="10" fill="#A16207">Ingress + TLS termination</text>
+      <text x="332" y="258" text-anchor="middle" font-size="9" fill="#78350F">port 3000 (frontend) → /api</text>
+
+      <!-- nginx → documentation-bot -->
+      <line x1="406" y1="224" x2="450" y2="190" stroke="#FCD34D" stroke-width="1.5" marker-end="url(#arr-amber)"/>
+      <!-- nginx → document-ingestor -->
+      <line x1="406" y1="256" x2="450" y2="494" stroke="#FCD34D" stroke-width="1.5" marker-end="url(#arr-amber)"/>
+      <text x="415" y="378" text-anchor="middle" class="conn-label" fill="#78350F" transform="rotate(-68,415,378)">/ api/ingest</text>
+
+      <!-- ─── ZONE: documentation-bot ────────────────────────────────────── -->
+      <!-- Outer box -->
+      <rect x="448" y="64" width="370" height="380" rx="8" fill="#050D1F" stroke="#2563EB" stroke-width="1.5" filter="url(#shadow)"/>
+
+      <!-- Header band -->
+      <rect x="448" y="64" width="370" height="38" rx="8" fill="#0F2040"/>
+      <rect x="448" y="90"  width="370" height="12" fill="#0F2040"/><!-- bottom fill for sharp corner -->
+      <text x="633" y="88"  text-anchor="middle" font-size="13" font-weight="700" fill="#60A5FA">documentation-bot</text>
+      <text x="633" y="102" text-anchor="middle" class="svc-port">Spring Boot 4  ·  Java 21  ·  port 8080</text>
+
+      <!-- REST Controllers row -->
+      <rect x="462" y="115" width="342" height="44" rx="5" fill="#0D1829" stroke="#1D4ED8" stroke-width="0.8"/>
+      <text x="633" y="134" text-anchor="middle" font-size="9" font-weight="700" fill="#93C5FD">REST Controllers</text>
+      <text x="505" y="150" text-anchor="middle" font-size="8.5" fill="#64748B">Chat</text>
+      <text x="580" y="150" text-anchor="middle" font-size="8.5" fill="#64748B">Auth / OIDC</text>
+      <text x="660" y="150" text-anchor="middle" font-size="8.5" fill="#64748B">Admin</text>
+      <text x="740" y="150" text-anchor="middle" font-size="8.5" fill="#64748B">Public API v1</text>
+
+      <!-- Core services -->
+      <rect x="462" y="170" width="218" height="148" rx="5" fill="#071020" stroke="#1E3A6A" stroke-width="0.8"/>
+      <text x="571" y="188" text-anchor="middle" font-size="9" font-weight="700" fill="#60A5FA">Core Services</text>
+      <text x="467" y="208" class="feat-bold">ChatService</text>
+      <text x="467" y="222" class="feat-text">Sliding context · rolling summary @15 msgs</text>
+      <text x="467" y="240" class="feat-bold">VectorSearchService</text>
+      <text x="467" y="254" class="feat-text">Dense HNSW + lexical tsvector → RRF → MMR</text>
+      <text x="467" y="272" class="feat-bold">AnswerGenerationService</text>
+      <text x="467" y="286" class="feat-text">Min. 0.55 cosine · confidence · citations</text>
+      <text x="467" y="304" class="feat-bold">LLMRouter</text>
+      <text x="467" y="318" class="feat-text">OpenAI · Anthropic · smart routing · CB+bulkhead</text>
+
+      <!-- Intelligence services -->
+      <rect x="692" y="170" width="112" height="148" rx="5" fill="#0B0818" stroke="#4C1D95" stroke-width="0.8"/>
+      <text x="748" y="188" text-anchor="middle" font-size="9" font-weight="700" fill="#A78BFA">Intelligence</text>
+      <text x="697" y="208" font-size="9" fill="#C4B5FD">Multi-hop Reasoning</text>
+      <text x="697" y="225" font-size="9" fill="#C4B5FD">People Also Asked</text>
+      <text x="697" y="242" font-size="9" fill="#C4B5FD">Auto-FAQ Generator</text>
+      <text x="697" y="259" font-size="9" fill="#C4B5FD">Version Diff</text>
+      <text x="697" y="276" font-size="9" fill="#C4B5FD">Doc Gap Reports</text>
+      <text x="697" y="293" font-size="9" fill="#C4B5FD">Answer Evolution</text>
+      <text x="697" y="310" font-size="9" fill="#C4B5FD">Session Summary</text>
+
+      <!-- Enterprise / Auth / GDPR row -->
+      <rect x="462" y="328" width="342" height="100" rx="5" fill="#080F14" stroke="#064E3B" stroke-width="0.8"/>
+      <text x="633" y="346" text-anchor="middle" font-size="9" font-weight="700" fill="#6EE7B7">Enterprise Layer</text>
+      <text x="467" y="364" class="feat-bold">TenantService + TenantResolutionFilter</text>
+      <text x="467" y="378" class="feat-text">Row-level isolation · JWT authority · invitation-only signup</text>
+      <text x="467" y="395" class="feat-bold">GDPR: DataRetentionService · DataExportService</text>
+      <text x="467" y="409" class="feat-text">Art.17 erasure (7-day grace) · Art.20 export · PII-aware audit log</text>
+      <text x="467" y="423" class="feat-bold">EmbeddingCacheService</text>
+      <text x="700" y="423" class="feat-text">Redis · SHA-256(model+text) key</text>
+
+      <!-- ─── ZONE: document-ingestor ────────────────────────────────────── -->
+      <rect x="448" y="472" width="370" height="276" rx="8" fill="#04120F" stroke="#0D9488" stroke-width="1.5" filter="url(#shadow)"/>
+      <rect x="448" y="472" width="370" height="38" rx="8" fill="#0A1C18"/>
+      <rect x="448" y="498" width="370" height="12" fill="#0A1C18"/>
+      <text x="633" y="496" text-anchor="middle" font-size="13" font-weight="700" fill="#2DD4BF">document-ingestor</text>
+      <text x="633" y="510" text-anchor="middle" class="svc-port">Spring Boot 4  ·  Java 21  ·  port 8081</text>
+
+      <!-- Pipeline -->
+      <rect x="462" y="523" width="342" height="210" rx="5" fill="#040E0C" stroke="#0F766E" stroke-width="0.8"/>
+      <text x="633" y="540" text-anchor="middle" font-size="9" font-weight="700" fill="#2DD4BF">Ingestion Pipeline</text>
+
+      <!-- Pipeline steps -->
+      <text x="467" y="560" class="feat-bold" fill="#5EEAD4">StructuredTextExtractor</text>
+      <text x="467" y="574" class="feat-text">Apache Tika → XHTML → HtmlToMarkdownConverter → Markdown</text>
+      <text x="467" y="594" class="feat-bold" fill="#5EEAD4">PiiDetectionService</text>
+      <text x="467" y="608" class="feat-text">SSN · CC · AWS keys · email · phone · IP → QUARANTINED status</text>
+      <text x="467" y="628" class="feat-bold" fill="#5EEAD4">SemanticChunker</text>
+      <text x="467" y="642" class="feat-text">800-token budget · 100-token overlap · code/table/prose chunks</text>
+      <text x="467" y="662" class="feat-bold" fill="#5EEAD4">EmbeddingService</text>
+      <text x="467" y="676" class="feat-text">text-embedding-3-small · 1536-dim · batch call · atomic commit</text>
+      <text x="467" y="696" class="feat-bold" fill="#5EEAD4">Source Connectors</text>
+      <text x="467" y="710" class="feat-text">Confluence Cloud · GitHub/GitLab webhook · Directory Watcher</text>
+      <text x="467" y="723" class="feat-bold" fill="#5EEAD4">StuckDocumentReaper</text>
+      <text x="467" y="737" class="feat-text">@Scheduled · marks PROCESSING &gt; 30 min as FAILED</text>
+
+      <!-- ─── INTERNAL SERVICE CALL ──────────────────────────────────────── -->
+      <path d="M 450 340 L 432 340 L 432 536 L 448 536" stroke="#1D4ED8" stroke-width="1.2" stroke-dasharray="5,3" fill="none" marker-end="url(#arr-blue)"/>
+      <text x="426" y="440" text-anchor="middle" font-size="8" fill="#1D4ED8" transform="rotate(-90,426,440)">Internal API (presigned URLs)</text>
+
+      <!-- ─── PG LISTEN/NOTIFY ───────────────────────────────────────────── -->
+      <path d="M 448 590 L 432 590 L 432 360 L 450 360" stroke="#059669" stroke-width="1" stroke-dasharray="3,3" fill="none" marker-end="url(#arr-em)"/>
+      <text x="420" y="478" text-anchor="middle" font-size="7.5" fill="#059669" transform="rotate(-90,420,478)">PG LISTEN/NOTIFY</text>
+
+      <!-- ─── ZONE: DATA LAYER ────────────────────────────────────────────── -->
+      <text x="878" y="55" class="zone-label" fill="#6EE7B7">Data Layer</text>
+
+      <!-- PostgreSQL -->
+      <rect x="868" y="68" width="296" height="116" rx="8" fill="#071A12" stroke="#15803D" stroke-width="1.5" filter="url(#shadow)"/>
+      <text x="1016" y="95"  text-anchor="middle" class="store-title" fill="#86EFAC">PostgreSQL 16 + pgvector</text>
+      <text x="1016" y="114" text-anchor="middle" font-size="10" fill="#16A34A">HNSW index · vector_cosine_ops · 1536-dim</text>
+      <text x="872"  y="133" font-size="9" fill="#15803D">document_chunks (embedding vector(1536), tsvector GIN index)</text>
+      <text x="872"  y="149" font-size="9" fill="#15803D">relational tables · Flyway (separate histories per service)</text>
+      <text x="872"  y="165" font-size="9" fill="#15803D">LISTEN docai_ingestion_completed · nightly pg_dump to S3</text>
+
+      <!-- Redis -->
+      <rect x="868" y="202" width="296" height="96" rx="8" fill="#180E04" stroke="#C2410C" stroke-width="1.5" filter="url(#shadow)"/>
+      <text x="1016" y="228" text-anchor="middle" class="store-title" fill="#FB923C">Redis 7</text>
+      <text x="1016" y="247" text-anchor="middle" font-size="10" fill="#EA580C">Embedding cache · Rate-limit counters</text>
+      <text x="872"  y="266" font-size="9" fill="#9A3412">Key: SHA-256(model_name + query_text)  ·  TTL: 1 hour</text>
+      <text x="872"  y="282" font-size="9" fill="#9A3412">Bucket4j token buckets  ·  shared across service replicas</text>
+
+      <!-- SeaweedFS / S3 -->
+      <rect x="868" y="316" width="296" height="96" rx="8" fill="#130B20" stroke="#6D28D9" stroke-width="1.5" filter="url(#shadow)"/>
+      <text x="1016" y="342" text-anchor="middle" class="store-title" fill="#A78BFA">SeaweedFS / S3</text>
+      <text x="1016" y="361" text-anchor="middle" font-size="10" fill="#7C3AED">S3-compatible object store</text>
+      <text x="872"  y="380" font-size="9" fill="#5B21B6">Document binary storage (port 8333 S3 API)</text>
+      <text x="872"  y="396" font-size="9" fill="#5B21B6">Content-addressed keys  ·  SHA-256 deduplication</text>
+
+      <!-- ─── ZONE: AI PROVIDERS ─────────────────────────────────────────── -->
+      <text x="878" y="440" class="zone-label" fill="#FCD34D">AI Providers (per-tenant, AES-256-GCM)</text>
+
+      <!-- OpenAI -->
+      <rect x="868" y="456" width="296" height="100" rx="8" fill="#140D00" stroke="#D97706" stroke-width="1.5" filter="url(#shadow)"/>
+      <text x="1016" y="481" text-anchor="middle" font-size="13" font-weight="700" fill="#FCD34D">OpenAI</text>
+      <text x="1016" y="500" text-anchor="middle" font-size="10" fill="#B45309">GPT-4o (chat)  ·  text-embedding-3-small</text>
+      <text x="872"  y="519" font-size="9" fill="#92400E">Smart routing: simple query → mini, complex → full</text>
+      <text x="872"  y="536" font-size="9" fill="#92400E">Resilience4j circuit breaker + bulkhead (5 concurrent)</text>
+
+      <!-- Anthropic -->
+      <rect x="868" y="572" width="296" height="88" rx="8" fill="#140009" stroke="#BE123C" stroke-width="1.5" filter="url(#shadow)"/>
+      <text x="1016" y="597" text-anchor="middle" font-size="13" font-weight="700" fill="#FDA4AF">Anthropic</text>
+      <text x="1016" y="616" text-anchor="middle" font-size="10" fill="#E11D48">Claude Sonnet (optional per-tenant config)</text>
+      <text x="872"  y="635" font-size="9" fill="#9F1239">Loaded via AnthropicLLMProvider  ·  same routing logic</text>
+      <text x="872"  y="650" font-size="9" fill="#9F1239">Tenant admin configures provider, model, key, endpoint</text>
+
+      <!-- ─── CONNECTIONS: services → data ──────────────────────────────── -->
+      <!-- doc-bot → PostgreSQL -->
+      <line x1="818" y1="180" x2="866" y2="126" stroke="#15803D" stroke-width="1.3" stroke-dasharray="4,3" marker-end="url(#arr-em)"/>
+      <text x="840" y="158" font-size="8" fill="#15803D">JPA / pgvector</text>
+
+      <!-- doc-bot → Redis -->
+      <line x1="818" y1="290" x2="866" y2="250" stroke="#C2410C" stroke-width="1.2" stroke-dasharray="4,3" marker-end="url(#arr-amber)"/>
+      <text x="840" y="278" font-size="8" fill="#C2410C">GET / SET</text>
+
+      <!-- doc-ingestor → PostgreSQL -->
+      <line x1="818" y1="540" x2="866" y2="160" stroke="#15803D" stroke-width="1.3" stroke-dasharray="4,3" marker-end="url(#arr-em)"/>
+
+      <!-- doc-ingestor → SeaweedFS -->
+      <line x1="818" y1="600" x2="866" y2="364" stroke="#6D28D9" stroke-width="1.2" stroke-dasharray="4,3" marker-end="url(#arr-violet)"/>
+      <text x="840" y="490" font-size="8" fill="#6D28D9">S3 put/get</text>
+
+      <!-- doc-bot LLMRouter → OpenAI -->
+      <path d="M 818 260 L 850 260 L 850 506" stroke="#D97706" stroke-width="1.3" stroke-dasharray="4,3" fill="none" marker-end="url(#arr-amber)"/>
+
+      <!-- doc-bot LLMRouter → Anthropic (optional) -->
+      <path d="M 818 280 L 858 280 L 858 616" stroke="#BE123C" stroke-width="1" stroke-dasharray="3,4" fill="none" marker-end="url(#arr-amber)"/>
+
+      <!-- doc-ingestor EmbeddingService → OpenAI -->
+      <line x1="818" y1="660" x2="866" y2="512" stroke="#D97706" stroke-width="1.2" stroke-dasharray="4,3" marker-end="url(#arr-amber)"/>
+      <text x="841" y="596" font-size="8" fill="#D97706">embed API</text>
+
+      <!-- ─── K8S / DEPLOYMENT BAND (bottom) ─────────────────────────────── -->
+      <rect x="22" y="770" width="1318" height="36" rx="6" fill="#0D1A14" stroke="#064E3B" stroke-width="1"/>
+      <text x="680" y="793" text-anchor="middle" font-size="10" font-weight="700" fill="#6EE7B7">Deployment:</text>
+      <text x="680" y="793" text-anchor="start" dx="56" font-size="10" fill="#475569">  Docker Compose (dev)  ·  Kubernetes raw manifests /k8s  ·  Helm chart /helm  ·  HPA (min 2, max 10)  ·  nightly pg_dump CronJob  ·  NetworkPolicy (default-deny)</text>
+
+      <!-- ─── LEGEND ─────────────────────────────────────────────────────── -->
+      <!-- Not adding a separate legend — colors are self-explanatory with labels -->
+
+    </svg>
+  </div>
+
+  <p style="margin-top:24px; font-size:11px; color:#334155; text-align:center;">
+    Both Java services share one PostgreSQL database; their Flyway migration histories are kept in separate tables.<br>
+    AI provider keys are per-tenant, AES-256-GCM encrypted at rest. There is no platform-level fallback key.
+  </p>
+</body>
+</html>
