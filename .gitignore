@@ -8,7 +8,3 @@ node_modules/
 
 # Local docker-compose overrides (auto-merged by compose; machine-specific)
 docker-compose.override.yml
-
-# Generated presentation artifacts — exported from exportGapReportPptx.ts or external tools;
-# source of truth is the code and data, not these binaries.
-docs/*.pptx
