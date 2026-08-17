@@ -60,6 +60,8 @@ pages:
         - npm run build
         - mkdir -p ../public
         - cp -r dist/* ../public/
+        - mkdir -p ../public/architecture
+        - cp ../docs/architecture-diagram.html ../public/architecture/index.html
     artifacts:
         paths:
             - public
