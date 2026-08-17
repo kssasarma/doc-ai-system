@@ -7,6 +7,7 @@ import type { TenantMembership } from '../../types';
 import { scaleIn } from '../../lib/motion';
 import { cn } from '../../lib/cn';
 import { useToast } from '../ui/Toast';
+import { BASE_PATH } from '../../config/env';
 
 /** Slack-workspace-style switcher — only renders once we know the caller belongs to more than
  * one tenant, so single-tenant users (the overwhelming majority) see nothing extra.
@@ -38,8 +39,10 @@ export default function TenantSwitcher({
       const data = await switchTenant(token, tenantId);
       if (data.error || !data.token) throw new Error(data.error || 'Switch failed');
       applySession(data);
-      // Full reload: many tenant-scoped views fetch data on mount tied to the previous tenant.
-      window.location.href = '/';
+      // Full reload so all tenant-scoped data re-fetches for the new tenant.
+      // Navigate to BASE_PATH directly — navigating to bare '/' would exit the app's
+      // sub-path and hit the hosting layer (e.g. GitLab auth) before nginx redirects.
+      window.location.replace(BASE_PATH);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Failed to switch tenant.');
       setSwitching(null);

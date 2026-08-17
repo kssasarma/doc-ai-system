@@ -669,7 +669,8 @@ public class ChatService {
     @Transactional(readOnly = true)
     public AllChatsResponse getAllChatSessions(UserPrincipal principal) {
         List<ChatSession> sessions =
-            sessionRepository.findByUserIdOrderByPinnedDescLastActiveAtDesc(principal.userId());
+            sessionRepository.findByUserIdAndTenantIdOrderByPinnedDescLastActiveAtDesc(
+                principal.userId(), TenantContext.get());
 
         List<ChatSessionDTO> sessionDTOs = sessions.stream()
             .map(session -> ChatSessionDTO.builder()
@@ -706,11 +707,12 @@ public class ChatService {
     }
 
     /** Chat sessions are private — only the owner may read, edit, export, or delete their own
-     * conversations. Admin/tenant-admin roles grant no access here; that access belongs to
-     * dedicated, audited admin features (escalations, GDPR export, analytics), not the plain
-     * chat endpoints. */
+     * conversations within their active tenant. Admin/tenant-admin roles grant no access here;
+     * that access belongs to dedicated, audited admin features (escalations, GDPR export,
+     * analytics), not the plain chat endpoints. */
     private void assertSessionAccess(ChatSession session, UserPrincipal principal) {
-        if (!principal.userId().equals(session.getUserId())) {
+        if (!principal.userId().equals(session.getUserId())
+                || !TenantContext.get().equals(session.getTenantId())) {
             throw new AccessDeniedException("You do not have access to this chat session");
         }
     }
