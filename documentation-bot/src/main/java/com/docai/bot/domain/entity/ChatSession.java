@@ -22,7 +22,8 @@ import lombok.NoArgsConstructor;
 
 @Entity
 @Table(name = "chat_sessions", indexes = {
-    @Index(name = "idx_chat_session_user", columnList = "user_id")
+    @Index(name = "idx_chat_session_user", columnList = "user_id"),
+    @Index(name = "idx_chat_sessions_user_tenant", columnList = "user_id, tenant_id, pinned DESC, last_active_at DESC"),
 })
 @Data
 @Builder

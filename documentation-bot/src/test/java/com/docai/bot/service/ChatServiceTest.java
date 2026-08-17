@@ -127,7 +127,7 @@ class ChatServiceTest {
     @Test
     void processQuery_existingSession_resumesSession() {
         ChatSession existing = ChatSession.builder()
-            .userId(userId).product("product-a").version("1.0").messageCount(4).build();
+            .userId(userId).tenantId(tenantId).product("product-a").version("1.0").messageCount(4).build();
         setId(existing, sessionId);
         when(sessionRepository.findById(sessionId)).thenReturn(Optional.of(existing));
         stubDependencies("Answer.");
@@ -148,7 +148,7 @@ class ChatServiceTest {
     void processQuery_existingSessionOwnedByAnotherUser_deniesAccess() {
         UUID otherUserId = UUID.randomUUID();
         ChatSession existing = ChatSession.builder()
-            .userId(otherUserId).product("product-a").version("1.0").messageCount(4).build();
+            .userId(otherUserId).tenantId(tenantId).product("product-a").version("1.0").messageCount(4).build();
         setId(existing, sessionId);
         when(sessionRepository.findById(sessionId)).thenReturn(Optional.of(existing));
 
@@ -158,6 +158,27 @@ class ChatServiceTest {
             .userId(userId)
             .build();
 
+        assertThatThrownBy(() -> chatService.processQuery(req))
+            .isInstanceOf(AccessDeniedException.class);
+        verify(messageRepository, never()).save(any(ChatMessage.class));
+    }
+
+    @Test
+    void processQuery_existingSessionFromOtherTenant_deniesAccess() {
+        UUID otherTenantId = UUID.randomUUID();
+        ChatSession existing = ChatSession.builder()
+            .userId(userId).tenantId(otherTenantId).product("product-a").version("1.0").messageCount(2).build();
+        setId(existing, sessionId);
+        when(sessionRepository.findById(sessionId)).thenReturn(Optional.of(existing));
+
+        ChatRequest req = ChatRequest.builder()
+            .chatId(sessionId.toString())
+            .question("Can I continue my other-tenant session from here?")
+            .userId(userId)
+            .build();
+
+        // TenantContext is set to `tenantId` (not otherTenantId) in setUp — session belongs to a
+        // different tenant, so access must be denied even though the userId matches.
         assertThatThrownBy(() -> chatService.processQuery(req))
             .isInstanceOf(AccessDeniedException.class);
         verify(messageRepository, never()).save(any(ChatMessage.class));

@@ -594,7 +594,8 @@ public class ChatService {
                 UUID chatId = UUID.fromString(chatIdStr);
                 return sessionRepository.findById(chatId)
                     .map(session -> {
-                        if (!session.getUserId().equals(userId)) {
+                        if (!session.getUserId().equals(userId)
+                                || !TenantContext.get().equals(session.getTenantId())) {
                             throw new AccessDeniedException("You do not have access to this chat session");
                         }
                         return session;
