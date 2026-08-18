@@ -101,6 +101,7 @@ public class FaqController {
                 entry.setStatus(Status.APPROVED);
                 entry.setApprovedBy(principal.userId());
                 entry.setApprovedAt(LocalDateTime.now());
+                entry.setReviewNote(null); // clear any stale-flag note set by FaqMaintenanceService
                 return ResponseEntity.ok(faqEntryRepository.save(entry));
             })
             .orElse(ResponseEntity.notFound().build());

@@ -73,6 +73,12 @@ public class FaqEntry {
     @Column(name = "approved_at")
     private LocalDateTime approvedAt;
 
+    /** Human-readable audit note set by {@link com.docai.bot.application.service.FaqMaintenanceService}
+     *  when an approved entry is auto-flagged as stale, or by an admin when editing. Cleared on
+     *  re-approval. */
+    @Column(name = "review_note", columnDefinition = "TEXT")
+    private String reviewNote;
+
     @Column(name = "view_count", nullable = false)
     @Builder.Default
     private int viewCount = 0;

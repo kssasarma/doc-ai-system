@@ -17,6 +17,7 @@ export interface FaqEntry {
   viewCount: number;
   helpfulCount: number;
   createdAt: string;
+  reviewNote?: string | null;
 }
 
 export interface PagedFaqEntries {
