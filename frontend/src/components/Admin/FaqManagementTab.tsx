@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Check, X, MessageSquare, Zap } from 'lucide-react';
+import { Check, X, MessageSquare, Zap, AlertTriangle } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import {
   listPendingFaq,
@@ -201,14 +201,22 @@ function FaqReviewCard({
       <div className="flex items-start gap-3 p-4">
         <button onClick={onToggle} className="flex-1 text-left">
           <p className="text-sm font-medium text-foreground">{entry.question}</p>
-          <div className="flex items-center gap-2 mt-1">
+          <div className="flex items-center gap-2 mt-1 flex-wrap">
             {entry.product && (
               <Badge variant="primary">
                 {entry.product}{entry.version ? ` ${entry.version}` : ''}
               </Badge>
             )}
+            {entry.reviewNote && (
+              <span className="inline-flex items-center gap-1 text-xs text-warning font-medium">
+                <AlertTriangle size={11} /> Stale
+              </span>
+            )}
             <span className="text-xs text-muted-foreground">Click to preview answer</span>
           </div>
+          {entry.reviewNote && (
+            <p className="text-xs text-warning/80 mt-1 leading-snug">{entry.reviewNote}</p>
+          )}
         </button>
         <div className="flex gap-2 flex-shrink-0">
           <Button
