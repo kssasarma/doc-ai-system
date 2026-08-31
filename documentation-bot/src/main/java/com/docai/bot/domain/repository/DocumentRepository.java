@@ -14,6 +14,14 @@ import com.docai.bot.domain.entity.Document;
 @Repository
 public interface DocumentRepository extends JpaRepository<Document, UUID> {
 
+    interface TenantDocCount {
+        UUID getTenantId();
+        long getCount();
+    }
+
+    @Query("SELECT d.tenantId AS tenantId, COUNT(d) AS count FROM Document d GROUP BY d.tenantId")
+    List<TenantDocCount> countDocumentsPerTenant();
+
     List<Document> findByProductAndVersion(String product, String version);
 
     List<Document> findByTenantId(UUID tenantId);

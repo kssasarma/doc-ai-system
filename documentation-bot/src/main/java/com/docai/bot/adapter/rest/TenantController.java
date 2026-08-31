@@ -1,5 +1,6 @@
 package com.docai.bot.adapter.rest;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -49,8 +50,10 @@ public class TenantController {
 
     @GetMapping
     @PreAuthorize("hasRole('SUPER_ADMIN')")
-    public List<Tenant> listAll() {
-        return tenantService.listAll();
+    public List<TenantSummaryResponse> listAll() {
+        return tenantService.listAllWithDocCounts().stream()
+            .map(TenantSummaryResponse::of)
+            .toList();
     }
 
     @GetMapping("/{id}")
@@ -181,4 +184,22 @@ public class TenantController {
     record UpdateTenantRequest(String name, String plan, boolean active, int maxUsers, int maxDocuments) {}
 
     record TenantUserDTO(UUID userId, String email, String displayName, String role, boolean active) {}
+
+    record TenantSummaryResponse(
+        UUID id, String name, String slug, String plan, boolean active,
+        int maxUsers, int maxDocuments,
+        boolean oidcEnabled, String oidcProvider,
+        LocalDateTime createdAt, LocalDateTime updatedAt,
+        long documentCount
+    ) {
+        static TenantSummaryResponse of(TenantService.TenantWithDocCount tdc) {
+            Tenant t = tdc.tenant();
+            return new TenantSummaryResponse(
+                t.getId(), t.getName(), t.getSlug(), t.getPlan(), t.isActive(),
+                t.getMaxUsers(), t.getMaxDocuments(),
+                t.isOidcEnabled(), t.getOidcProvider(),
+                t.getCreatedAt(), t.getUpdatedAt(),
+                tdc.documentCount());
+        }
+    }
 }

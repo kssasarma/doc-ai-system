@@ -213,7 +213,7 @@ function TenantCard({ tenant, token, expanded, panel, onToggle, onPanelChange, o
             {!tenant.active && <Badge variant="danger">Inactive</Badge>}
           </div>
           <div className="text-xs text-muted-foreground mt-0.5">
-            {tenant.maxUsers} users · {tenant.maxDocuments} docs
+            {tenant.maxUsers} users · {tenant.documentCount ?? 0} / {tenant.maxDocuments} docs
           </div>
         </button>
         <Button
@@ -376,7 +376,10 @@ function InfoPanel({ tenant, token, onUpdated }: {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm text-muted-foreground">
             <div><span className="font-medium text-foreground">Plan:</span> {tenant.plan}</div>
             <div><span className="font-medium text-foreground">Max users:</span> {tenant.maxUsers}</div>
-            <div><span className="font-medium text-foreground">Max docs:</span> {tenant.maxDocuments}</div>
+            <div>
+              <span className="font-medium text-foreground">Docs:</span>{' '}
+              {tenant.documentCount ?? 0} / {tenant.maxDocuments}
+            </div>
           </div>
         )}
       </div>
