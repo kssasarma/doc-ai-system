@@ -136,6 +136,29 @@ public class TenantController {
             () -> tenantService.testConnection(id, body.provider(), body.model(), body.apiKey(), body.baseUrl()));
     }
 
+    @GetMapping("/{id}/storage-config")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN')")
+    public ResponseEntity<TenantService.StorageConfigView> getStorageConfig(
+            @PathVariable UUID id, @AuthenticationPrincipal UserPrincipal principal) {
+        return ownTenantOrSuperAdmin(id, principal, () -> tenantService.getStorageConfig(id));
+    }
+
+    @PutMapping("/{id}/storage-config")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN')")
+    public ResponseEntity<TenantService.StorageConfigView> updateStorageConfig(
+            @PathVariable UUID id, @RequestBody TenantService.StorageConfigUpdate body,
+            @AuthenticationPrincipal UserPrincipal principal, HttpServletRequest request) {
+        return ownTenantOrSuperAdmin(id, principal, () -> {
+            TenantService.StorageConfigView result = tenantService.updateStorageConfig(id, body);
+            auditLogService.log(principal.userId(), id, "TENANT_STORAGE_CONFIG_UPDATE", "TENANT", id,
+                "bucket=" + body.s3Bucket() + ",region=" + body.s3Region()
+                    + ",endpoint=" + body.s3Endpoint()
+                    + ",credentialsChanged=" + (body.accessKey() != null || body.secretKey() != null),
+                request.getRemoteAddr());
+            return result;
+        });
+    }
+
     @GetMapping("/{id}/retention")
     @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN')")
     public ResponseEntity<DataRetentionPolicy> getRetention(@PathVariable UUID id, @AuthenticationPrincipal UserPrincipal principal) {

@@ -108,6 +108,12 @@ Omit `REDIS_HOST` entirely to disable the embedding cache. The bot falls back to
 | `MAX_UPLOAD_SIZE` | `100MB` | Maximum single-file upload size |
 | `MAX_REQUEST_SIZE` | `100MB` | Maximum multipart request size |
 
+### Per-tenant S3 storage
+
+> **Storage credentials are not environment variables.** Each tenant's S3 bucket, region, access key, and secret key are configured per tenant by that tenant's admin in the admin UI (Settings → Storage) or via the API (`PUT /api/admin/tenants/{id}/storage-config`) and stored encrypted (AES-256-GCM) in the database. Tenants without a custom storage config use the platform's default S3/SeaweedFS bucket configured above.
+
+See [Multi-Tenancy → Tenant S3 Storage](multi-tenancy.md#tenant-s3-storage) for setup instructions.
+
 ### Ingestion behaviour
 
 | Variable | Default | Description |

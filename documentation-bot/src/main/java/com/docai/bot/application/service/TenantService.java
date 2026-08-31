@@ -13,12 +13,14 @@ import com.docai.bot.domain.entity.DataRetentionPolicy;
 import com.docai.bot.domain.entity.Tenant;
 import com.docai.bot.domain.entity.TenantBranding;
 import com.docai.bot.domain.entity.TenantLLMConfig;
+import com.docai.bot.domain.entity.TenantStorageConfig;
 import com.docai.bot.domain.repository.DataRetentionPolicyRepository;
 import com.docai.bot.domain.repository.DocumentRepository;
 import com.docai.bot.domain.repository.SharedChatLinkRepository;
 import com.docai.bot.domain.repository.TenantBrandingRepository;
 import com.docai.bot.domain.repository.TenantLLMConfigRepository;
 import com.docai.bot.domain.repository.TenantRepository;
+import com.docai.bot.domain.repository.TenantStorageConfigRepository;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -31,6 +33,7 @@ public class TenantService {
     private final TenantRepository tenantRepository;
     private final TenantBrandingRepository brandingRepository;
     private final TenantLLMConfigRepository llmConfigRepository;
+    private final TenantStorageConfigRepository storageConfigRepository;
     private final DataRetentionPolicyRepository retentionRepository;
     private final SharedChatLinkRepository sharedChatLinkRepository;
     private final DocumentRepository documentRepository;
@@ -65,6 +68,23 @@ public class TenantService {
                                    Double temperature, Integer maxTokens, Integer maxEmbeddingBatchTokens) {}
 
     public record TestConnectionResult(boolean success, String message) {}
+
+    /**
+     * Safe view returned to the admin UI — credentials are never echoed back. The access key and
+     * secret key are represented only by a last-4-chars hint (same pattern as LLM API keys).
+     */
+    public record StorageConfigView(String s3Bucket, String s3Region, String s3Endpoint,
+                                     boolean s3PathStyleAccess,
+                                     boolean hasAccessKey, String accessKeyHint,
+                                     boolean hasSecretKey, String secretKeyHint) {}
+
+    /**
+     * Null credentials = leave stored value untouched. Empty string = clear. Non-blank = set/replace.
+     * This matches the same null-means-unchanged convention as {@link LlmConfigUpdate}.
+     */
+    public record StorageConfigUpdate(String s3Bucket, String s3Region, String s3Endpoint,
+                                       boolean s3PathStyleAccess,
+                                       String accessKey, String secretKey) {}
 
     public List<Tenant> listAll() {
         return tenantRepository.findAll();
@@ -289,6 +309,54 @@ public class TenantService {
         return decrypted != null && decrypted.length() >= 4
             ? "••••" + decrypted.substring(decrypted.length() - 4)
             : "••••";
+    }
+
+    public StorageConfigView getStorageConfig(UUID tenantId) {
+        return storageConfigRepository.findByTenantId(tenantId)
+            .map(this::toStorageView)
+            .orElseGet(() -> new StorageConfigView(null, null, null, false, false, null, false, null));
+    }
+
+    @Transactional
+    public StorageConfigView updateStorageConfig(UUID tenantId, StorageConfigUpdate update) {
+        if (update.s3Bucket() == null || update.s3Bucket().isBlank()) {
+            throw new IllegalArgumentException("s3Bucket is required");
+        }
+        if (update.s3Region() == null || update.s3Region().isBlank()) {
+            throw new IllegalArgumentException("s3Region is required");
+        }
+        if (update.s3Endpoint() != null && !update.s3Endpoint().isBlank()) {
+            validateBaseUrl(update.s3Endpoint(), "s3Endpoint");
+        }
+
+        TenantStorageConfig config = storageConfigRepository.findByTenantId(tenantId)
+            .orElseGet(() -> TenantStorageConfig.builder().tenantId(tenantId)
+                .s3AccessKeyEnc("").s3SecretKeyEnc("").build());
+
+        config.setS3Bucket(update.s3Bucket());
+        config.setS3Region(update.s3Region());
+        config.setS3Endpoint(blankToNull(update.s3Endpoint()));
+        config.setS3PathStyleAccess(update.s3PathStyleAccess());
+
+        // null = leave stored key untouched, "" = clear, non-blank = encrypt and store
+        if (update.accessKey() != null) {
+            config.setS3AccessKeyEnc(update.accessKey().isBlank() ? "" : cryptoService.encrypt(update.accessKey()));
+        }
+        if (update.secretKey() != null) {
+            config.setS3SecretKeyEnc(update.secretKey().isBlank() ? "" : cryptoService.encrypt(update.secretKey()));
+        }
+
+        return toStorageView(storageConfigRepository.save(config));
+    }
+
+    private StorageConfigView toStorageView(TenantStorageConfig config) {
+        boolean hasAccessKey = config.getS3AccessKeyEnc() != null && !config.getS3AccessKeyEnc().isBlank();
+        boolean hasSecretKey = config.getS3SecretKeyEnc() != null && !config.getS3SecretKeyEnc().isBlank();
+        return new StorageConfigView(
+            config.getS3Bucket(), config.getS3Region(), config.getS3Endpoint(),
+            config.isS3PathStyleAccess(),
+            hasAccessKey, keyHint(config.getS3AccessKeyEnc()),
+            hasSecretKey, keyHint(config.getS3SecretKeyEnc()));
     }
 
     public DataRetentionPolicy getRetentionPolicy(UUID tenantId) {

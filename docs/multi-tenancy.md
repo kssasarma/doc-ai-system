@@ -146,6 +146,97 @@ The resulting `documentIds` set is injected into the pgvector similarity query a
 
 ---
 
+## Tenant S3 Storage
+
+By default, every tenant's document binaries are stored in the platform's shared S3-compatible bucket (SeaweedFS in dev, or a platform-managed AWS S3 bucket in prod). Enterprises can instead bring their own S3 bucket — each tenant's admin configures the bucket independently, and document storage for that tenant is fully isolated to their own infrastructure.
+
+### How it works
+
+- Tenants **without** a custom storage config continue to use the platform's default bucket (zero action required for existing tenants).
+- Tenants **with** a custom storage config have their document binaries stored in their own S3 bucket under the same key layout (`documents/{tenantId}/{uuid}{ext}`).
+- The document-ingestor maintains a per-tenant S3 client cache (5-minute TTL). Changing a tenant's storage config is picked up within 5 minutes without a service restart.
+- Supported backends: AWS S3 and any S3-compatible store (MinIO, Backblaze B2, DigitalOcean Spaces, Cloudflare R2, SeaweedFS, etc.).
+
+### Configuring tenant S3 storage
+
+Requires ADMIN or SUPER_ADMIN JWT.
+
+```bash
+# Set or replace the tenant's storage config
+curl -X PUT http://localhost:8080/api/admin/tenants/<tenantId>/storage-config \
+  -H "Authorization: Bearer <admin-token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "s3Bucket": "acme-docs",
+    "s3Region": "us-east-1",
+    "s3Endpoint": null,
+    "s3PathStyleAccess": false,
+    "accessKey": "AKIAIOSFODNN7EXAMPLE",
+    "secretKey": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+  }'
+```
+
+| Field | Required | Description |
+|---|---|---|
+| `s3Bucket` | Yes | Bucket name. The bucket must already exist — the platform does not create it. |
+| `s3Region` | Yes | AWS region (e.g. `us-east-1`). Required even for S3-compatible stores — most accept any value. |
+| `s3Endpoint` | No | Custom endpoint URL for S3-compatible stores (e.g. `https://s3.acme-selfhosted.com`). Omit or set `null` for real AWS S3. |
+| `s3PathStyleAccess` | No | `true` for MinIO, SeaweedFS, Backblaze B2 (path-style URLs). `false` (default) for AWS S3 and Cloudflare R2. |
+| `accessKey` | Yes on first save | IAM access key ID. `null` = leave stored key untouched. `""` = clear. Non-blank = set/replace. |
+| `secretKey` | Yes on first save | IAM secret access key. Same null/blank semantics as `accessKey`. |
+
+Credentials are encrypted at rest with AES-256-GCM before storage (same scheme as LLM API keys).
+
+**Read back the config (credentials shown as masked hints):**
+
+```bash
+curl http://localhost:8080/api/admin/tenants/<tenantId>/storage-config \
+  -H "Authorization: Bearer <admin-token>"
+```
+
+Response:
+```json
+{
+  "s3Bucket": "acme-docs",
+  "s3Region": "us-east-1",
+  "s3Endpoint": null,
+  "s3PathStyleAccess": false,
+  "hasAccessKey": true,
+  "accessKeyHint": "••••MPLE",
+  "hasSecretKey": true,
+  "secretKeyHint": "••••EKEY"
+}
+```
+
+### Required IAM permissions
+
+The IAM user/role needs the following S3 actions on the configured bucket:
+
+```json
+{
+  "Effect": "Allow",
+  "Action": [
+    "s3:PutObject",
+    "s3:GetObject",
+    "s3:HeadObject",
+    "s3:DeleteObject",
+    "s3:HeadBucket"
+  ],
+  "Resource": [
+    "arn:aws:s3:::acme-docs",
+    "arn:aws:s3:::acme-docs/*"
+  ]
+}
+```
+
+`s3:GetObject*` with a condition for signed URLs is sufficient; the presigner generates time-limited signed URLs without needing a separate read policy beyond `GetObject`.
+
+### Migration for existing tenants
+
+Documents already ingested before a tenant sets up custom storage remain in the platform's default bucket; their storage keys still point there. Only newly uploaded documents go to the tenant's custom bucket. If you need historical documents migrated, use the `aws s3 sync` CLI to copy them from the platform bucket to your own bucket (preserving the `documents/{tenantId}/` prefix) before pointing the storage config at the new bucket.
+
+---
+
 ## Tenant LLM Configuration
 
 Every AI-related setting lives here, per tenant: chat/embedding provider, model, API key, endpoint (base URL), temperature, max tokens, and the embedding batch token ceiling. Tenant ADMINs configure this via the admin panel (Settings → AI Configuration) or API. **There is no platform-level fallback key** — AI features (chat, search, ingestion) are disabled for a tenant until its admin saves a working configuration, and requests made before that fail with HTTP 422 `LLM_NOT_CONFIGURED`.
