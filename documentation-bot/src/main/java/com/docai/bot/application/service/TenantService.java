@@ -1,6 +1,7 @@
 package com.docai.bot.application.service;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -13,6 +14,7 @@ import com.docai.bot.domain.entity.Tenant;
 import com.docai.bot.domain.entity.TenantBranding;
 import com.docai.bot.domain.entity.TenantLLMConfig;
 import com.docai.bot.domain.repository.DataRetentionPolicyRepository;
+import com.docai.bot.domain.repository.DocumentRepository;
 import com.docai.bot.domain.repository.SharedChatLinkRepository;
 import com.docai.bot.domain.repository.TenantBrandingRepository;
 import com.docai.bot.domain.repository.TenantLLMConfigRepository;
@@ -31,8 +33,11 @@ public class TenantService {
     private final TenantLLMConfigRepository llmConfigRepository;
     private final DataRetentionPolicyRepository retentionRepository;
     private final SharedChatLinkRepository sharedChatLinkRepository;
+    private final DocumentRepository documentRepository;
     private final List<LLMProvider> llmProviders;
     private final SecretsCryptoService cryptoService;
+
+    public record TenantWithDocCount(Tenant tenant, long documentCount) {}
 
     /** API keys never leave the server once saved — this is what the admin UI/API actually reads.
      * {@code hasChatKey}/{@code hasEmbeddingKey} + last-4 hints stand in for the keys themselves.
@@ -63,6 +68,17 @@ public class TenantService {
 
     public List<Tenant> listAll() {
         return tenantRepository.findAll();
+    }
+
+    public List<TenantWithDocCount> listAllWithDocCounts() {
+        List<Tenant> tenants = tenantRepository.findAll();
+        Map<UUID, Long> countsByTenant = documentRepository.countDocumentsPerTenant()
+            .stream().collect(Collectors.toMap(
+                DocumentRepository.TenantDocCount::getTenantId,
+                DocumentRepository.TenantDocCount::getCount));
+        return tenants.stream()
+            .map(t -> new TenantWithDocCount(t, countsByTenant.getOrDefault(t.getId(), 0L)))
+            .toList();
     }
 
     public Tenant getById(UUID id) {

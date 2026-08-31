@@ -195,6 +195,8 @@ export interface Tenant {
   oidcProvider: string | null;
   createdAt: string;
   updatedAt: string;
+  /** Actual number of documents ingested in this tenant (populated by the super-admin list endpoint). */
+  documentCount?: number;
 }
 
 export interface TenantUser {
