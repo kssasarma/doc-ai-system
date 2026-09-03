@@ -226,6 +226,8 @@ Wrapped in: Resilience4j circuit breaker + bulkhead (max 5 concurrent LLM calls)
 
 Per-tenant LLM API keys are encrypted at rest with AES-256-GCM (`SecretsCryptoService`, random 12-byte IV prefixed to ciphertext). The same `SECRETS_ENCRYPTION_KEY` must be set on both services.
 
+See [AI Models & Best Practices](ai-models-best-practices.md) for current model recommendations and guidance on choosing `chatModel`/`simpleQueryModel`/`complexQueryModel`/`rerankModel`.
+
 ---
 
 ## Key Design Decisions
