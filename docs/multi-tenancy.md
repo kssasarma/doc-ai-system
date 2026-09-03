@@ -158,16 +158,16 @@ curl -X PUT http://localhost:8080/api/admin/tenants/<tenantId>/llm-config \
   -H "Content-Type: application/json" \
   -d '{
     "provider": "anthropic",
-    "chatModel": "claude-sonnet-4-6",
+    "chatModel": "claude-sonnet-5",
     "apiKey": "<tenant-anthropic-key>",
     "embeddingProvider": "openai",
     "smartRouting": true,
-    "simpleQueryModel": "gpt-4o-mini",
-    "complexQueryModel": "gpt-4o"
+    "simpleQueryModel": "claude-haiku-4-5-20251001",
+    "complexQueryModel": "claude-opus-5"
   }'
 ```
 
-The `apiKey` is encrypted at rest with AES-256-GCM before storage. Available providers: `openai`, `anthropic`, `azure_openai`.
+The `apiKey` is encrypted at rest with AES-256-GCM before storage. Available providers: `openai`, `anthropic`, `azure_openai`. See [AI Models & Best Practices](ai-models-best-practices.md) for current model recommendations and how to choose between them.
 
 ---
 

@@ -6,6 +6,7 @@ Welcome to the Doc AI System documentation.
 
 - [Getting Started](getting-started.md)
 - [Architecture](architecture.md)
+- [AI Models & Best Practices](ai-models-best-practices.md)
 - [Architecture Diagram](architecture-diagram.html)
 - [API Reference](api-reference.md)
 - [Authentication](authentication.md)

@@ -89,6 +89,7 @@ Both Java services share one PostgreSQL database; their Flyway migration histori
 | [Authentication](docs/authentication.md) | JWT flow, API key creation, OIDC/SSO setup, invitation-only signup |
 | [Multi-Tenancy](docs/multi-tenancy.md) | Tenant model, roles, tenant resolution, creating and managing tenants |
 | [Document Ingestion](docs/document-ingestion.md) | Ingestion pipeline, supported formats, chunking, PII detection, webhooks, connectors |
+| [AI Models & Best Practices](docs/ai-models-best-practices.md) | Current OpenAI/Anthropic model recommendations, per-tenant routing strategy, RAG grounding practices |
 | [API Reference](docs/api-reference.md) | Complete endpoint tables for both services, Swagger UI links |
 | [Integrations](docs/integrations.md) | Slack bot, Teams bot, browser extension, VS Code extension setup guides |
 | [Deployment](docs/deployment.md) | Production Docker Compose, Kubernetes, Helm chart, database backups and restore |
