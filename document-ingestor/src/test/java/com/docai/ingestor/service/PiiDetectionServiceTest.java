@@ -20,6 +20,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import com.docai.ingestor.application.service.PiiDetectionService;
+import com.docai.ingestor.domain.entity.DocumentChunk;
 import com.docai.ingestor.domain.entity.PiiFlag;
 import com.docai.ingestor.domain.repository.PiiFlagRepository;
 
@@ -200,5 +201,60 @@ class PiiDetectionServiceTest {
         String excerpt = saved.getValue().get(0).getSampleExcerpt();
         assertThat(excerpt).doesNotContain("123-45-6789");
         assertThat(excerpt).contains("[SSN redacted]");
+    }
+
+    // ── Per-chunk scan (chunk-level PII rejection) ──────────────────────────────
+
+    @Test
+    void scanChunksAndFlag_noChunkHasPii_returnsFalseAndSavesNothing() {
+        List<DocumentChunk> chunks = List.of(
+            chunk("This chunk is clean."),
+            chunk("So is this one."));
+
+        boolean critical = piiDetectionService.scanChunksAndFlag(DOC_ID, TENANT_ID, chunks);
+
+        assertThat(critical).isFalse();
+        verify(piiFlagRepository, never()).saveAll(anyList());
+    }
+
+    @Test
+    void scanChunksAndFlag_onlyOneChunkHasPii_flagsOnlyThatChunk() {
+        DocumentChunk clean = chunk("Nothing sensitive here.");
+        DocumentChunk dirty = chunk("Contact me at leak@example.com please.");
+        ArgumentCaptor<List<PiiFlag>> saved = ArgumentCaptor.forClass(List.class);
+        when(piiFlagRepository.saveAll(saved.capture())).thenReturn(List.of());
+
+        piiDetectionService.scanChunksAndFlag(DOC_ID, TENANT_ID, List.of(clean, dirty));
+
+        List<List<PiiFlag>> allSaves = saved.getAllValues();
+        assertThat(allSaves).hasSize(1); // only the dirty chunk triggered a save
+        assertThat(allSaves.get(0)).allMatch(f -> dirty.getId().equals(f.getDocumentChunkId()));
+    }
+
+    @Test
+    void scanChunksAndFlag_criticalPiiInAnyChunk_returnsTrue() {
+        DocumentChunk clean = chunk("All good here.");
+        DocumentChunk dirty = chunk("SSN: 123-45-6789");
+        when(piiFlagRepository.saveAll(any())).thenReturn(List.of());
+
+        boolean critical = piiDetectionService.scanChunksAndFlag(DOC_ID, TENANT_ID, List.of(clean, dirty));
+
+        assertThat(critical).isTrue();
+    }
+
+    @Test
+    void scanChunksAndFlag_flagCarriesTheOffendingChunkId() {
+        DocumentChunk dirty = chunk("Card number 4532015112830366");
+        ArgumentCaptor<List<PiiFlag>> saved = ArgumentCaptor.forClass(List.class);
+        when(piiFlagRepository.saveAll(saved.capture())).thenReturn(List.of());
+
+        piiDetectionService.scanChunksAndFlag(DOC_ID, TENANT_ID, List.of(dirty));
+
+        assertThat(saved.getValue()).allMatch(f -> dirty.getId().equals(f.getDocumentChunkId())
+            && DOC_ID.equals(f.getDocumentId()));
+    }
+
+    private static DocumentChunk chunk(String content) {
+        return DocumentChunk.builder().id(UUID.randomUUID()).documentId(DOC_ID).content(content).build();
     }
 }

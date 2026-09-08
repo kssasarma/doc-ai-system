@@ -2,8 +2,11 @@ import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { useAuth } from '../../context/AuthContext';
 import { PiiFlag } from '../../types';
-import { fetchPiiFlags, reviewPiiFlag, releaseQuarantinedDocument, rejectQuarantinedDocument } from '../../services/piiFlagService';
-import { ShieldAlert, Check, Lock, Trash2 } from 'lucide-react';
+import {
+  fetchPiiFlags, reviewPiiFlag, releaseQuarantinedDocument, rejectQuarantinedDocument,
+  excludeChunk,
+} from '../../services/piiFlagService';
+import { ShieldAlert, Check, Lock, Trash2, ScanEye } from 'lucide-react';
 import { fadeInUp, staggerContainer } from '../../lib/motion';
 import PageHeader from '../ui/PageHeader';
 import { Card } from '../ui/Card';
@@ -88,6 +91,29 @@ export default function PiiFlagsTab() {
     setActioningId(null);
   };
 
+  // Flags from the per-chunk PII scan (see PiiDetectionService#scanChunksAndFlag) carry a
+  // documentChunkId — unlike whole-document flags, these can be resolved by excluding just that
+  // chunk from search instead of quarantining/rejecting the entire document.
+  const handleExcludeChunk = async (flag: PiiFlag) => {
+    if (!token || !flag.documentChunkId) return;
+    const confirmed = await confirm({
+      title: 'Reject chunk',
+      message: 'Exclude this chunk from search? It stops appearing in answers and citations; the rest of the document stays searchable. You can restore it later from Documents → Review chunks.',
+      confirmLabel: 'Reject chunk',
+      danger: true,
+    });
+    if (!confirmed) return;
+    setActioningId(flag.id);
+    const res = await excludeChunk(flag.documentChunkId, token);
+    if (res.success) {
+      setFlags(prev => prev.filter(f => f.documentChunkId !== flag.documentChunkId));
+      toast.success('Chunk excluded from search.');
+    } else {
+      toast.error(res.error ?? 'Failed to exclude chunk.');
+    }
+    setActioningId(null);
+  };
+
   return (
     <motion.div variants={staggerContainer} initial="hidden" animate="visible">
       <PageHeader
@@ -119,6 +145,7 @@ export default function PiiFlagsTab() {
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium text-foreground">{flag.piiType}</span>
                       <Badge variant={RISK_BADGE[flag.riskLevel]}>{flag.riskLevel}</Badge>
+                      {flag.documentChunkId && <Badge variant="info">Chunk</Badge>}
                       <span className="text-xs text-muted-foreground">
                         {flag.occurrenceCount} occurrence{flag.occurrenceCount !== 1 ? 's' : ''}
                       </span>
@@ -127,11 +154,36 @@ export default function PiiFlagsTab() {
                       <p className="text-xs text-muted-foreground font-mono mt-1">{flag.sampleExcerpt}</p>
                     )}
                     <p className="text-xs text-muted-foreground mt-1">
-                      Document {flag.documentId.slice(0, 8)} · {new Date(flag.createdAt).toLocaleDateString()}
+                      Document {flag.documentId.slice(0, 8)}
+                      {flag.documentChunkId && ` · Chunk ${flag.documentChunkId.slice(0, 8)}`}
+                      {' · '}{new Date(flag.createdAt).toLocaleDateString()}
                     </p>
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
-                    {flag.riskLevel === 'CRITICAL' ? (
+                    {flag.documentChunkId ? (
+                      // Chunk-scoped finding — resolve by excluding just that chunk from search
+                      // (see PiiDetectionService#scanChunksAndFlag) rather than acting on the
+                      // whole document.
+                      <>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          loading={actioningId === flag.id}
+                          leftIcon={<ScanEye className="w-3 h-3" />}
+                          onClick={() => handleExcludeChunk(flag)}
+                        >
+                          Reject chunk
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          loading={actioningId === flag.id}
+                          onClick={() => handleReview(flag.id, 'DISMISSED')}
+                        >
+                          Dismiss
+                        </Button>
+                      </>
+                    ) : flag.riskLevel === 'CRITICAL' ? (
                       <>
                         <Button
                           variant="outline"

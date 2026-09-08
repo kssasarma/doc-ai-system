@@ -10,6 +10,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -246,4 +247,49 @@ public class ConfluenceConnectorService {
         long pending = syncPageRepository.countByTokenIdAndSyncStatus(tokenId, ConnectorSyncPage.SyncStatus.PENDING);
         return Map.of("completed", completed, "failed", failed, "pending", pending);
     }
+
+    /** Lists every space visible to the connected Confluence account, so an admin can pick a
+     * space to sync without already knowing its key by heart (mirrors confluencebot's space
+     * browser, which reads from a single pre-ingested instance rather than an OAuth token). */
+    public List<SpaceSummary> listSpaces(UUID tokenId) {
+        IntegrationToken token = tokenRepository.findById(tokenId)
+            .orElseThrow(() -> new IllegalArgumentException("Token not found: " + tokenId));
+
+        List<SpaceSummary> all = new ArrayList<>();
+        int start = 0;
+        final int limit = 100;
+
+        while (true) {
+            String url = token.getSiteUrl()
+                + "/wiki/rest/api/space?type=global&status=current"
+                + "&start=" + start + "&limit=" + limit;
+
+            JsonNode root;
+            try {
+                root = apiGet(token, url);
+            } catch (IOException | InterruptedException e) {
+                if (e instanceof InterruptedException) Thread.currentThread().interrupt();
+                throw new IllegalStateException("Failed to list Confluence spaces: " + e.getMessage(), e);
+            }
+            for (JsonNode space : root.path("results")) {
+                all.add(new SpaceSummary(space.path("key").asText(), space.path("name").asText()));
+            }
+
+            JsonNode nextLink = root.path("_links").path("next");
+            if (nextLink.isMissingNode() || nextLink.asText().isBlank()) break;
+            start += limit;
+        }
+        return all;
+    }
+
+    /** Recent per-page sync history for a token, newest first — the connector analogue of
+     * confluencebot's ingestion job history table. */
+    public List<ConnectorSyncPage> listSyncedPages(UUID tokenId) {
+        return syncPageRepository.findByTokenId(tokenId).stream()
+            .sorted(Comparator.comparing(ConnectorSyncPage::getCreatedAt,
+                Comparator.nullsLast(Comparator.reverseOrder())))
+            .toList();
+    }
+
+    public record SpaceSummary(String key, String name) {}
 }

@@ -67,6 +67,14 @@ public class DocumentChunk {
 	@Column(name = "chunk_type", length = 50)
 	private String chunkType;
 
+	/** Mirrors document-ingestor's V12 migration column, for the same reason {@link #chunkType}
+	 * mirrors its own column — this service's own Hibernate-generated test schema needs it too.
+	 * Never written by this service; see DocumentChunkRepository's hybrid search queries, which
+	 * filter it out, and document-ingestor's PiiFlagController, which is the only writer. */
+	@Column(name = "excluded_from_search")
+	@Builder.Default
+	private boolean excludedFromSearch = false;
+
 	@Column(name = "created_at")
 	private LocalDateTime createdAt;
 

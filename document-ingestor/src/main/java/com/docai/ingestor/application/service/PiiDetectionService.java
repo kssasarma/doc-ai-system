@@ -9,6 +9,7 @@ import java.util.regex.Pattern;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.docai.ingestor.domain.entity.DocumentChunk;
 import com.docai.ingestor.domain.entity.PiiFlag;
 import com.docai.ingestor.domain.repository.PiiFlagRepository;
 
@@ -62,6 +63,30 @@ public class PiiDetectionService {
      */
     @Transactional
     public boolean scanAndFlag(UUID documentId, UUID tenantId, String content) {
+        return scanAndFlag(documentId, null, tenantId, content);
+    }
+
+    /**
+     * Scans every chunk's own content and persists a chunk-scoped PiiFlag per finding — the
+     * granularity that lets an admin exclude just the offending chunk (see PiiFlagController)
+     * instead of the whole document. Independent of (and in addition to) the whole-document
+     * scan {@link #scanAndFlag(UUID, UUID, String)} runs pre-chunking to decide quarantine;
+     * best-effort like that scan, so a failure here never fails ingestion.
+     *
+     * @return true if any chunk carried CRITICAL PII
+     */
+    @Transactional
+    public boolean scanChunksAndFlag(UUID documentId, UUID tenantId, List<DocumentChunk> chunks) {
+        boolean anyCritical = false;
+        for (DocumentChunk chunk : chunks) {
+            if (scanAndFlag(documentId, chunk.getId(), tenantId, chunk.getContent())) {
+                anyCritical = true;
+            }
+        }
+        return anyCritical;
+    }
+
+    private boolean scanAndFlag(UUID documentId, UUID chunkId, UUID tenantId, String content) {
         List<PiiFlag> flags = new ArrayList<>();
         for (PiiPattern pp : PATTERNS) {
             Matcher m = pp.pattern().matcher(content);
@@ -79,13 +104,14 @@ public class PiiDetectionService {
             if (count > 0) {
                 flags.add(PiiFlag.builder()
                     .documentId(documentId)
+                    .documentChunkId(chunkId)
                     .tenantId(tenantId)
                     .piiType(pp.type())
                     .occurrenceCount(count)
                     .sampleExcerpt(sample)
                     .riskLevel(pp.riskLevel())
                     .build());
-                log.warn("PII detected type={} count={} doc={}", pp.type(), count, documentId);
+                log.warn("PII detected type={} count={} doc={} chunk={}", pp.type(), count, documentId, chunkId);
             }
         }
         if (!flags.isEmpty()) {

@@ -165,18 +165,26 @@ Alternatively, set `WEBHOOK_HMAC_SECRET` in the ingestor environment and use `PO
 
 ### Confluence Cloud
 
+Confluence pages sync through the same parse → chunk → embed pipeline as an uploaded document —
+once synced, a page is indistinguishable from any other ingested document in search. The
+**Connectors** tab in the admin console wraps all of this in a UI (connect a site, browse its
+spaces, sync one, watch per-page sync history); the same actions are available directly:
+
 ```bash
-# Register a Confluence integration (stores token encrypted at rest)
-curl -X POST http://localhost:8081/api/connectors/confluence \
+# Register a Confluence integration (access token stored encrypted at rest)
+curl -X POST http://localhost:8081/api/connectors/confluence/token \
   -H "Authorization: Bearer <jwt>" \
   -H "Content-Type: application/json" \
   -d '{
     "siteUrl": "https://your-org.atlassian.net",
-    "apiToken": "<confluence-api-token>",
-    "email": "admin@your-org.com"
+    "accessToken": "<confluence-api-or-oauth-token>"
   }'
 
-# Sync a space
+# Browse spaces visible to that account, so you don't need to already know a space's key
+curl http://localhost:8081/api/connectors/confluence/spaces \
+  -H "Authorization: Bearer <jwt>"
+
+# Sync a space — every page becomes a Document tagged with the given product/version
 curl -X POST http://localhost:8081/api/connectors/confluence/sync \
   -H "Authorization: Bearer <jwt>" \
   -H "Content-Type: application/json" \
@@ -185,6 +193,10 @@ curl -X POST http://localhost:8081/api/connectors/confluence/sync \
     "product": "MyProduct",
     "version": "latest"
   }'
+
+# Per-page sync status/history for the connected account
+curl http://localhost:8081/api/connectors/confluence/pages \
+  -H "Authorization: Bearer <jwt>"
 ```
 
 Confluence site URLs must match the `CONFLUENCE_HOST_ALLOWLIST` suffix (default: `.atlassian.net`).
@@ -251,16 +263,41 @@ This metadata is used at retrieval time to:
 | Phone numbers | US and international formats |
 | IP addresses | IPv4 and IPv6 |
 
-Documents with hits are set to `QUARANTINED` status and are excluded from all search results. An admin notification is created. The tenant ADMIN can:
-
-- Approve ingestion if the PII was expected (e.g. an internal auth guide)
-- Delete the document and re-upload a redacted version
+Documents with a **CRITICAL** hit (SSN, credit card, AWS key) are set to `QUARANTINED` status and
+excluded from all search results until an admin acts on the whole document:
 
 ```bash
-# Approve a quarantined document
-curl -X POST http://localhost:8081/api/documents/<documentId>/approve-quarantine \
+# Approve a quarantined document — makes it searchable again
+curl -X POST http://localhost:8081/api/pii-flags/document/<documentId>/release \
+  -H "Authorization: Bearer <admin-jwt>"
+
+# Reject a quarantined document — deletes it outright
+curl -X POST http://localhost:8081/api/pii-flags/document/<documentId>/reject \
   -H "Authorization: Bearer <admin-jwt>"
 ```
+
+For anything short of quarantine (or PII confined to one section of an otherwise-fine document),
+every chunk is scanned individually too, and an admin can reject just the offending chunk instead
+of the whole document — the rest stays searchable:
+
+```bash
+# List a document's chunks with any PII flags raised against each one
+curl http://localhost:8081/api/pii-flags/document/<documentId>/chunks \
+  -H "Authorization: Bearer <admin-jwt>"
+
+# Exclude one chunk from search
+curl -X PATCH http://localhost:8081/api/pii-flags/chunk/<chunkId>/exclude \
+  -H "Authorization: Bearer <admin-jwt>" \
+  -H "Content-Type: application/json" \
+  -d '{"reason": "PII"}'
+
+# Restore a previously excluded chunk
+curl -X PATCH http://localhost:8081/api/pii-flags/chunk/<chunkId>/include \
+  -H "Authorization: Bearer <admin-jwt>"
+```
+
+In the admin console this is the **Reject chunk** action in PII Review, or **Documents → (scan
+icon) Review chunks** for browsing a document's chunks directly.
 
 ---
 

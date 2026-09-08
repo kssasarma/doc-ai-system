@@ -8,9 +8,10 @@ import {
   reprocessFailedDocuments, getDocumentDownloadUrl, deleteDocument,
 } from '../../services/adminService';
 import DocumentAccessManager from './DocumentAccessManager';
+import ChunkReviewModal from './ChunkReviewModal';
 import {
   Upload, RefreshCw, RotateCcw, Download, AlertCircle, CheckCircle, Clock, XCircle,
-  Lock, X, FileText, Search, ChevronLeft, ChevronRight, ChevronDown, Trash2, Star,
+  Lock, X, FileText, Search, ChevronLeft, ChevronRight, ChevronDown, Trash2, Star, ScanEye,
 } from 'lucide-react';
 import { fadeInUp, staggerContainer } from '../../lib/motion';
 import { cn } from '../../lib/cn';
@@ -59,6 +60,7 @@ export default function DocumentsTab() {
 
   const [justUploaded, setJustUploaded] = useState<DocumentInfo | null>(null);
   const [managingDoc, setManagingDoc] = useState<DocumentInfo | null>(null);
+  const [reviewingChunksDoc, setReviewingChunksDoc] = useState<DocumentInfo | null>(null);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
@@ -370,6 +372,15 @@ export default function DocumentsTab() {
                             <td className="px-6 py-4">
                               <div className="flex items-center justify-center gap-1.5">
                                 <Button variant="secondary" size="sm" onClick={() => setManagingDoc(doc)} leftIcon={<Lock className="w-3.5 h-3.5" />}>Access</Button>
+                                <IconButton
+                                  label="Review chunks for PII"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => setReviewingChunksDoc(doc)}
+                                  disabled={doc.status !== 'COMPLETED'}
+                                >
+                                  <ScanEye className="w-3.5 h-3.5" />
+                                </IconButton>
                                 {(doc.status === 'FAILED' || doc.status === 'PENDING') && (
                                   <IconButton label="Retry" variant="ghost" size="sm" onClick={() => handleRetrigger(doc)}>
                                     <RefreshCw className="w-3.5 h-3.5" />
@@ -430,6 +441,15 @@ export default function DocumentsTab() {
           </ModalBody>
         )}
       </Modal>
+
+      {reviewingChunksDoc && token && (
+        <ChunkReviewModal
+          documentId={reviewingChunksDoc.id}
+          documentName={reviewingChunksDoc.documentName}
+          token={token}
+          onClose={() => setReviewingChunksDoc(null)}
+        />
+      )}
     </div>
   );
 }

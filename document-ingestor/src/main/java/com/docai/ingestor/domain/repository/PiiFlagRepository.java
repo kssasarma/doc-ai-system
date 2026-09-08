@@ -11,5 +11,7 @@ public interface PiiFlagRepository extends JpaRepository<PiiFlag, UUID> {
 
     List<PiiFlag> findByDocumentId(UUID documentId);
 
+    List<PiiFlag> findByDocumentChunkId(UUID documentChunkId);
+
     List<PiiFlag> findByTenantIdAndReviewed(UUID tenantId, boolean reviewed);
 }

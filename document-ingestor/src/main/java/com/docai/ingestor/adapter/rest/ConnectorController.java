@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.docai.ingestor.application.service.ConfluenceConnectorService;
 import com.docai.ingestor.application.service.NotionConnectorService;
+import com.docai.ingestor.domain.entity.ConnectorSyncPage;
 import com.docai.ingestor.domain.entity.IntegrationToken;
 import com.docai.ingestor.domain.repository.IntegrationTokenRepository;
 
@@ -82,6 +83,27 @@ public class ConnectorController {
         return tokenRepository.findByUserIdAndProvider(userId, IntegrationToken.Provider.confluence)
             .map(token -> ResponseEntity.ok(confluenceService.getSyncStats(token.getId())))
             .orElse(ResponseEntity.notFound().build());
+    }
+
+    /** Lists spaces visible to the connected Confluence account, so an admin can browse and pick
+     * one to sync instead of having to already know its key. */
+    @GetMapping("/confluence/spaces")
+    public ResponseEntity<List<ConfluenceConnectorService.SpaceSummary>> confluenceSpaces(Authentication auth) {
+        UUID userId = resolveUserId(auth);
+        IntegrationToken token = tokenRepository
+            .findByUserIdAndProvider(userId, IntegrationToken.Provider.confluence)
+            .orElseThrow(() -> new IllegalStateException("No Confluence token found. Register one first."));
+        return ResponseEntity.ok(confluenceService.listSpaces(token.getId()));
+    }
+
+    /** Recent per-page sync history — the connector analogue of confluencebot's ingestion job list. */
+    @GetMapping("/confluence/pages")
+    public ResponseEntity<List<ConnectorSyncPage>> confluencePages(Authentication auth) {
+        UUID userId = resolveUserId(auth);
+        IntegrationToken token = tokenRepository
+            .findByUserIdAndProvider(userId, IntegrationToken.Provider.confluence)
+            .orElseThrow(() -> new IllegalStateException("No Confluence token found. Register one first."));
+        return ResponseEntity.ok(confluenceService.listSyncedPages(token.getId()));
     }
 
     // ── Notion ────────────────────────────────────────────────────────────────

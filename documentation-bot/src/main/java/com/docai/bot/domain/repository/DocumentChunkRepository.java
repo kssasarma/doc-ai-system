@@ -35,6 +35,11 @@ public interface DocumentChunkRepository extends JpaRepository<DocumentChunk, UU
     // Phase 2/6/7 — the sole eligibility-gated queries: only documents in this tenant that appear
     // in documentIds (the caller's resolved SearchScope) are ever searchable. Callers must not
     // pass an empty documentIds — short-circuit before calling (see VectorSearchService).
+    //
+    // excluded_from_search (document-ingestor's V12 migration) is an admin's per-chunk PII
+    // rejection — see PiiFlagController#excludeChunk. Checked on both dc (the matched leaf) and
+    // parent (the section chunk whose content is what's actually returned/cited via the COALESCE
+    // below) since either one being excluded must keep this candidate out of results.
     // narrowProduct/narrowVersion (Phase 7) are an optional, opt-in narrow on top of that gate —
     // pass null for either to leave it unfiltered. The CAST(... AS text) is required for
     // PostgreSQL/JDBC to type-infer a null-valued bind parameter correctly.
@@ -56,6 +61,8 @@ public interface DocumentChunkRepository extends JpaRepository<DocumentChunk, UU
           AND d.id IN (:documentIds)
           AND d.status = 'COMPLETED'
           AND (dc.is_leaf = TRUE OR dc.is_leaf IS NULL)
+          AND (dc.excluded_from_search = FALSE OR dc.excluded_from_search IS NULL)
+          AND (parent.excluded_from_search = FALSE OR parent.excluded_from_search IS NULL)
           AND (CAST(:narrowProduct AS text) IS NULL OR d.product = :narrowProduct)
           AND (CAST(:narrowVersion AS text) IS NULL OR d.version = :narrowVersion)
         ORDER BY dc.embedding <=> CAST(:embedding AS vector)
@@ -83,6 +90,8 @@ public interface DocumentChunkRepository extends JpaRepository<DocumentChunk, UU
           AND d.id IN (:documentIds)
           AND d.status = 'COMPLETED'
           AND (dc.is_leaf = TRUE OR dc.is_leaf IS NULL)
+          AND (dc.excluded_from_search = FALSE OR dc.excluded_from_search IS NULL)
+          AND (parent.excluded_from_search = FALSE OR parent.excluded_from_search IS NULL)
           AND (CAST(:narrowProduct AS text) IS NULL OR d.product = :narrowProduct)
           AND (CAST(:narrowVersion AS text) IS NULL OR d.version = :narrowVersion)
           AND dc.search_vector @@ plainto_tsquery('english', :query)

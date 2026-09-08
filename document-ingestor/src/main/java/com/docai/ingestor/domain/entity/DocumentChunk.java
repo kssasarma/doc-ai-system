@@ -73,6 +73,16 @@ public class DocumentChunk {
 	@Builder.Default
 	private boolean isLeaf = true;
 
+	/** Admin-initiated PII review action (see PiiFlagController) — excludes this specific chunk
+	 * from search/citations without touching the rest of the document. Enforced by
+	 * documentation-bot's DocumentChunkRepository hybrid search queries. */
+	@Column(name = "excluded_from_search", nullable = false)
+	@Builder.Default
+	private boolean excludedFromSearch = false;
+
+	@Column(name = "exclusion_reason", length = 50)
+	private String exclusionReason;
+
 	@CreationTimestamp
 	@Column(name = "created_at", nullable = false, updatable = false)
 	private LocalDateTime createdAt;
