@@ -445,6 +445,7 @@ export interface AppNotification {
 export interface PiiFlag {
   id: string;
   documentId: string;
+  documentChunkId: string | null;
   tenantId: string;
   piiType: string;
   occurrenceCount: number;
@@ -455,4 +456,50 @@ export interface PiiFlag {
   reviewedAt: string | null;
   actionTaken: string | null;
   createdAt: string;
+}
+
+export interface ChunkReview {
+  id: string;
+  chunkIndex: number;
+  chunkType: string;
+  isLeaf: boolean;
+  contentPreview: string;
+  excludedFromSearch: boolean;
+  exclusionReason: string | null;
+  piiFlags: PiiFlag[];
+}
+
+// Connectors (Confluence / Notion) — see document-ingestor's ConnectorController.
+export interface ConnectorToken {
+  id: string;
+  provider: 'confluence' | 'notion' | string;
+  siteUrl: string | null;
+  workspaceName: string | null;
+  createdAt: string | null;
+}
+
+export interface ConfluenceSpaceSummary {
+  key: string;
+  name: string;
+}
+
+export interface ConnectorSyncStats {
+  completed: number;
+  failed: number;
+  pending: number;
+}
+
+export interface ConnectorSyncPage {
+  id: string;
+  tokenId: string;
+  documentId: string | null;
+  provider: string;
+  externalId: string;
+  title: string | null;
+  spaceKey: string | null;
+  lastSyncedAt: string | null;
+  lastModified: string | null;
+  syncStatus: 'PENDING' | 'SYNCING' | 'COMPLETED' | 'FAILED' | 'SKIPPED';
+  errorMessage: string | null;
+  createdAt: string | null;
 }

@@ -117,6 +117,78 @@ class ReRankingServiceTest {
         assertThat(result).extracting(RetrievedChunk::getChunkId).containsExactly("solo");
     }
 
+    // ── Table floor ─────────────────────────────────────────────────────────
+
+    @Test
+    void tableFloor_disabled_mmrCanDropTheOnlyTableChunk() {
+        ReflectionTestUtils.setField(service, "llmRerankEnabled", false);
+        ReflectionTestUtils.setField(service, "guaranteeTableChunk", false);
+        // Isolate relevance from diversity (as mmr_strongLexicalWinner... does above) so this
+        // reliably demonstrates the underlying problem: three near-duplicate prose chunks beat
+        // the poorly-matching table chunk on relevance alone and fill every slot.
+        ReflectionTestUtils.setField(service, "mmrLambda", 1.0);
+
+        float[] query = {1f, 0f};
+        List<ScoredCandidate> candidates = List.of(
+            candidate("prose-1", "TEXT", new float[]{0.99f, 0.1f}, query, 0.9),
+            candidate("prose-2", "TEXT", new float[]{0.95f, 0.2f}, query, 0.8),
+            candidate("prose-3", "TEXT", new float[]{0.9f, 0.3f}, query, 0.7),
+            candidate("table-1", "TABLE", new float[]{0.4f, 0.9f}, query, 0.6));
+
+        List<RetrievedChunk> result = service.rerank("question", query, candidates, 3);
+
+        assertThat(result).extracting(RetrievedChunk::getChunkId).doesNotContain("table-1");
+    }
+
+    @Test
+    void tableFloor_enabled_guaranteesTheTableChunkSurvives() {
+        ReflectionTestUtils.setField(service, "llmRerankEnabled", false);
+        ReflectionTestUtils.setField(service, "guaranteeTableChunk", true);
+
+        float[] query = {1f, 0f};
+        List<ScoredCandidate> candidates = List.of(
+            candidate("prose-1", "TEXT", new float[]{0.99f, 0.1f}, query, 0.9),
+            candidate("prose-2", "TEXT", new float[]{0.95f, 0.2f}, query, 0.8),
+            candidate("prose-3", "TEXT", new float[]{0.9f, 0.3f}, query, 0.7),
+            candidate("table-1", "TABLE", new float[]{0.4f, 0.9f}, query, 0.6));
+
+        List<RetrievedChunk> result = service.rerank("question", query, candidates, 3);
+
+        assertThat(result).hasSize(3);
+        assertThat(result).extracting(RetrievedChunk::getChunkId).contains("table-1");
+    }
+
+    @Test
+    void tableFloor_noOpWhenMmrAlreadyKeptATableChunk() {
+        ReflectionTestUtils.setField(service, "llmRerankEnabled", false);
+        ReflectionTestUtils.setField(service, "guaranteeTableChunk", true);
+
+        float[] query = {1f, 0f};
+        List<ScoredCandidate> candidates = List.of(
+            candidate("table-1", "TABLE", new float[]{0.99f, 0.1f}, query, 0.9),
+            candidate("prose-1", "TEXT", new float[]{0.95f, 0.2f}, query, 0.8));
+
+        List<RetrievedChunk> result = service.rerank("question", query, candidates, 2);
+
+        assertThat(result).extracting(RetrievedChunk::getChunkId)
+            .containsExactlyInAnyOrder("table-1", "prose-1");
+    }
+
+    @Test
+    void tableFloor_noOpWhenPoolHasNoTableChunk() {
+        ReflectionTestUtils.setField(service, "llmRerankEnabled", false);
+        ReflectionTestUtils.setField(service, "guaranteeTableChunk", true);
+
+        float[] query = {1f, 0f};
+        List<ScoredCandidate> candidates = List.of(
+            candidate("prose-1", "TEXT", new float[]{0.99f, 0.1f}, query, 0.9),
+            candidate("prose-2", "TEXT", new float[]{0.95f, 0.2f}, query, 0.8));
+
+        List<RetrievedChunk> result = service.rerank("question", query, candidates, 1);
+
+        assertThat(result).extracting(RetrievedChunk::getChunkId).containsExactly("prose-1");
+    }
+
     // ── LLM re-rank pass ────────────────────────────────────────────────────
 
     @Test
@@ -184,10 +256,15 @@ class ReRankingServiceTest {
     }
 
     private ScoredCandidate candidate(String id, float[] embedding, float[] query, double fusionScore) {
+        return candidate(id, "TEXT", embedding, query, fusionScore);
+    }
+
+    private ScoredCandidate candidate(String id, String chunkType, float[] embedding, float[] query, double fusionScore) {
         RetrievedChunk chunk = RetrievedChunk.builder()
             .chunkId(id)
             .content("content for " + id)
             .documentName("doc.pdf")
+            .chunkType(chunkType)
             .similarity(com.docai.bot.domain.model.CosineSimilarity.of(query, embedding))
             .build();
         return new ScoredCandidate(chunk, embedding, fusionScore);

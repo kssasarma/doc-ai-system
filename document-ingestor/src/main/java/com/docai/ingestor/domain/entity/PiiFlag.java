@@ -36,6 +36,11 @@ public class PiiFlag {
     @Column(name = "document_id", nullable = false)
     private UUID documentId;
 
+    /** Set only for flags from a per-chunk scan (see PiiDetectionService#scanChunksAndFlag); null
+     * for flags from the pre-chunking whole-document scan that drives document-level quarantine. */
+    @Column(name = "document_chunk_id")
+    private UUID documentChunkId;
+
     @Column(name = "tenant_id", nullable = false)
     private UUID tenantId;
 

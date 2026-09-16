@@ -21,11 +21,14 @@ import com.docai.ingestor.application.service.IngestionService;
 import com.docai.ingestor.config.JwtTokenFilter.AdminPrincipal;
 import com.docai.ingestor.config.TenantContext;
 import com.docai.ingestor.domain.entity.Document;
+import com.docai.ingestor.domain.entity.DocumentChunk;
 import com.docai.ingestor.domain.entity.PiiFlag;
+import com.docai.ingestor.domain.repository.DocumentChunkRepository;
 import com.docai.ingestor.domain.repository.DocumentRepository;
 import com.docai.ingestor.domain.repository.PiiFlagRepository;
 
 import jakarta.validation.constraints.NotBlank;
+import lombok.Builder;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 
@@ -37,8 +40,11 @@ import lombok.RequiredArgsConstructor;
 @PreAuthorize("hasRole('ADMIN')")
 public class PiiFlagController {
 
+    private static final int PREVIEW_LENGTH = 400;
+
     private final PiiFlagRepository piiFlagRepository;
     private final DocumentRepository documentRepository;
+    private final DocumentChunkRepository chunkRepository;
     private final IngestionService ingestionService;
 
     @GetMapping
@@ -70,7 +76,7 @@ public class PiiFlagController {
                                          @AuthenticationPrincipal AdminPrincipal principal) {
         Document document = requireOwnedDocument(documentId);
         ingestionService.releaseFromQuarantine(documentId);
-        markFlagsReviewed(documentId, principal.userId(), "RELEASED");
+        markFlagsReviewed(piiFlagRepository.findByDocumentId(documentId), principal.userId(), "RELEASED");
         return ResponseEntity.noContent().build();
     }
 
@@ -84,6 +90,44 @@ public class PiiFlagController {
         return ResponseEntity.noContent().build();
     }
 
+    // ── Chunk-level review ───────────────────────────────────────────────────
+
+    /** Lists a document's chunks for PII review, each with the PII flags raised against it (see
+     * PiiDetectionService#scanChunksAndFlag) so an admin can decide which specific chunk to
+     * reject, rather than only being able to act on the document as a whole. */
+    @GetMapping("/document/{documentId}/chunks")
+    public ResponseEntity<List<ChunkReviewResponse>> listChunks(@PathVariable UUID documentId) {
+        requireOwnedDocument(documentId);
+        List<PiiFlag> flags = piiFlagRepository.findByDocumentId(documentId);
+        List<ChunkReviewResponse> chunks = chunkRepository.findByDocumentIdOrderByChunkIndex(documentId).stream()
+            .map(chunk -> toChunkReviewResponse(chunk, flags))
+            .toList();
+        return ResponseEntity.ok(chunks);
+    }
+
+    /** Excludes a single chunk from search over PII found in it — leaves the rest of the document
+     * (and every other chunk) searchable, unlike quarantining/rejecting the whole document. */
+    @PatchMapping("/chunk/{chunkId}/exclude")
+    public ResponseEntity<ChunkReviewResponse> excludeChunk(@PathVariable UUID chunkId,
+                                                             @RequestBody(required = false) ExcludeChunkRequest request,
+                                                             @AuthenticationPrincipal AdminPrincipal principal) {
+        DocumentChunk chunk = requireOwnedChunk(chunkId);
+        String reason = (request != null && request.getReason() != null && !request.getReason().isBlank())
+            ? request.getReason() : "PII";
+        DocumentChunk updated = ingestionService.excludeChunk(chunkId, reason);
+        markFlagsReviewed(
+            piiFlagRepository.findByDocumentChunkId(chunkId), principal.userId(), "EXCLUDED");
+        return ResponseEntity.ok(toChunkReviewResponse(updated, piiFlagRepository.findByDocumentId(chunk.getDocumentId())));
+    }
+
+    /** Reinstates a previously excluded chunk, making it searchable again. */
+    @PatchMapping("/chunk/{chunkId}/include")
+    public ResponseEntity<ChunkReviewResponse> includeChunk(@PathVariable UUID chunkId) {
+        DocumentChunk chunk = requireOwnedChunk(chunkId);
+        DocumentChunk updated = ingestionService.includeChunk(chunkId);
+        return ResponseEntity.ok(toChunkReviewResponse(updated, piiFlagRepository.findByDocumentId(chunk.getDocumentId())));
+    }
+
     private Document requireOwnedDocument(UUID documentId) {
         Document document = documentRepository.findById(documentId)
             .orElseThrow(() -> new IllegalArgumentException("Document not found: " + documentId));
@@ -93,8 +137,32 @@ public class PiiFlagController {
         return document;
     }
 
-    private void markFlagsReviewed(UUID documentId, UUID reviewerId, String actionTaken) {
-        List<PiiFlag> flags = piiFlagRepository.findByDocumentId(documentId);
+    private DocumentChunk requireOwnedChunk(UUID chunkId) {
+        DocumentChunk chunk = chunkRepository.findById(chunkId)
+            .orElseThrow(() -> new IllegalArgumentException("Chunk not found: " + chunkId));
+        requireOwnedDocument(chunk.getDocumentId());
+        return chunk;
+    }
+
+    private ChunkReviewResponse toChunkReviewResponse(DocumentChunk chunk, List<PiiFlag> documentFlags) {
+        String content = chunk.getContent() == null ? "" : chunk.getContent();
+        String preview = content.length() > PREVIEW_LENGTH ? content.substring(0, PREVIEW_LENGTH) + "…" : content;
+        List<PiiFlag> chunkFlags = documentFlags.stream()
+            .filter(f -> chunk.getId().equals(f.getDocumentChunkId()))
+            .toList();
+        return ChunkReviewResponse.builder()
+            .id(chunk.getId())
+            .chunkIndex(chunk.getChunkIndex())
+            .chunkType(chunk.getChunkType())
+            .isLeaf(chunk.isLeaf())
+            .contentPreview(preview)
+            .excludedFromSearch(chunk.isExcludedFromSearch())
+            .exclusionReason(chunk.getExclusionReason())
+            .piiFlags(chunkFlags)
+            .build();
+    }
+
+    private void markFlagsReviewed(List<PiiFlag> flags, UUID reviewerId, String actionTaken) {
         LocalDateTime now = LocalDateTime.now();
         for (PiiFlag flag : flags) {
             if (flag.isReviewed()) continue;
@@ -110,5 +178,23 @@ public class PiiFlagController {
     static class ReviewRequest {
         @NotBlank(message = "actionTaken is required")
         private String actionTaken; // e.g. ACKNOWLEDGED, REDACTED, DISMISSED
+    }
+
+    @Data
+    static class ExcludeChunkRequest {
+        private String reason; // defaults to "PII" when blank
+    }
+
+    @Data
+    @Builder
+    static class ChunkReviewResponse {
+        private UUID id;
+        private Integer chunkIndex;
+        private String chunkType;
+        private boolean isLeaf;
+        private String contentPreview;
+        private boolean excludedFromSearch;
+        private String exclusionReason;
+        private List<PiiFlag> piiFlags;
     }
 }

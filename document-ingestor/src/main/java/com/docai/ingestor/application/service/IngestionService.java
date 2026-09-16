@@ -306,6 +306,17 @@ public class IngestionService {
             }
         }
 
+        // Per-chunk PII scan — independent of the pre-chunking whole-document scan in
+        // parseChunkAndEmbed (which alone decides quarantine below): this tags each offending
+        // chunk with its own PiiFlag so an admin can exclude just that chunk from search instead
+        // of quarantining/rejecting the whole document (see PiiFlagController). Best-effort, same
+        // as the whole-document scan — never fails ingestion.
+        try {
+            piiDetectionService.scanChunksAndFlag(documentId, document.getTenantId(), List.of(savedChunks));
+        } catch (Exception e) {
+            log.warn("Per-chunk PII scan failed for document {}: {}", documentId, e.getMessage());
+        }
+
         // CRITICAL PII (SSN, credit card, AWS keys — see PiiDetectionService) holds the document
         // back from search pending admin review, rather than letting it go straight to COMPLETED
         // and searchable. The chunks/embeddings are still persisted below (so review has the
@@ -370,6 +381,30 @@ public class IngestionService {
         }
         documentRepository.delete(document);
         log.info("Rejected and deleted quarantined document {}", documentId);
+    }
+
+    /** Admin rejects a single chunk over PII found in it — excludes it from search/citations
+     * (enforced by documentation-bot's DocumentChunkRepository hybrid search queries) without
+     * touching the rest of the document, unlike {@link #rejectQuarantined} which deletes the
+     * whole document. See {@link com.docai.ingestor.adapter.rest.PiiFlagController}. */
+    @Transactional
+    public DocumentChunk excludeChunk(UUID chunkId, String reason) {
+        DocumentChunk chunk = chunkRepository.findById(chunkId)
+            .orElseThrow(() -> new IllegalArgumentException("Chunk not found: " + chunkId));
+        chunk.setExcludedFromSearch(true);
+        chunk.setExclusionReason(reason);
+        return chunkRepository.save(chunk);
+    }
+
+    /** Reinstates a chunk previously excluded via {@link #excludeChunk}, making it searchable
+     * again. */
+    @Transactional
+    public DocumentChunk includeChunk(UUID chunkId) {
+        DocumentChunk chunk = chunkRepository.findById(chunkId)
+            .orElseThrow(() -> new IllegalArgumentException("Chunk not found: " + chunkId));
+        chunk.setExcludedFromSearch(false);
+        chunk.setExclusionReason(null);
+        return chunkRepository.save(chunk);
     }
 
     /** Admin-initiated delete from the documents admin table (Phase 6.4) — any status, not just

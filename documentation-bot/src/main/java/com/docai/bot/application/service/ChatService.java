@@ -99,6 +99,13 @@ public class ChatService {
 
         UserPreference prefs = preferenceService.getPreferences(request.getUserId());
         String chatContext = contextManager.buildContextPrompt(session.getId());
+        // Resolves a follow-up like "and in staging?" into a standalone query before it reaches
+        // retrieval — see ContextManager#rewriteForRetrieval for why pasting chatContext into the
+        // search string (rather than this small, gated, self-contained rewrite) is the wrong fix:
+        // that dilutes the embedding with a previous answer's prose instead of resolving the one
+        // or two ambiguous words in the new question. Falls back to the raw question on any issue,
+        // and generation below still sees the user's own wording via request.getQuestion().
+        String retrievalQuestion = contextManager.rewriteForRetrieval(session.getId(), request.getQuestion());
 
         String finalAnswer;
         List<String> relatedQuestionsFromLlm;
@@ -106,10 +113,10 @@ public class ChatService {
         List<MultiHopReasoningService.HopResult> reasoningChain = null;
         int promptTokens, completionTokens;
 
-        if (multiHopService.isComplexQuery(request.getQuestion())) {
+        if (multiHopService.isComplexQuery(retrievalQuestion)) {
             log.info("Complex query detected — using multi-hop reasoning");
             MultiHopReasoningService.MultiHopAnswer multiHop = multiHopService.reason(
-                request.getQuestion(), chatContext, scope, product, version,
+                retrievalQuestion, chatContext, scope, product, version,
                 prefs.getVerbosity(), prefs.getAnswerFormat()
             );
             finalAnswer = multiHop.answer();
@@ -120,13 +127,7 @@ public class ChatService {
             promptTokens = multiHop.promptTokens();
             completionTokens = multiHop.completionTokens();
         } else {
-            // Search on the raw question, not chatContext-augmented text: embedding several
-            // hundred characters of prior turns (including the assistant's own previous answer)
-            // into the query dilutes its vector far more than it resolves pronouns, dragging
-            // retrieval toward whatever was discussed earlier instead of this question. chatContext
-            // still reaches the LLM via generateAnswer below, which is the right place for it —
-            // that's a prompt for reasoning over prose, not a value being embedded.
-            relevantChunks = vectorSearchService.search(request.getQuestion(), scope);
+            relevantChunks = vectorSearchService.search(retrievalQuestion, scope);
             AnswerGenerationService.AnswerResult result = answerService.generateAnswer(
                 request.getQuestion(), chatContext, relevantChunks,
                 prefs.getVerbosity(), prefs.getAnswerFormat(), product, version
@@ -252,6 +253,9 @@ public class ChatService {
 
             UserPreference prefs = preferenceService.getPreferences(request.getUserId());
             String chatContext = contextManager.buildContextPrompt(session.getId());
+            // See the non-streaming processQuery for why this exists — resolves a follow-up into
+            // a standalone query before retrieval, without touching what generation sees.
+            String retrievalQuestion = contextManager.rewriteForRetrieval(session.getId(), request.getQuestion());
 
             String finalAnswer;
             List<String> relatedQuestionsFromLlm;
@@ -259,10 +263,10 @@ public class ChatService {
             List<MultiHopReasoningService.HopResult> reasoningChain = null;
             int promptTokens, completionTokens;
 
-            if (multiHopService.isComplexQuery(request.getQuestion())) {
+            if (multiHopService.isComplexQuery(retrievalQuestion)) {
                 log.info("Complex query detected — using multi-hop reasoning (not token-streamed, see method javadoc)");
                 MultiHopReasoningService.MultiHopAnswer multiHop = multiHopService.reason(
-                    request.getQuestion(), chatContext, scope, product, version,
+                    retrievalQuestion, chatContext, scope, product, version,
                     prefs.getVerbosity(), prefs.getAnswerFormat()
                 );
                 relevantChunks = multiHop.hops().stream()
@@ -275,7 +279,7 @@ public class ChatService {
                 promptTokens = multiHop.promptTokens();
                 completionTokens = multiHop.completionTokens();
             } else {
-                relevantChunks = vectorSearchService.search(request.getQuestion(), scope);
+                relevantChunks = vectorSearchService.search(retrievalQuestion, scope);
                 sendEvent(emitter, "sources", buildSources(relevantChunks));
 
                 String prompt = answerService.promptForStreaming(request.getQuestion(), chatContext,
@@ -454,7 +458,8 @@ public class ChatService {
         String format = "CODE_FIRST".equals(style) ? "CODE_FIRST" : "PROSE";
 
         SearchScope scope = documentAccessPolicy.resolveScope(principal.userId(), TenantContext.get());
-        List<RetrievedChunk> chunks = vectorSearchService.search(question, scope);
+        String retrievalQuestion = contextManager.rewriteForRetrieval(session.getId(), question);
+        List<RetrievedChunk> chunks = vectorSearchService.search(retrievalQuestion, scope);
         AnswerGenerationService.AnswerResult result = answerService.generateAnswer(
             question, null, chunks, verbosity, format, session.getProduct(), session.getVersion()
         );

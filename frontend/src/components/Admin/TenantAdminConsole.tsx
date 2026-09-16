@@ -2,12 +2,13 @@ import { Suspense, lazy } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import {
   BarChart2, FileText, Map, TrendingUp, DollarSign, Users, UsersRound, Shield,
-  HelpCircle, MessageSquare, AlertTriangle, Lock, Settings as SettingsIcon, ShieldAlert,
+  HelpCircle, MessageSquare, AlertTriangle, Lock, Settings as SettingsIcon, ShieldAlert, Cable,
 } from 'lucide-react';
 import AdminLayout, { AdminNavItem } from './AdminLayout';
 
 const OverviewTab = lazy(() => import('./OverviewTab'));
 const DocumentsTab = lazy(() => import('./DocumentsTab'));
+const ConnectorsTab = lazy(() => import('./ConnectorsTab'));
 const CoverageTab = lazy(() => import('./CoverageTab'));
 const QueryIntelligenceTab = lazy(() => import('./QueryIntelligenceTab'));
 const CostTrackingTab = lazy(() => import('./CostTrackingTab'));
@@ -24,6 +25,7 @@ const SettingsPage = lazy(() => import('./SettingsPage'));
 const NAV_ITEMS: AdminNavItem[] = [
   { to: '/admin/overview', label: 'Overview', icon: BarChart2 },
   { to: '/admin/documents', label: 'Documents', icon: FileText },
+  { to: '/admin/connectors', label: 'Connectors', icon: Cable },
   { to: '/admin/coverage', label: 'Coverage', icon: Map },
   { to: '/admin/query-intelligence', label: 'Query Intel', icon: TrendingUp },
   { to: '/admin/faq', label: 'FAQ Review', icon: MessageSquare },
@@ -45,6 +47,7 @@ export default function TenantAdminConsole() {
         <Route index element={<Navigate to="/admin/overview" replace />} />
         <Route path="overview" element={<Suspense fallback={null}><OverviewTab /></Suspense>} />
         <Route path="documents" element={<Suspense fallback={null}><DocumentsTab /></Suspense>} />
+        <Route path="connectors" element={<Suspense fallback={null}><ConnectorsTab /></Suspense>} />
         <Route path="coverage" element={<Suspense fallback={null}><CoverageTab /></Suspense>} />
         <Route path="query-intelligence" element={<Suspense fallback={null}><QueryIntelligenceTab /></Suspense>} />
         <Route path="faq" element={<Suspense fallback={null}><FaqManagementTab /></Suspense>} />

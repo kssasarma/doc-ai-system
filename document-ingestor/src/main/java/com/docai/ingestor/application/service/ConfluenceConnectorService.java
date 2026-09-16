@@ -10,6 +10,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -50,6 +51,7 @@ public class ConfluenceConnectorService {
     private final ObjectMapper objectMapper;
     private final SafeUrlValidator safeUrlValidator;
     private final DocumentQuotaService documentQuotaService;
+    private final IngestionService ingestionService;
 
     // Redirect.NEVER — see WebhookIngestionService's identical reasoning: SafeUrlValidator must
     // re-validate each redirect hop before it's followed.
@@ -246,4 +248,80 @@ public class ConfluenceConnectorService {
         long pending = syncPageRepository.countByTokenIdAndSyncStatus(tokenId, ConnectorSyncPage.SyncStatus.PENDING);
         return Map.of("completed", completed, "failed", failed, "pending", pending);
     }
+
+    /** Lists every space visible to the connected Confluence account, so an admin can pick a
+     * space to sync without already knowing its key by heart (mirrors confluencebot's space
+     * browser, which reads from a single pre-ingested instance rather than an OAuth token). */
+    public List<SpaceSummary> listSpaces(UUID tokenId) {
+        IntegrationToken token = tokenRepository.findById(tokenId)
+            .orElseThrow(() -> new IllegalArgumentException("Token not found: " + tokenId));
+
+        List<SpaceSummary> all = new ArrayList<>();
+        int start = 0;
+        final int limit = 100;
+
+        while (true) {
+            String url = token.getSiteUrl()
+                + "/wiki/rest/api/space?type=global&status=current"
+                + "&start=" + start + "&limit=" + limit;
+
+            JsonNode root;
+            try {
+                root = apiGet(token, url);
+            } catch (IOException | InterruptedException e) {
+                if (e instanceof InterruptedException) Thread.currentThread().interrupt();
+                throw new IllegalStateException("Failed to list Confluence spaces: " + e.getMessage(), e);
+            }
+            for (JsonNode space : root.path("results")) {
+                all.add(new SpaceSummary(space.path("key").asText(), space.path("name").asText()));
+            }
+
+            JsonNode nextLink = root.path("_links").path("next");
+            if (nextLink.isMissingNode() || nextLink.asText().isBlank()) break;
+            start += limit;
+        }
+        return all;
+    }
+
+    /** Recent per-page sync history for a token, newest first — the connector analogue of
+     * confluencebot's ingestion job history table. */
+    public List<ConnectorSyncPage> listSyncedPages(UUID tokenId) {
+        return syncPageRepository.findByTokenId(tokenId).stream()
+            .sorted(Comparator.comparing(ConnectorSyncPage::getCreatedAt,
+                Comparator.nullsLast(Comparator.reverseOrder())))
+            .toList();
+    }
+
+    /** Purges every document ingested from a Confluence space — chunks cascade with each document
+     * delete (see IngestionService#deleteDocument) — plus the sync-history rows tracking them, so
+     * re-syncing the space starts clean rather than skipping pages it thinks are already current.
+     * A page's document may already be gone (e.g. superseded by a later re-upload under the same
+     * product/version); that's not an error here, only its sync-history row still needs removing.
+     *
+     * @return how many documents were deleted
+     */
+    @Transactional
+    public int deleteSpaceContent(UUID tokenId, String spaceKey) {
+        IntegrationToken token = tokenRepository.findById(tokenId)
+            .orElseThrow(() -> new IllegalArgumentException("Token not found: " + tokenId));
+
+        List<ConnectorSyncPage> pages = syncPageRepository.findByTokenIdAndSpaceKey(tokenId, spaceKey);
+        int deleted = 0;
+        for (ConnectorSyncPage page : pages) {
+            if (page.getDocumentId() == null) continue;
+            try {
+                ingestionService.deleteDocument(page.getDocumentId(), token.getTenantId());
+                deleted++;
+            } catch (IllegalArgumentException e) {
+                log.debug("Confluence space purge: document {} for page {} already gone",
+                    page.getDocumentId(), page.getExternalId());
+            }
+        }
+        syncPageRepository.deleteAll(pages);
+        log.info("Purged Confluence space '{}': {} document(s) removed, {} sync record(s) cleared",
+            spaceKey, deleted, pages.size());
+        return deleted;
+    }
+
+    public record SpaceSummary(String key, String name) {}
 }
