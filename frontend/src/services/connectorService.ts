@@ -62,3 +62,13 @@ export function fetchConfluenceStats(token: string): Promise<ConnectorSyncStats>
 export function fetchConfluencePages(token: string): Promise<ConnectorSyncPage[]> {
   return unwrap(fetch(`${BASE}/confluence/pages`, { headers: authHeaders(token) }));
 }
+
+/** Purges every document ingested from a Confluence space. */
+export function deleteConfluenceSpaceContent(
+  token: string, spaceKey: string,
+): Promise<{ spaceKey: string; documentsDeleted: number }> {
+  return unwrap(fetch(`${BASE}/confluence/spaces/${encodeURIComponent(spaceKey)}`, {
+    method: 'DELETE',
+    headers: authHeaders(token),
+  }));
+}

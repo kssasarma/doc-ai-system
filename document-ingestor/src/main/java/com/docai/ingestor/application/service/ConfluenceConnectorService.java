@@ -51,6 +51,7 @@ public class ConfluenceConnectorService {
     private final ObjectMapper objectMapper;
     private final SafeUrlValidator safeUrlValidator;
     private final DocumentQuotaService documentQuotaService;
+    private final IngestionService ingestionService;
 
     // Redirect.NEVER — see WebhookIngestionService's identical reasoning: SafeUrlValidator must
     // re-validate each redirect hop before it's followed.
@@ -289,6 +290,37 @@ public class ConfluenceConnectorService {
             .sorted(Comparator.comparing(ConnectorSyncPage::getCreatedAt,
                 Comparator.nullsLast(Comparator.reverseOrder())))
             .toList();
+    }
+
+    /** Purges every document ingested from a Confluence space — chunks cascade with each document
+     * delete (see IngestionService#deleteDocument) — plus the sync-history rows tracking them, so
+     * re-syncing the space starts clean rather than skipping pages it thinks are already current.
+     * A page's document may already be gone (e.g. superseded by a later re-upload under the same
+     * product/version); that's not an error here, only its sync-history row still needs removing.
+     *
+     * @return how many documents were deleted
+     */
+    @Transactional
+    public int deleteSpaceContent(UUID tokenId, String spaceKey) {
+        IntegrationToken token = tokenRepository.findById(tokenId)
+            .orElseThrow(() -> new IllegalArgumentException("Token not found: " + tokenId));
+
+        List<ConnectorSyncPage> pages = syncPageRepository.findByTokenIdAndSpaceKey(tokenId, spaceKey);
+        int deleted = 0;
+        for (ConnectorSyncPage page : pages) {
+            if (page.getDocumentId() == null) continue;
+            try {
+                ingestionService.deleteDocument(page.getDocumentId(), token.getTenantId());
+                deleted++;
+            } catch (IllegalArgumentException e) {
+                log.debug("Confluence space purge: document {} for page {} already gone",
+                    page.getDocumentId(), page.getExternalId());
+            }
+        }
+        syncPageRepository.deleteAll(pages);
+        log.info("Purged Confluence space '{}': {} document(s) removed, {} sync record(s) cleared",
+            spaceKey, deleted, pages.size());
+        return deleted;
     }
 
     public record SpaceSummary(String key, String name) {}

@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -79,6 +81,11 @@ class ChatServiceTest {
             summaryService, answerService, multiHopService,
             peopleAlsoAskedService, queryAnalyzer, preferenceService, eventPublisher
         );
+        // Default: no rewrite (echoes the question back) — matches behavior before
+        // ContextManager#rewriteForRetrieval existed, for every test that doesn't care about it.
+        // lenient() since several tests below never reach the retrieval call at all.
+        lenient().when(contextManager.rewriteForRetrieval(any(), anyString()))
+            .thenAnswer(inv -> inv.getArgument(1));
     }
 
     @AfterEach
@@ -213,6 +220,27 @@ class ChatServiceTest {
 
         verify(vectorSearchService).search(searchQueryCaptor.capture(), any(SearchScope.class));
         assertThat(searchQueryCaptor.getValue()).isEqualTo("What about on Windows?");
+    }
+
+    @Test
+    void processQuery_searchesOnRewrittenQuestion_whenContextManagerRewrites() {
+        // ContextManager#rewriteForRetrieval condenses a follow-up like "what about on Windows?"
+        // into a standalone query before retrieval runs — this locks in that ChatService actually
+        // uses that rewritten string for search, not the raw question, once one is available.
+        stubNewSession();
+        stubDependencies("Answer.");
+        when(contextManager.rewriteForRetrieval(eq(sessionId), eq("What about on Windows?")))
+            .thenReturn("How do you install Case360 on Windows?");
+
+        ArgumentCaptor<String> searchQueryCaptor = ArgumentCaptor.forClass(String.class);
+
+        ChatRequest req = ChatRequest.builder()
+            .question("What about on Windows?").product("product-a").version("1.0").userId(userId).build();
+
+        chatService.processQuery(req);
+
+        verify(vectorSearchService).search(searchQueryCaptor.capture(), any(SearchScope.class));
+        assertThat(searchQueryCaptor.getValue()).isEqualTo("How do you install Case360 on Windows?");
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────

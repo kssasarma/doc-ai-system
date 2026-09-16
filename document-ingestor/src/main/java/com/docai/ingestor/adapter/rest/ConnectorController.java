@@ -106,6 +106,19 @@ public class ConnectorController {
         return ResponseEntity.ok(confluenceService.listSyncedPages(token.getId()));
     }
 
+    /** Purges every document ingested from a Confluence space, so a stale or unwanted space's
+     * content leaves the searchable corpus without deleting anything outside it. */
+    @DeleteMapping("/confluence/spaces/{spaceKey}")
+    public ResponseEntity<Map<String, Object>> deleteConfluenceSpaceContent(
+            @PathVariable String spaceKey, Authentication auth) {
+        UUID userId = resolveUserId(auth);
+        IntegrationToken token = tokenRepository
+            .findByUserIdAndProvider(userId, IntegrationToken.Provider.confluence)
+            .orElseThrow(() -> new IllegalStateException("No Confluence token found. Register one first."));
+        int deleted = confluenceService.deleteSpaceContent(token.getId(), spaceKey);
+        return ResponseEntity.ok(Map.of("spaceKey", spaceKey, "documentsDeleted", deleted));
+    }
+
     // ── Notion ────────────────────────────────────────────────────────────────
 
     @PostMapping("/notion/token")

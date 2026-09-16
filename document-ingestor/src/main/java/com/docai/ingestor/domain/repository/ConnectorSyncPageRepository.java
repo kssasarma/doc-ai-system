@@ -10,6 +10,7 @@ import com.docai.ingestor.domain.entity.ConnectorSyncPage;
 
 public interface ConnectorSyncPageRepository extends JpaRepository<ConnectorSyncPage, UUID> {
     List<ConnectorSyncPage> findByTokenId(UUID tokenId);
+    List<ConnectorSyncPage> findByTokenIdAndSpaceKey(UUID tokenId, String spaceKey);
     Optional<ConnectorSyncPage> findByTokenIdAndExternalId(UUID tokenId, String externalId);
     long countByTokenIdAndSyncStatus(UUID tokenId, ConnectorSyncPage.SyncStatus status);
 }

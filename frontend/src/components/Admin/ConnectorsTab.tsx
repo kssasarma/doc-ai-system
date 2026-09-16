@@ -1,14 +1,14 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import { useAuth } from '../../context/AuthContext';
 import {
-  deleteConnectorToken, fetchConfluencePages, fetchConfluenceStats, listConfluenceSpaces,
-  listConnectorTokens, saveConfluenceToken, syncConfluenceSpace,
+  deleteConfluenceSpaceContent, deleteConnectorToken, fetchConfluencePages, fetchConfluenceStats,
+  listConfluenceSpaces, listConnectorTokens, saveConfluenceToken, syncConfluenceSpace,
 } from '../../services/connectorService';
 import { ConfluenceSpaceSummary } from '../../types';
 import {
-  Cable, CheckCircle, Clock, Play, RefreshCw, Search, Trash2, XCircle,
+  Cable, CheckCircle, Clock, FolderMinus, Play, RefreshCw, Search, Trash2, XCircle,
 } from 'lucide-react';
 import { fadeInUp, staggerContainer } from '../../lib/motion';
 import PageHeader from '../ui/PageHeader';
@@ -62,12 +62,25 @@ export default function ConnectorsTab() {
   const pagesQuery = useQuery({
     queryKey: ['connectors', 'confluence', 'pages'],
     queryFn: () => fetchConfluencePages(token!),
-    enabled: !!token && !!confluenceToken && historyOpen,
+    enabled: !!token && !!confluenceToken,
     refetchInterval: query => {
       const active = query.state.data?.some(p => p.syncStatus === 'PENDING' || p.syncStatus === 'SYNCING');
       return active ? 5000 : false;
     },
   });
+
+  // Distinct spaces with at least one synced page, for the "manage ingested spaces" panel below —
+  // derived from the same sync history rather than a dedicated endpoint.
+  const ingestedSpaces = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const p of pagesQuery.data ?? []) {
+      if (!p.spaceKey) continue;
+      counts.set(p.spaceKey, (counts.get(p.spaceKey) ?? 0) + 1);
+    }
+    return Array.from(counts.entries())
+      .map(([spaceKey, pageCount]) => ({ spaceKey, pageCount }))
+      .sort((a, b) => a.spaceKey.localeCompare(b.spaceKey));
+  }, [pagesQuery.data]);
 
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ['connectors'] });
@@ -117,6 +130,28 @@ export default function ConnectorsTab() {
       danger: true,
     });
     if (confirmed) removeToken.mutate(confluenceToken.id);
+  };
+
+  const [purgingKey, setPurgingKey] = useState<string | null>(null);
+  const purgeSpace = useMutation({
+    mutationFn: (spaceKey: string) => deleteConfluenceSpaceContent(token!, spaceKey),
+    onMutate: spaceKey => setPurgingKey(spaceKey),
+    onSuccess: res => {
+      toast.success(`Removed ${res.documentsDeleted} document(s) from space "${res.spaceKey}".`);
+      refresh();
+    },
+    onError: e => toast.error(e instanceof Error ? e.message : 'Could not remove the space\'s content.'),
+    onSettled: () => setPurgingKey(null),
+  });
+
+  const handlePurgeSpace = async (spaceKey: string) => {
+    const confirmed = await confirm({
+      title: 'Remove space content',
+      message: `Permanently delete every document ingested from space "${spaceKey}"? This removes them from search immediately and cannot be undone.`,
+      confirmLabel: 'Remove content',
+      danger: true,
+    });
+    if (confirmed) purgeSpace.mutate(spaceKey);
   };
 
   return (
@@ -253,6 +288,44 @@ export default function ConnectorsTab() {
                 </Card>
               ))}
             </motion.div>
+
+            {ingestedSpaces.length > 0 && (
+              <Card className="mb-4">
+                <CardHeader>
+                  <h2 className="text-sm font-semibold text-foreground">Manage ingested spaces</h2>
+                </CardHeader>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-muted text-muted-foreground text-xs uppercase tracking-wide">
+                      <tr>
+                        <th className="px-4 py-2 text-left">Space</th>
+                        <th className="px-4 py-2 text-right">Synced pages</th>
+                        <th className="px-4 py-2 text-right">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {ingestedSpaces.map(({ spaceKey, pageCount }) => (
+                        <tr key={spaceKey}>
+                          <td className="px-4 py-2 font-mono text-xs">{spaceKey}</td>
+                          <td className="px-4 py-2 text-right text-muted-foreground">{pageCount}</td>
+                          <td className="px-4 py-2 text-right">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              loading={purgingKey === spaceKey}
+                              leftIcon={<FolderMinus className="w-3.5 h-3.5" />}
+                              onClick={() => handlePurgeSpace(spaceKey)}
+                            >
+                              Remove content
+                            </Button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+            )}
 
             <Card>
               <CardHeader className="flex items-center justify-between gap-2">
